@@ -34,15 +34,30 @@ The regression suite covers:
 These are component and MockBukkit tests. They do not prove rendered client
 pixels or server crash behavior under a real storage failure.
 
+The ARC 1.4.64 bridge also passed its final targeted run:
+`test --tests 'ru.arc.itemcatalog.*' shadowJar` with the same local composite.
+Result: **64 tests, 0 failures, 0 errors, 0 skipped**, source commit `667844a`.
+The archived-seal test opens the real MockBukkit menu against an empty current
+catalog, chooses and confirms one item, and verifies one seal consumed, one
+chosen item granted, and no second item granted. Ordinary command delivery and
+addon delivery use the same archived seal creation route.
+ARC JAR SHA-256: `ca9990a8a7cfd8e83233488b10efd58746ebcb29494c8197150beb4c08fbe23b`.
+
 ## Dependency and activation boundary
 
 The arc-core source is public. Maven 2.7.8 publication is pending a separately
 requested authorization; its full release dry run passed 655 tests with no
 failures/errors/skips. No Maven artifact was uploaded by that dry run.
 
+The [public CI run for source commit 30d5920](https://github.com/alexey-va/ExcellentCratesItemsAdder/actions/runs/34697681573)
+failed during dependency resolution because Maven does not yet contain
+`arc-core-paper-api:2.7.8` and the other shared 2.7.8 modules. This is a failed
+public build, separate from the successful local composite verification above.
+
 The last runtime readback still had ARC 1.4.63 and addon 0.3.0. The new 0.4.0
 managed features have not been enabled on the server. The ARC materializer
-bridge and its archived collection-seal path have a separate verification gate.
+bridge and its archived collection-seal path passed local verification above;
+they have not passed live server acceptance yet.
 
 After dependency publication and coordinated delivery, live acceptance must
 exercise all seven native key commands and furniture anchors, one actual debit
