@@ -112,7 +112,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ExcellentCratesItemsAdder-0.5.0.jar`.
+Output: `build/libs/ExcellentCratesItemsAdder-0.5.1.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash

@@ -93,7 +93,7 @@ public final class NativeRewardPools {
         String command = ((CommandReward) reward).getCommands().getFirst();
         String[] words = command.trim().split("\\s+");
         String fingerprint = sourceFingerprint(reward);
-        if (words.length == 4 && words[0].equals("arc-reward-issue") && words[1].equals("%player%")) {
+        if (isArcRewardIssue(words)) {
             return provider.freeze(words[2], words[3], fingerprint);
         }
         if (words.length == 6 && words[0].equals("excellentcrates") && words[1].equals("key")
@@ -103,6 +103,11 @@ public final class NativeRewardPools {
             return provider.freezeNative(keys.create(words[4], season, Integer.parseInt(words[5])), fingerprint);
         }
         throw new IllegalStateException("Reward has no typed materializer: " + reward.getCrate().getId() + "/" + reward.getId());
+    }
+
+    static boolean isArcRewardIssue(String[] words) {
+        return words.length == 4 && words[0].equals("arc-reward-issue")
+                && (words[1].equals("%player%") || words[1].equals("%player_name%"));
     }
 
     private void verifyUnchanged(PoolSnapshot pool, ManagedCratesSettings.CaseSettings config, List<Reward> nativeRewards) {
