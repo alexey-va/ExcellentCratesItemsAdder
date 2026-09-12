@@ -240,7 +240,7 @@ public final class ExcellentCratesItemsAdderPlugin extends JavaPlugin implements
             }
             values.put(placeholder, replacements[index + 1]);
         }
-        return runtime.locale().render(key, audience, values);
+        return runtime.locale().renderPadded(key, audience, values);
     }
 
     private Map<String, String> legacyMessages() {

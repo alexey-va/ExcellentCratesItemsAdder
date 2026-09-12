@@ -27,14 +27,13 @@ public final class OpeningAnalytics {
                 continue;
             }
             GroupKey key = new GroupKey(record.pool().crateId(), record.pool().seasonId(),
-                    record.guaranteed(), record.rerollsUsed() > 0);
+                    record.rerollsUsed() > 0);
             groups.computeIfAbsent(key, ignored -> new Aggregate(record.pool())).add(record);
         }
         return groups.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey(Comparator
                         .comparing(GroupKey::crateId)
                         .thenComparing(GroupKey::seasonId)
-                        .thenComparing(GroupKey::guaranteed)
                         .thenComparing(GroupKey::rerolled)))
                 .map(entry -> entry.getValue().toDistribution(entry.getKey()))
                 .toList();
@@ -47,7 +46,7 @@ public final class OpeningAnalytics {
                 || !record.selectedRewardId().isEmpty());
     }
 
-    private record GroupKey(String crateId, String seasonId, boolean guaranteed, boolean rerolled) {
+    private record GroupKey(String crateId, String seasonId, boolean rerolled) {
     }
 
     private static final class Aggregate {
@@ -79,7 +78,6 @@ public final class OpeningAnalytics {
             return new OpeningDistribution(
                     key.crateId(),
                     key.seasonId(),
-                    key.guaranteed(),
                     key.rerolled(),
                     openingCount,
                     offeredCounts,

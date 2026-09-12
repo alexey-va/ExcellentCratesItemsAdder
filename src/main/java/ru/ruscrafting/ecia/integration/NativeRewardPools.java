@@ -50,11 +50,6 @@ public final class NativeRewardPools {
         for (var configured : settings.cases().values()) {
             Crate crate = requireCrate(configured.crateId());
             var nativeRewards = crate.getRewards().stream().sorted(Comparator.comparing(Reward::getId)).toList();
-            for (String id : configured.qualifyingRewards()) {
-                if (nativeRewards.stream().noneMatch(reward -> reward.getId().equals(id))) {
-                    throw new IllegalStateException("Unknown guarantee reward: " + crate.getId() + "/" + id);
-                }
-            }
             var old = seasons.find(crate.getId(), configured.seasonId());
             if (old.isPresent()) {
                 verifyUnchanged(old.get(), configured, nativeRewards);
@@ -64,12 +59,11 @@ public final class NativeRewardPools {
             List<RewardDefinition> rewards = new ArrayList<>();
             for (Reward reward : nativeRewards) {
                 String delivery = freeze(reward, keySeasons);
-                rewards.add(new RewardDefinition(reward.getId(), reward.getWeight(),
-                        configured.qualifyingRewards().contains(reward.getId()), delivery,
+                rewards.add(new RewardDefinition(reward.getId(), reward.getWeight(), delivery,
                         payload.items(new ItemStack[]{reward.getPreviewItem()})));
             }
             PoolSnapshot pool = new PoolSnapshot(crate.getId(), configured.seasonId(), rewards,
-                    configured.pityThreshold(), configured.choiceCount(), configured.maxRerolls());
+                    configured.choiceCount(), configured.maxRerolls());
             installed.put(crate.getId(), seasons.register(pool));
         }
         return Map.copyOf(installed);
@@ -111,15 +105,14 @@ public final class NativeRewardPools {
     }
 
     private void verifyUnchanged(PoolSnapshot pool, ManagedCratesSettings.CaseSettings config, List<Reward> nativeRewards) {
-        if (pool.pityThreshold() != config.pityThreshold() || pool.choiceCount() != config.choiceCount()
-                || pool.maxRerolls() != config.maxRerolls() || pool.rewards().size() != nativeRewards.size()) {
+        if (pool.choiceCount() != config.choiceCount() || pool.maxRerolls() != config.maxRerolls()
+                || pool.rewards().size() != nativeRewards.size()) {
             throw new IllegalStateException("Season rules changed; create a new season: " + pool.crateId());
         }
         for (Reward reward : nativeRewards) {
             RewardDefinition frozen = pool.rewards().stream().filter(item -> item.id().equals(reward.getId())).findFirst()
                     .orElseThrow(() -> new IllegalStateException("Season rewards changed: " + pool.crateId()));
-            if (frozen.guaranteeEligible() != config.qualifyingRewards().contains(reward.getId())
-                    || !provider.sourceFingerprint(frozen).equals(sourceFingerprint(reward))) {
+            if (!provider.sourceFingerprint(frozen).equals(sourceFingerprint(reward))) {
                 throw new IllegalStateException("Season reward changed; create a new season: " + pool.crateId() + "/" + reward.getId());
             }
         }

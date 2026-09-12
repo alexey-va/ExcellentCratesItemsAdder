@@ -20,37 +20,37 @@ class OpeningAnalyticsTest {
     private static final UUID PLAYER = UUID.fromString("00000000-0000-0000-0000-000000000728");
     private static final Clock CLOCK = Clock.fixed(Instant.ofEpochMilli(1234), ZoneOffset.UTC);
     private static final RewardDefinition COMMON = new RewardDefinition(
-            "common", 3.0, false, "deliver:common", "preview:common");
+            "common", 3.0, "deliver:common", "preview:common");
     private static final RewardDefinition RARE = new RewardDefinition(
-            "rare", 1.0, true, "deliver:rare", "preview:rare");
+            "rare", 1.0, "deliver:rare", "preview:rare");
     private static final PoolSnapshot POOL = new PoolSnapshot(
-            "crate", "summer", List.of(COMMON, RARE), 3, 3, 1);
+            "crate", "summer", List.of(COMMON, RARE), 3, 1);
 
     @Test
     void groupsModesSeparatelyAndKeepsOfferedAndSelectedCountsDistinct() {
         OpeningLedger ledger = new OpeningLedger(new MemoryStore(), CLOCK);
-        OpeningRecord ordinary = ready(ledger, List.of(COMMON, RARE), false);
+        OpeningRecord ordinary = ready(ledger, List.of(COMMON, RARE));
         ordinary = ledger.select(ordinary.id(), PLAYER, ordinary.revision(), COMMON.id());
-        OpeningRecord guaranteed = ready(ledger, List.of(COMMON, RARE), true);
-        guaranteed = ledger.select(guaranteed.id(), PLAYER, guaranteed.revision(), RARE.id());
-        OpeningRecord rerolled = ready(ledger, List.of(COMMON, RARE), false);
-        rerolled = ledger.reroll(rerolled.id(), PLAYER, rerolled.revision(), List.of(RARE), false);
+        OpeningRecord second = ready(ledger, List.of(COMMON, RARE));
+        second = ledger.select(second.id(), PLAYER, second.revision(), RARE.id());
+        OpeningRecord rerolled = ready(ledger, List.of(COMMON, RARE));
+        rerolled = ledger.reroll(rerolled.id(), PLAYER, rerolled.revision(), List.of(RARE));
         rerolled = ledger.select(rerolled.id(), PLAYER, rerolled.revision(), RARE.id());
 
         List<OpeningDistribution> distributions = new OpeningAnalytics()
-                .summarize(List.of(ordinary, guaranteed, rerolled));
+                .summarize(List.of(ordinary, second, rerolled));
 
-        assertEquals(3, distributions.size());
+        assertEquals(2, distributions.size());
         OpeningDistribution ordinaryReport = distributions.stream()
                 .filter(report -> report.mode() == OpeningDistribution.Mode.ORDINARY)
                 .findFirst().orElseThrow();
-        assertEquals(1, ordinaryReport.openingCount());
-        assertEquals(1L, ordinaryReport.offeredCounts().get("common"));
+        assertEquals(2, ordinaryReport.openingCount());
+        assertEquals(2L, ordinaryReport.offeredCounts().get("common"));
         assertEquals(1L, ordinaryReport.selectedCounts().get("common"));
         assertEquals(0.75, ordinaryReport.baseWeightShares().get("common"));
         assertEquals(0.25, ordinaryReport.baseWeightShares().get("rare"));
         OpeningDistribution rerolledReport = distributions.stream()
-                .filter(report -> report.mode() == OpeningDistribution.Mode.REROLLED_ORDINARY)
+                .filter(report -> report.mode() == OpeningDistribution.Mode.REROLLED)
                 .findFirst().orElseThrow();
         assertEquals(1, rerolledReport.openingCount());
         assertEquals(1L, rerolledReport.offeredCounts().get("rare"));
@@ -85,20 +85,20 @@ class OpeningAnalyticsTest {
     @Test
     void rejectsConflictingDefinitionsWithinAnImmutableSeason() {
         OpeningLedger ledger = new OpeningLedger(new MemoryStore(), CLOCK);
-        OpeningRecord first = ready(ledger, List.of(COMMON, RARE), false);
+        OpeningRecord first = ready(ledger, List.of(COMMON, RARE));
         OpeningRecord firstCompleted = ledger.select(first.id(), PLAYER, first.revision(), COMMON.id());
         PoolSnapshot changed = new PoolSnapshot("crate", "summer", List.of(
-                new RewardDefinition("common", 2.0, false, "deliver:common", "preview:common"), RARE), 3, 3, 1);
+                new RewardDefinition("common", 2.0, "deliver:common", "preview:common"), RARE), 3, 1);
         OpeningRecord conflicting = new OpeningRecord(
                 UUID.randomUUID(), PLAYER, changed, 10, 10, 0, OpeningRecord.Stage.CHOOSING,
-                List.of(changed.rewards().getFirst(), RARE), false, 0, "", "key", "", "", "");
+                List.of(changed.rewards().getFirst(), RARE), 0, "", "key", "", "", "");
 
         assertThrows(IllegalArgumentException.class,
                 () -> new OpeningAnalytics().summarize(List.of(firstCompleted, conflicting)));
     }
 
-    private static OpeningRecord ready(OpeningLedger ledger, List<RewardDefinition> offers, boolean guaranteed) {
-        OpeningRecord record = ledger.reserve(UUID.randomUUID(), PLAYER, POOL, offers, guaranteed, "key-witness");
+    private static OpeningRecord ready(OpeningLedger ledger, List<RewardDefinition> offers) {
+        OpeningRecord record = ledger.reserve(UUID.randomUUID(), PLAYER, POOL, offers, "key-witness");
         return ledger.debitConfirmed(record.id(), PLAYER, record.revision());
     }
 
@@ -109,7 +109,7 @@ class OpeningAnalyticsTest {
                 ? "delivery-witness" : "";
         return new OpeningRecord(
                 UUID.randomUUID(), PLAYER, POOL, 1, 1, 0, stage,
-                List.of(COMMON, RARE), false, 0, selectedRewardId,
+                List.of(COMMON, RARE), 0, selectedRewardId,
                 "key-witness", prepared, witness, ""
         );
     }

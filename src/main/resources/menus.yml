@@ -16,18 +16,11 @@ menus:
     title-history: "История открытий"
     title-pool: "<crate>"
     choice-action: "ЛКМ — выбрать этот приз"
-    guaranteed: "активна"
-    ordinary: "обычная"
     reroll-stage: "Обновление доступно только до выбора"
     reroll-exhausted: "Лимит обновлений исчерпан"
-    reroll-guarantee: "Гарантия сохраняется после обновления"
     reroll-action: "ЛКМ — получить новый набор"
     mail-claim: "ЛКМ — забрать награду"
     mail-pending: "Ожидайте обработки"
-    guarantee-yes: "Да"
-    guarantee-no: "Нет"
-    pity-disabled: "выкл."
-    pity-threshold: "после <count> промахов"
     status-reserved: "Ключ зарезервирован"
     status-choosing: "Ожидает выбора"
     status-mail: "Готово к получению"
@@ -74,12 +67,11 @@ menus:
       schema-version: 1
       rows: 6
       elements:
-        info: { slot: 4, template: pool-info, kind: decoration }
-        previous: { slot: 47, template: previous }
-        back: { slot: 49, template: back }
-        next: { slot: 51, template: next }
+        previous: { slot: 45, template: previous }
+        next: { slot: 53, template: next }
       regions:
-        rewards: { slots: ['10-16', '19-25', '28-34', '37-43'] }
+        rewards: { slots: ['0-44'] }
+        footer: { slots: ['46-52'] }
       pagination: { region: rewards, previous: previous, next: next }
   templates:
     background:
@@ -92,8 +84,6 @@ menus:
       name: "<#ffd567>Выберите награду"
       lore:
         - "<#fff2df><crate> · сезон <season>"
-        - "<light_purple>Прогресс гарантии: <progress> (<threshold>)"
-        - "<aqua>В этом открытии: <guaranteed>"
         - "<aqua>Выберите 1 из 3"
         - "<#ffd567>Обновления: <rerolls>"
     choice:
@@ -132,7 +122,6 @@ menus:
       lore:
         - "<#fff2df>Осталось обновлений: <remaining>"
         - "<#ffd567><reason>"
-        - { text: "<aqua>Гарантия сохраняется", when: guaranteed }
     back:
       material: OAK_DOOR
       name: "<aqua>« Назад"
@@ -163,20 +152,11 @@ menus:
       lore:
         - "<#fff2df><state> · ревизия <revision>"
         - "<#ffd567>Только просмотр"
-    pool-info:
-      material: BOOK
-      name: "<#ffd567>Пул <crate> · <season>"
-      lore:
-        - "<light_purple>До гарантии: <progress> (<threshold>)"
-        - "<aqua>Выберите 1 из <choices>; обновлений: <rerolls>"
-        - "<#fff2df>Вес первого броска — справочная доля"
-        - "<#ffd567>Финальный выбор зависит от выбора и обновлений"
     pool-reward:
       material: CHEST
       name: "<aqua>Награда пула"
       lore:
         - "<#fff2df>Вес первого броска: <weight>"
-        - "<light_purple>Квалифицируется для гарантии: <guarantee>"
     unavailable:
       material: PAPER
       hide-tooltip: true
@@ -185,13 +165,13 @@ menus:
         - "<#fff2df>Награда скрыта до подтверждения"
     previous:
       material: BLUE_STAINED_GLASS_PANE
-      custom-model-data: 11009
+      custom-model-data: 11013
       name: "<aqua>« Предыдущая"
       lore:
         - "<#fff2df>ЛКМ — листать"
     next:
       material: BLUE_STAINED_GLASS_PANE
-      custom-model-data: 11008
+      custom-model-data: 11012
       name: "<aqua>Следующая »"
       lore:
         - "<#fff2df>ЛКМ — листать"

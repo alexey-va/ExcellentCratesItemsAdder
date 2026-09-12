@@ -32,6 +32,22 @@ class EciaLocale(
     fun render(path: String, sender: CommandSender?, values: Map<String, String>): Component =
         renderer.render(path, localeTag(sender), values.mapValues { renderer.literal(it.value) })
 
+    /** Chat presentation shared by player and administrator messages. */
+    fun renderPadded(path: String, sender: CommandSender?, values: Map<String, String>): Component =
+        Component.newline()
+            .append(Component.text(CHAT_INDENT))
+            .append(render(path, sender, values))
+            .append(Component.newline())
+
+    /** One padded chat block without blank gaps between its rows. */
+    fun renderBlock(sender: CommandSender?, lines: List<Pair<String, Map<String, String>>>): Component =
+        lines.foldIndexed(Component.newline()) { index, result, (path, values) ->
+            result
+                .append(if (index == 0) Component.empty() else Component.newline())
+                .append(Component.text(CHAT_INDENT))
+                .append(render(path, sender, values))
+        }.append(Component.newline())
+
     /** Explicit locale-tag entry point for non-Bukkit callers and tests. */
     fun renderWithLocale(path: String, localeTag: String, values: Map<String, String>): Component =
         renderer.render(path, localeTag, values.mapValues { renderer.literal(it.value) })
@@ -80,6 +96,8 @@ class EciaLocale(
     }
 
     companion object {
+        private const val CHAT_INDENT = "   "
+
         /** Keys used by the currently shipped protection and administration flow. */
         @JvmField
         val REQUIRED_KEYS: Set<String> = setOf(

@@ -46,9 +46,9 @@ class EciaMenuScreensTest {
         assertEquals(3, configuration.catalog.require(EciaMenuConfiguration.CHOICES).region(EciaMenuConfiguration.OFFERS).size)
         assertEquals(11000, configuration.template(MenuTemplateId.of("background")).customModelData)
         assertEquals(Material.GRAY_STAINED_GLASS_PANE, material(configuration.template(MenuTemplateId.of("background"))))
-        assertEquals(11009, configuration.template(MenuTemplateId.of("previous")).customModelData)
+        assertEquals(11013, configuration.template(MenuTemplateId.of("previous")).customModelData)
         assertEquals(Material.BLUE_STAINED_GLASS_PANE, material(configuration.template(MenuTemplateId.of("previous"))))
-        assertEquals(11008, configuration.template(MenuTemplateId.of("next")).customModelData)
+        assertEquals(11012, configuration.template(MenuTemplateId.of("next")).customModelData)
         assertEquals(Material.BLUE_STAINED_GLASS_PANE, material(configuration.template(MenuTemplateId.of("next"))))
         assertTrue(configuration.templates.values.all { it.customModelData != 11001 })
         assertTrue(configuration.templates.values.none { it.customModelData == 11001 })
@@ -65,7 +65,7 @@ class EciaMenuScreensTest {
         assertFalse(mailEntry.enabled)
         assertTrue(!mailEntry.item.itemMeta.hasCustomModelData() || mailEntry.item.itemMeta.customModelData != 11001)
 
-        val choices = screens.renderChoices(opening(OpeningRecord.Stage.CHOOSING), misses = 2)
+        val choices = screens.renderChoices(opening(OpeningRecord.Stage.CHOOSING))
         assertEquals(2, choices.regions.getValue(EciaMenuConfiguration.OFFERS).size)
         assertTrue(choices.elements.getValue(MenuElementId.of("reroll")).enabled)
     }
@@ -76,10 +76,10 @@ class EciaMenuScreensTest {
         val payload = NativeItemPayload()
         val native = ItemStack(Material.LEATHER)
         native.editMeta { it.displayName(Component.text("Кожаная перчатка", NamedTextColor.GREEN)) }
-        val reward = RewardDefinition("reward-uuid", 1.0, true, "delivery", payload.items(arrayOf(native)))
+        val reward = RewardDefinition("reward-uuid", 1.0, "delivery", payload.items(arrayOf(native)))
         val opening = OpeningRecord(
-            UUID.randomUUID(), UUID.randomUUID(), PoolSnapshot("case_daily", "summer", listOf(reward), 4, 3, 1),
-            1L, 1L, 12L, OpeningRecord.Stage.CHOOSING, listOf(reward), false, 0, "",
+            UUID.randomUUID(), UUID.randomUUID(), PoolSnapshot("case_daily", "summer", listOf(reward), 3, 1),
+            1L, 1L, 12L, OpeningRecord.Stage.CHOOSING, listOf(reward), 0, "",
             "key-witness", "", "", "",
         )
 
@@ -119,32 +119,36 @@ class EciaMenuScreensTest {
     }
 
     @Test
-    fun poolPreviewHasNoFrameAndShowsOnlyUsefulPageArrows() {
+    fun poolPreviewUsesFiveRewardRowsAndFixedFooterNavigation() {
         val configuration = EciaMenuConfiguration.loadResource()
         val screens = EciaMenuScreens(configuration)
-        val rewards = (1..35).map { RewardDefinition("reward-$it", 1.0, it == 1, "delivery-$it", "") }
-        val pool = PoolSnapshot("case_daily", "summer", rewards, 4, 3, 1)
+        val rewards = (1..46).map { RewardDefinition("reward-$it", 1.0, "delivery-$it", "") }
+        val pool = PoolSnapshot("case_daily", "summer", rewards, 3, 1)
 
-        val first = screens.renderPoolPreview(pool, misses = 0, page = 0)
-        val second = screens.renderPoolPreview(pool, misses = 0, page = 1)
+        val first = screens.renderPoolPreview(pool, page = 0)
+        val second = screens.renderPoolPreview(pool, page = 1)
         val expectedTitle = Component.text("Ежедневный тайник", NamedTextColor.DARK_GRAY)
             .decoration(TextDecoration.BOLD, false)
             .decoration(TextDecoration.ITALIC, false)
 
         assertEquals(expectedTitle, first.title)
         assertEquals(null, first.background)
-        assertFalse(first.elements.containsKey(MenuElementId.of("previous")))
-        assertTrue(first.elements.containsKey(MenuElementId.of("next")))
-        assertTrue(second.elements.containsKey(MenuElementId.of("previous")))
-        assertFalse(second.elements.containsKey(MenuElementId.of("next")))
+        assertEquals(45, configuration.catalog.require(EciaMenuConfiguration.POOL_PREVIEW)
+            .region(EciaMenuConfiguration.REWARDS).size)
+        assertEquals(7, configuration.catalog.require(EciaMenuConfiguration.POOL_PREVIEW)
+            .region(EciaMenuConfiguration.FOOTER).size)
+        assertFalse(first.elements.getValue(MenuElementId.of("previous")).enabled)
+        assertTrue(first.elements.getValue(MenuElementId.of("next")).enabled)
+        assertTrue(second.elements.getValue(MenuElementId.of("previous")).enabled)
+        assertFalse(second.elements.getValue(MenuElementId.of("next")).enabled)
     }
 
     private fun opening(stage: OpeningRecord.Stage, selected: String = ""): OpeningRecord {
-        val common = RewardDefinition("common", 9.0, false, "deliver-common", "")
-        val rare = RewardDefinition("rare", 1.0, true, "deliver-rare", "")
+        val common = RewardDefinition("common", 9.0, "deliver-common", "")
+        val rare = RewardDefinition("rare", 1.0, "deliver-rare", "")
         return OpeningRecord(
-            UUID.randomUUID(), UUID.randomUUID(), PoolSnapshot("crate", "summer", listOf(common, rare), 4, 3, 1),
-            1L, 1L, 12L, stage, listOf(common, rare), false, 0, selected,
+            UUID.randomUUID(), UUID.randomUUID(), PoolSnapshot("crate", "summer", listOf(common, rare), 3, 1),
+            1L, 1L, 12L, stage, listOf(common, rare), 0, selected,
             "key-witness", "", "", "",
         )
     }

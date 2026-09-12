@@ -6,7 +6,6 @@ import java.util.Objects;
 public record RewardDefinition(
         String id,
         double weight,
-        boolean guaranteeEligible,
         String deliveryPayload,
         String previewPayload
 ) {

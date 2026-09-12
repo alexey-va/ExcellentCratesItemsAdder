@@ -45,8 +45,8 @@ public final class ManagedOpeningEngine {
         UUID id = UUID.randomUUID();
         var planned = inventory.debit(player, id, matchingKey, keyAmount);
         if (planned.isEmpty()) return Optional.empty();
-        OfferSet offers = random.generate(pool, ledger.misses(playerId, pool.crateId(), pool.seasonId()));
-        OpeningRecord record = ledger.reserve(id, playerId, pool, offers.rewards(), offers.guaranteed(), payload.write(planned.get()));
+        OfferSet offers = random.generate(pool);
+        OpeningRecord record = ledger.reserve(id, playerId, pool, offers.rewards(), payload.write(planned.get()));
         OpeningRecord settled = switch (inventory.apply(player, planned.get())) {
             case APPLIED -> ledger.debitConfirmed(id, playerId, record.revision());
             case NOT_APPLIED -> ledger.debitRejected(id, playerId, record.revision(), "native-inventory-unchanged");
@@ -60,8 +60,8 @@ public final class ManagedOpeningEngine {
         if (current.revision() != revision || current.stage() != OpeningRecord.Stage.CHOOSING) {
             throw new IllegalStateException("Opening changed; refresh the menu");
         }
-        OfferSet rolled = random.reroll(current.pool(), new OfferSet(current.offers(), current.guaranteed()), current.rerollsUsed());
-        return ledger.reroll(id, player.getUniqueId(), revision, rolled.rewards(), rolled.guaranteed());
+        OfferSet rolled = random.reroll(current.pool(), new OfferSet(current.offers()), current.rerollsUsed());
+        return ledger.reroll(id, player.getUniqueId(), revision, rolled.rewards());
     }
 
     public OpeningRecord select(Player player, UUID id, long revision, String rewardId) {

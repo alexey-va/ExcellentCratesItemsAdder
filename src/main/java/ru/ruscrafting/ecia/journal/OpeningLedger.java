@@ -42,7 +42,7 @@ public final class OpeningLedger {
     }
 
     public synchronized OpeningRecord reserve(UUID id, UUID player, PoolSnapshot pool,
-            List<RewardDefinition> offers, boolean guaranteed, String keyWitness) {
+            List<RewardDefinition> offers, String keyWitness) {
         if (records.containsKey(id)) throw new IllegalStateException("Opening id already exists");
         if (active(player).isPresent()) throw new IllegalStateException("Player has an unresolved opening");
         if (keyWitness.isBlank()) throw new IllegalArgumentException("Key debit witness required");
@@ -50,27 +50,26 @@ public final class OpeningLedger {
                 .mapToLong(OpeningRecord::createdAt).max().orElse(-1);
         long now = Math.max(clock.millis(), Math.addExact(previous, 1));
         return save(new OpeningRecord(id, player, pool, now, now, 0, Stage.RESERVED,
-                offers, guaranteed, 0, "", keyWitness, "", "", ""));
+                offers, 0, "", keyWitness, "", "", ""));
     }
 
     public synchronized OpeningRecord debitConfirmed(UUID id, UUID player, long revision) {
         OpeningRecord record = expect(id, player, revision, Stage.RESERVED);
-        return change(record, Stage.CHOOSING, record.offers(), record.guaranteed(), record.rerollsUsed(),
+        return change(record, Stage.CHOOSING, record.offers(), record.rerollsUsed(),
                 "", "", "", "");
     }
 
     public synchronized OpeningRecord debitRejected(UUID id, UUID player, long revision, String reason) {
         OpeningRecord record = expect(id, player, revision, Stage.RESERVED);
-        return change(record, Stage.ABORTED, record.offers(), record.guaranteed(), record.rerollsUsed(),
+        return change(record, Stage.ABORTED, record.offers(), record.rerollsUsed(),
                 "", "", "", reason);
     }
 
     public synchronized OpeningRecord reroll(UUID id, UUID player, long revision,
-            List<RewardDefinition> offers, boolean guaranteed) {
+            List<RewardDefinition> offers) {
         OpeningRecord record = expect(id, player, revision, Stage.CHOOSING);
         if (record.rerollsUsed() >= record.pool().maxRerolls()) throw new IllegalStateException("Rerolls exhausted");
-        if (record.guaranteed() && !guaranteed) throw new IllegalArgumentException("Guarantee cannot be lost on reroll");
-        return change(record, Stage.CHOOSING, offers, guaranteed, record.rerollsUsed() + 1,
+        return change(record, Stage.CHOOSING, offers, record.rerollsUsed() + 1,
                 "", "", "", "");
     }
 
@@ -79,7 +78,7 @@ public final class OpeningLedger {
         if (record.offers().stream().noneMatch(reward -> reward.id().equals(rewardId))) {
             throw new IllegalArgumentException("Reward is not offered");
         }
-        return change(record, Stage.MAIL, record.offers(), record.guaranteed(), record.rerollsUsed(),
+        return change(record, Stage.MAIL, record.offers(), record.rerollsUsed(),
                 rewardId, "", "", "");
     }
 
@@ -89,7 +88,7 @@ public final class OpeningLedger {
         if (!record.preparedReward().isEmpty() && !record.preparedReward().equals(payload)) {
             throw new IllegalStateException("Prepared reward is immutable");
         }
-        return change(record, Stage.MAIL, record.offers(), record.guaranteed(), record.rerollsUsed(),
+        return change(record, Stage.MAIL, record.offers(), record.rerollsUsed(),
                 record.selectedRewardId(), payload, "", "");
     }
 
@@ -99,20 +98,20 @@ public final class OpeningLedger {
         if (record.preparedReward().isEmpty() || witness.isBlank()) {
             throw new IllegalStateException("Delivery must have durable payload and witness");
         }
-        return change(record, Stage.DELIVERING, record.offers(), record.guaranteed(), record.rerollsUsed(),
+        return change(record, Stage.DELIVERING, record.offers(), record.rerollsUsed(),
                 record.selectedRewardId(), record.preparedReward(), witness, "");
     }
 
     public synchronized OpeningRecord deliveryConfirmed(UUID id, UUID player, long revision) {
         OpeningRecord record = expect(id, player, revision, Stage.DELIVERING);
-        return change(record, Stage.DELIVERED, record.offers(), record.guaranteed(), record.rerollsUsed(),
+        return change(record, Stage.DELIVERED, record.offers(), record.rerollsUsed(),
                 record.selectedRewardId(), record.preparedReward(), record.deliveryWitness(), "");
     }
 
     /** Only a proven no-mutation outcome may return to the claimable mailbox. */
     public synchronized OpeningRecord deliveryNotApplied(UUID id, UUID player, long revision, String reason) {
         OpeningRecord record = expect(id, player, revision, Stage.DELIVERING);
-        return change(record, Stage.MAIL, record.offers(), record.guaranteed(), record.rerollsUsed(),
+        return change(record, Stage.MAIL, record.offers(), record.rerollsUsed(),
                 record.selectedRewardId(), record.preparedReward(), "", reason);
     }
 
@@ -122,7 +121,7 @@ public final class OpeningLedger {
             throw new IllegalStateException("Only an interrupted side effect requires review");
         }
         if (reason.isBlank()) throw new IllegalArgumentException("Review reason required");
-        return change(record, Stage.REVIEW, record.offers(), record.guaranteed(), record.rerollsUsed(),
+        return change(record, Stage.REVIEW, record.offers(), record.rerollsUsed(),
                 record.selectedRewardId(), record.preparedReward(), record.deliveryWitness(), reason);
     }
 
@@ -139,7 +138,7 @@ public final class OpeningLedger {
         boolean debit = record.selectedRewardId().isEmpty();
         Stage target = debit ? (applied ? Stage.CHOOSING : Stage.ABORTED)
                 : (applied ? Stage.DELIVERED : Stage.MAIL);
-        return change(record, target, record.offers(), record.guaranteed(), record.rerollsUsed(),
+        return change(record, target, record.offers(), record.rerollsUsed(),
                 record.selectedRewardId(), record.preparedReward(),
                 target == Stage.MAIL ? "" : record.deliveryWitness(), evidence);
     }
@@ -165,19 +164,6 @@ public final class OpeningLedger {
                 .skip((long) page * pageSize).limit(pageSize).toList();
     }
 
-    public synchronized int misses(UUID player, String crateId, String seasonId) {
-        int misses = 0;
-        for (OpeningRecord record : records.values().stream()
-                .filter(r -> r.playerId().equals(player) && r.pool().crateId().equals(crateId)
-                        && r.pool().seasonId().equals(seasonId) && !r.selectedRewardId().isEmpty())
-                .sorted(Comparator.comparingLong(OpeningRecord::createdAt).reversed().thenComparing(OpeningRecord::id))
-                .toList()) {
-            if (record.selectedReward().guaranteeEligible()) break;
-            misses = Math.addExact(misses, 1);
-        }
-        return misses;
-    }
-
     public synchronized List<OpeningRecord> snapshot() { return List.copyOf(records.values()); }
 
     private OpeningRecord expect(UUID id, UUID player, long revision, Stage stage) {
@@ -189,10 +175,10 @@ public final class OpeningLedger {
     }
 
     private OpeningRecord change(OpeningRecord record, Stage stage, List<RewardDefinition> offers,
-            boolean guaranteed, int rerolls, String selected, String payload, String witness, String reason) {
+            int rerolls, String selected, String payload, String witness, String reason) {
         return save(new OpeningRecord(record.id(), record.playerId(), record.pool(), record.createdAt(),
                 Math.max(clock.millis(), record.updatedAt()), Math.addExact(record.revision(), 1), stage,
-                offers, guaranteed, rerolls, selected, record.keyWitness(), payload, witness, reason));
+                offers, rerolls, selected, record.keyWitness(), payload, witness, reason));
     }
 
     private OpeningRecord save(OpeningRecord record) {

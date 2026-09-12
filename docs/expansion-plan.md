@@ -5,8 +5,7 @@ conversion. Existing furniture protection remains part of every release.
 
 ## Required outcomes
 
-- Rare-reward guarantee with persisted progress, visible threshold and an
-  explicit per-pool qualifying reward set.
+- Ordinary weighted choices without a pity or forced-reward subsystem.
 - Durable reward mailbox. Full inventory, disconnect, restart and provider
   failure preserve entitlement. An ambiguous delivery must never be replayed
   blindly.
@@ -17,9 +16,9 @@ conversion. Existing furniture protection remains part of every release.
 - Admin inspection and repair for registered ItemsAdder crate positions,
   including model identity, hitbox, dependency and pending-delivery state.
 - Player opening history and operator observed-versus-expected distribution,
-  separated by pool version and ordinary versus guaranteed/rerolled selection.
-- Public source publication, appropriate regression tests, deployment and
-  live verification of every feature. Duplicate conversion is excluded.
+  separated by pool version and ordinary versus rerolled selection.
+- Public source publication and appropriate regression tests. Deployment and
+  live verification are explicitly outside the current local test pass.
 
 ## Evidence and integration constraints
 
@@ -32,22 +31,20 @@ rejects delivery and drops rewards on the ground when the inventory is full.
 Command dispatch success is therefore not a delivery receipt. Mail must own
 the durable entitlement and use an explicit outcome from the reward provider.
 
-Current rewards share the `common` rarity. Guarantee eligibility must be
-configured from the actual reward catalogue; existing labels alone cannot
-implement a useful pity system. Balance assessment must record units
-separately and distinguish potential key openings from recurring income.
+Balance assessment must record units separately and distinguish potential key
+openings from recurring income.
 
 ## Delivery sequence
 
 1. Verify the exact native opening, cost, reward and event contracts.
-2. Implement immutable pools and deterministic weighted/guaranteed offers.
+2. Implement immutable pools and deterministic weighted offers.
 3. Implement persisted opening transitions, mailbox and recovery boundaries.
 4. Connect native EC keys/opening entry and ARC reward materialization.
 5. Implement configured player and admin menus, progress and history.
-6. Configure seven production cases and assess before/after reward output.
+6. Configure seven local test cases and assess before/after reward output.
 7. Test restart, double-click, full inventory, season rollover, reroll and
    corrupted/unavailable provider cases; review integrated changes.
-8. Publish, deploy, run live acceptance and record exact remaining gaps.
+8. Publish source and record the remaining live-acceptance boundary.
 
 ## Progress
 

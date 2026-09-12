@@ -33,4 +33,22 @@ class EciaLocaleTest : FunSpec({
             root.toFile().deleteRecursively()
         }
     }
+
+    test("renders chat messages with vertical padding and a three-space indent") {
+        val root = Files.createTempDirectory("ecia-locale-padding-")
+        try {
+            val locale = EciaLocale(root, emptyMap())
+            PlainTextComponentSerializer.plainText().serialize(
+                locale.renderPadded("no-permission", null, emptyMap()),
+            ) shouldBe "\n   Недостаточно прав.\n"
+            PlainTextComponentSerializer.plainText().serialize(
+                locale.renderBlock(null, listOf(
+                    "no-permission" to emptyMap(),
+                    "player-only" to emptyMap(),
+                )),
+            ) shouldBe "\n   Недостаточно прав.\n   Эта команда доступна только игроку.\n"
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
 })

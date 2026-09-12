@@ -2,7 +2,7 @@ name: ExcellentCratesItemsAdder
 version: ${version}
 main: ru.ruscrafting.ecia.ExcellentCratesItemsAdderPlugin
 api-version: "1.21"
-description: Protected ItemsAdder crates with seasonal choices, guarantees and durable reward mail.
+description: Protected ItemsAdder crates with seasonal choices and durable reward mail.
 authors: [alexey-va]
 softdepend: [ExcellentCrates, ItemsAdder, ARC]
 commands:

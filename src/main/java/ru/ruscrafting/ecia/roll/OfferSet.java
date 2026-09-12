@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /** Immutable choices presented for one opening. */
-public record OfferSet(List<RewardDefinition> rewards, boolean guaranteed) {
+public record OfferSet(List<RewardDefinition> rewards) {
     public OfferSet {
         List<RewardDefinition> immutableRewards = List.copyOf(Objects.requireNonNull(rewards, "rewards"));
         if (immutableRewards.isEmpty()) {
@@ -17,9 +17,6 @@ public record OfferSet(List<RewardDefinition> rewards, boolean guaranteed) {
             if (!ids.add(reward.id())) {
                 throw new IllegalArgumentException("duplicate reward id: " + reward.id());
             }
-        }
-        if (guaranteed && immutableRewards.stream().noneMatch(RewardDefinition::guaranteeEligible)) {
-            throw new IllegalArgumentException("a guaranteed offer must include a qualifying reward");
         }
         rewards = immutableRewards;
     }

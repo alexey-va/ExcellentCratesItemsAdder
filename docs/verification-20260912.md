@@ -18,8 +18,8 @@ The regression suite covers:
   readback ambiguity; no blind replay of an unresolved delivery.
 - Archived provider delivery after the current catalog becomes unavailable,
   while new snapshot preparation remains refused.
-- Immutable season rules and failed journal writes; pity based on the selected
-  reward, with separate season progress and a preserved guarantee on reroll.
+- Immutable season rules and failed journal writes; weighted offers remain
+  ordinary across bounded rerolls, with no pity or forced-reward state.
 - Exclusion of unpaid attempts from analytics and separation of final offers
   from actual player selections.
 - Six-row menu definitions, configured paging/background icons, native reward

@@ -10,7 +10,6 @@ public record PoolSnapshot(
         String crateId,
         String seasonId,
         List<RewardDefinition> rewards,
-        int pityThreshold,
         int choiceCount,
         int maxRerolls
 ) {
@@ -27,12 +26,6 @@ public record PoolSnapshot(
                 throw new IllegalArgumentException("duplicate reward id: " + reward.id());
             }
         }
-        if (pityThreshold < 0) {
-            throw new IllegalArgumentException("pityThreshold must be zero or positive");
-        }
-        if (pityThreshold > 0 && immutableRewards.stream().noneMatch(RewardDefinition::guaranteeEligible)) {
-            throw new IllegalArgumentException("enabled pity requires at least one qualifying reward");
-        }
         if (choiceCount <= 0) {
             throw new IllegalArgumentException("choiceCount must be positive");
         }
@@ -42,10 +35,4 @@ public record PoolSnapshot(
         rewards = immutableRewards;
     }
 
-    public boolean guaranteeDue(int consecutiveUnsuccessfulOpenings) {
-        if (consecutiveUnsuccessfulOpenings < 0) {
-            throw new IllegalArgumentException("consecutiveUnsuccessfulOpenings must be non-negative");
-        }
-        return pityThreshold > 0 && consecutiveUnsuccessfulOpenings >= pityThreshold - 1;
-    }
 }

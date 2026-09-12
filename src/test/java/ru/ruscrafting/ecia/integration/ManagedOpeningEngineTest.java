@@ -32,8 +32,8 @@ class ManagedOpeningEngineTest {
             var codec = new NativeItemPayload();
             var inventory = new OpeningInventoryTransactions(codec, p -> { }, () -> true);
             var preparations = new AtomicInteger();
-            var reward = new RewardDefinition("prize", 1, true, "frozen", "preview");
-            var pool = new PoolSnapshot("daily", "launch", List.of(reward), 10, 3, 1);
+            var reward = new RewardDefinition("prize", 1, "frozen", "preview");
+            var pool = new PoolSnapshot("daily", "launch", List.of(reward), 3, 1);
             var engine = new ManagedOpeningEngine(ledger, new WeightedOfferGenerator(new Random(1)), inventory, codec, definition -> {
                 preparations.incrementAndGet();
                 return new ItemStack[]{new ItemStack(Material.DIAMOND)};

@@ -16,9 +16,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class OpeningLedgerTest {
     static final UUID PLAYER = UUID.fromString("00000000-0000-0000-0000-000000000728");
-    static final RewardDefinition COMMON = new RewardDefinition("coin", 90, false, "coin-delivery", "coin-preview");
-    static final RewardDefinition RARE = new RewardDefinition("mount", 10, true, "mount-delivery", "mount-preview");
-    static final PoolSnapshot POOL = new PoolSnapshot("daily", "launch", List.of(COMMON, RARE), 10, 3, 1);
+    static final RewardDefinition COMMON = new RewardDefinition("coin", 90, "coin-delivery", "coin-preview");
+    static final RewardDefinition RARE = new RewardDefinition("mount", 10, "mount-delivery", "mount-preview");
+    static final PoolSnapshot POOL = new PoolSnapshot("daily", "launch", List.of(COMMON, RARE), 3, 1);
     static final Clock CLOCK = Clock.fixed(Instant.ofEpochMilli(1234), ZoneOffset.UTC);
 
     @Test void restartRetainsChoicesAndRejectsSecondKeyDebit() {
@@ -35,11 +35,11 @@ class OpeningLedgerTest {
     @Test void staleClicksCannotRerollTwiceOrChooseOldOffer() {
         OpeningLedger ledger = new OpeningLedger(new MemoryStore(), CLOCK);
         OpeningRecord record = ready(ledger);
-        OpeningRecord rolled = ledger.reroll(record.id(), PLAYER, record.revision(), List.of(RARE), false);
+        OpeningRecord rolled = ledger.reroll(record.id(), PLAYER, record.revision(), List.of(RARE));
         assertThrows(IllegalStateException.class,
                 () -> ledger.select(record.id(), PLAYER, record.revision(), COMMON.id()));
         assertThrows(IllegalStateException.class,
-                () -> ledger.reroll(rolled.id(), PLAYER, rolled.revision(), List.of(COMMON), false));
+                () -> ledger.reroll(rolled.id(), PLAYER, rolled.revision(), List.of(COMMON)));
         assertThrows(IllegalArgumentException.class,
                 () -> ledger.select(rolled.id(), PLAYER, rolled.revision(), COMMON.id()));
         assertEquals(OpeningRecord.Stage.MAIL,
@@ -117,7 +117,7 @@ class OpeningLedgerTest {
         assertTrue(new OpeningLedger(store, CLOCK).active(PLAYER).isPresent());
     }
 
-    @Test void pityUsesChosenRewardAndSeasonAndSurvivesEqualClockTicks() {
+    @Test void createdAtRemainsMonotonicWhenClockDoesNotAdvance() {
         MemoryStore store = new MemoryStore();
         OpeningLedger ledger = new OpeningLedger(store, CLOCK);
         OpeningRecord first = ready(ledger);
@@ -125,11 +125,8 @@ class OpeningLedgerTest {
         OpeningRecord second = ready(ledger);
         ledger.select(second.id(), PLAYER, second.revision(), COMMON.id());
         assertTrue(second.createdAt() > first.createdAt());
-        assertEquals(2, new OpeningLedger(store, CLOCK).misses(PLAYER, "daily", "launch"));
-        assertEquals(0, ledger.misses(PLAYER, "daily", "next-season"));
-        OpeningRecord third = ready(ledger);
-        ledger.select(third.id(), PLAYER, third.revision(), RARE.id());
-        assertEquals(0, ledger.misses(PLAYER, "daily", "launch"));
+        OpeningRecord third = ready(new OpeningLedger(store, CLOCK));
+        assertTrue(third.createdAt() > second.createdAt());
     }
 
     @Test void wrongPlayerCannotObserveOrClaimAnotherPlayersOpening() {
@@ -152,7 +149,7 @@ class OpeningLedgerTest {
     }
 
     static OpeningRecord reserve(OpeningLedger ledger) {
-        return ledger.reserve(UUID.randomUUID(), PLAYER, POOL, List.of(COMMON, RARE), false, "key-before-and-after");
+        return ledger.reserve(UUID.randomUUID(), PLAYER, POOL, List.of(COMMON, RARE), "key-before-and-after");
     }
 
     static OpeningRecord ready(OpeningLedger ledger) {

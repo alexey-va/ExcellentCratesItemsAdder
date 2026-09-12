@@ -13,7 +13,6 @@ import java.util.Objects;
 public record OpeningDistribution(
         String crateId,
         String seasonId,
-        boolean guaranteed,
         boolean rerolled,
         long openingCount,
         Map<String, Long> offeredCounts,
@@ -32,17 +31,12 @@ public record OpeningDistribution(
     }
 
     public Mode mode() {
-        if (rerolled) {
-            return guaranteed ? Mode.REROLLED_GUARANTEED : Mode.REROLLED_ORDINARY;
-        }
-        return guaranteed ? Mode.GUARANTEED : Mode.ORDINARY;
+        return rerolled ? Mode.REROLLED : Mode.ORDINARY;
     }
 
     public enum Mode {
         ORDINARY,
-        GUARANTEED,
-        REROLLED_ORDINARY,
-        REROLLED_GUARANTEED
+        REROLLED
     }
 
     private static Map<String, Long> immutableLongMap(Map<String, Long> values, String fieldName) {

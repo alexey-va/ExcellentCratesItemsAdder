@@ -9,26 +9,26 @@ player-only: "<red>Эта команда доступна только игро�
 no-permission: "<red>Недостаточно прав."
 usage: "<yellow>/ecia edit on|off|status <gray>или <yellow>/ecia reload"
 managed:
-  unavailable: "\n  <#ffb56b>Кейс пока недоступен.\n  <#fff2df>Ключ остаётся у вас.\n"
-  busy: "\n  <#ffe08a>Дождитесь завершения текущего открытия.\n"
-  vetoed: "\n  <#ffb56b>Открытие отклонено правилами сервера.\n  <#fff2df>Ключ не списан.\n"
-  no-key: "\n  <#ffb56b>Нужен физический ключ этого сезона.\n"
-  unknown-season: "\n  <#ffb56b>Сезон ключа пока не загружен.\n  <#fff2df>Ключ остаётся у вас.\n"
-  native-command: "\n  <#ffd567>Откройте кейс на пьедестале\n  <#ffd567>или через /ecia open.\n  <#fff2df>Призы и ключи учитывает аддон.\n"
+  unavailable: "<#ffb56b>Кейс пока недоступен.\n   <#fff2df>Ключ остаётся у вас."
+  busy: '<#ffe08a>Дождитесь завершения текущего открытия.'
+  vetoed: "<#ffb56b>Открытие отклонено правилами сервера.\n   <#fff2df>Ключ не списан."
+  no-key: '<#ffb56b>Нужен физический ключ этого сезона.'
+  unknown-season: "<#ffb56b>Сезон ключа пока не загружен.\n   <#fff2df>Ключ остаётся у вас."
+  native-command: "<#ffd567>Откройте кейс на пьедестале\n   <#ffd567>или через /ecia open.\n   <#fff2df>Призы и ключи учитывает аддон."
   player-unavailable: '<#ffb56b>Игрок должен быть на сервере.'
   reconciled: '<#a6efcf>Проверка записи завершена. Неопределённая выдача остаётся на проверке.'
-  delivered: "\n  <#a6efcf>Награда получена!\n"
-  key-not-consumed: "\n  <#ffe08a>Открытие отменено. Ключ не списан.\n"
-  review: "\n  <#ffcc80>Проверяем выдачу.\n  <#fff2df>Запись сохранена.\n  <#fff2df>Повторного списания не будет.\n"
-  pending: "\n  <#ffd567>Есть сохранённые награды\n  <#ffd567>или незавершённый выбор.\n  <#fff2df>Откройте /ecia mail или /ecia resume.\n"
-  operation-refused: "\n  <#ffcc80>Действие не завершено.\n  <#fff2df>Проверьте /ecia mail\n  <#fff2df>или продолжите через /ecia resume.\n"
+  delivered: '<#a6efcf>Награда получена!'
+  key-not-consumed: '<#ffe08a>Открытие отменено. Ключ не списан.'
+  review: "<#ffcc80>Проверяем выдачу.\n   <#fff2df>Запись сохранена.\n   <#fff2df>Повторного списания не будет."
+  pending: "<#ffd567>Есть сохранённые награды\n   <#ffd567>или незавершённый выбор.\n   <#fff2df>Откройте /ecia mail или /ecia resume."
+  operation-refused: "<#ffcc80>Действие не завершено.\n   <#fff2df>Проверьте /ecia mail\n   <#fff2df>или продолжите через /ecia resume."
   usage: '<#ffe08a>/ecia mail · history · resume · open [кейс] · preview [кейс]'
-  reload-failed: "\n  <#ffb56b>Открытие кейсов выключено.\n  <#fff2df>Причина — ошибка загрузки.\n  <#fff2df>Подробности в журнале сервера.\n"
+  reload-failed: "<#ffb56b>Открытие кейсов выключено.\n   <#fff2df>Причина — ошибка загрузки.\n   <#fff2df>Подробности в журнале сервера."
   stats-usage: '<#ffe08a>/ecia stats [кейс] [сезон] [страница]'
   stats-title: '<#ffd567><crate> · <season> · статистика <page>/<pages>'
   stats-empty: '<#fff2df>Подтверждённых открытий пока нет.'
   stats-row: '<#fff2df><mode> · <reward>: показан <offered>/<opened>, выбран <selected>/<selections>; базовый вес <base>%'
-  stats-note: '<#ffcc80>Базовый вес — первый бросок, не итоговый шанс с выбором. Показаны последние варианты каждого открытия; режимы гарантии и переброса разделены.'
+  stats-note: '<#ffcc80>Базовый вес — первый бросок, не итоговый шанс с выбором. Показаны последние варианты каждого открытия; обычные и переброшенные открытия разделены.'
   admin-usage: '<#ffe08a>/ecia inspect [кейс] · /ecia repair [кейс]'
   admin-unavailable: '<#ffb56b>ItemsAdder недоступен для проверки мебели.'
   admin-title: '<#ffd567><crate> · <status> · модель <expected> · ключ <key> · ожидают <pending>'

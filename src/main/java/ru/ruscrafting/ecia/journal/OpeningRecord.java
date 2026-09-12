@@ -10,7 +10,7 @@ import java.util.UUID;
 /** An opening is the durable owner of one key debit and exactly one selected prize. */
 public record OpeningRecord(
         UUID id, UUID playerId, PoolSnapshot pool, long createdAt, long updatedAt,
-        long revision, Stage stage, List<RewardDefinition> offers, boolean guaranteed,
+        long revision, Stage stage, List<RewardDefinition> offers,
         int rerollsUsed, String selectedRewardId, String keyWitness,
         String preparedReward, String deliveryWitness, String reason
 ) {
@@ -37,9 +37,6 @@ public record OpeningRecord(
             if (!pool.rewards().contains(offer)) throw new IllegalArgumentException("Offer is outside frozen pool");
         }
         if (keyWitness.isBlank()) throw new IllegalArgumentException("Key debit witness required");
-        if (guaranteed && offers.stream().noneMatch(RewardDefinition::guaranteeEligible)) {
-            throw new IllegalArgumentException("Guaranteed offer requires a qualifying reward");
-        }
         if (!selectedRewardId.isEmpty() && offers.stream().noneMatch(r -> r.id().equals(selectedRewardId))) {
             throw new IllegalArgumentException("Selected reward is outside offers");
         }

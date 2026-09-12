@@ -13,24 +13,15 @@ public final class WeightedOfferGenerator {
         this.random = Objects.requireNonNull(random, "random");
     }
 
-    public OfferSet generate(PoolSnapshot pool, int consecutiveUnsuccessfulOpenings) {
+    public OfferSet generate(PoolSnapshot pool) {
         Objects.requireNonNull(pool, "pool");
-        boolean guaranteed = pool.guaranteeDue(consecutiveUnsuccessfulOpenings);
         int targetSize = Math.min(pool.choiceCount(), pool.rewards().size());
         List<RewardDefinition> candidates = new ArrayList<>(pool.rewards());
         List<RewardDefinition> selected = new ArrayList<>(targetSize);
-        if (guaranteed) {
-            List<RewardDefinition> qualifying = candidates.stream()
-                    .filter(RewardDefinition::guaranteeEligible)
-                    .toList();
-            RewardDefinition forced = qualifying.get(weightedIndex(qualifying));
-            candidates.removeIf(reward -> reward.id().equals(forced.id()));
-            selected.add(forced);
-        }
         while (selected.size() < targetSize) {
             selected.add(candidates.remove(weightedIndex(candidates)));
         }
-        return new OfferSet(selected, guaranteed);
+        return new OfferSet(selected);
     }
 
     public OfferSet reroll(PoolSnapshot pool, OfferSet currentOffer, int rerollsUsed) {
@@ -43,44 +34,10 @@ public final class WeightedOfferGenerator {
         int targetSize = Math.min(pool.choiceCount(), pool.rewards().size());
         List<RewardDefinition> candidates = new ArrayList<>(pool.rewards());
         List<RewardDefinition> selected = new ArrayList<>(targetSize);
-        if (currentOffer.guaranteed()) {
-            RewardDefinition preserved = currentOffer.rewards().stream()
-                    .filter(RewardDefinition::guaranteeEligible)
-                    .map(reward -> findById(pool.rewards(), reward.id()))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "guaranteed offer has no qualifying reward in the pool"));
-            selected.add(preserved);
-            candidates.removeIf(reward -> reward.id().equals(preserved.id()));
-        }
         while (selected.size() < targetSize) {
             selected.add(candidates.remove(weightedIndex(candidates)));
         }
-        return new OfferSet(selected, currentOffer.guaranteed());
-    }
-
-    /**
-     * Advances persisted pity only when the player actually selected a
-     * qualifying reward. A due guarantee followed by an ordinary selection
-     * therefore remains due rather than being reset.
-     */
-    public int nextUnsuccessfulOpenings(
-            PoolSnapshot pool,
-            int previousUnsuccessfulOpenings,
-            RewardDefinition selectedReward
-    ) {
-        Objects.requireNonNull(pool, "pool");
-        Objects.requireNonNull(selectedReward, "selectedReward");
-        if (previousUnsuccessfulOpenings < 0) {
-            throw new IllegalArgumentException("previousUnsuccessfulOpenings must be non-negative");
-        }
-        RewardDefinition canonical = findById(pool.rewards(), selectedReward.id());
-        if (canonical.guaranteeEligible()) {
-            return 0;
-        }
-        return previousUnsuccessfulOpenings == Integer.MAX_VALUE
-                ? Integer.MAX_VALUE
-                : previousUnsuccessfulOpenings + 1;
+        return new OfferSet(selected);
     }
 
     private int weightedIndex(List<RewardDefinition> candidates) {
@@ -107,10 +64,4 @@ public final class WeightedOfferGenerator {
         throw new IllegalStateException("weighted draw did not select a candidate");
     }
 
-    private static RewardDefinition findById(List<RewardDefinition> rewards, String id) {
-        return rewards.stream()
-                .filter(reward -> reward.id().equals(id))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("reward is not part of the pool: " + id));
-    }
 }

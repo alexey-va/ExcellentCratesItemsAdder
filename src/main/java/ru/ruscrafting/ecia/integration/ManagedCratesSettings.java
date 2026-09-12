@@ -11,18 +11,13 @@ import java.util.Objects;
 public record ManagedCratesSettings(boolean enabled, Map<String, CaseSettings> cases) {
     public ManagedCratesSettings { cases = Map.copyOf(cases); }
 
-    public record CaseSettings(String crateId, String seasonId, int pityThreshold,
-            int choiceCount, int maxRerolls, List<String> qualifyingRewards, String furnitureId) {
+    public record CaseSettings(String crateId, String seasonId,
+            int choiceCount, int maxRerolls, String furnitureId) {
         public CaseSettings {
             requireId(crateId);
             requireId(seasonId);
-            qualifyingRewards = List.copyOf(qualifyingRewards);
-            qualifyingRewards.forEach(ManagedCratesSettings::requireId);
             Objects.requireNonNull(furnitureId);
-            if (pityThreshold < 0 || pityThreshold > 10_000 || choiceCount < 1 || choiceCount > 3
-                    || maxRerolls < 0 || maxRerolls > 5
-                    || (pityThreshold > 0 && qualifyingRewards.isEmpty())
-                    || qualifyingRewards.stream().distinct().count() != qualifyingRewards.size()) {
+            if (choiceCount < 1 || choiceCount > 3 || maxRerolls < 0 || maxRerolls > 5) {
                 throw new IllegalArgumentException("Invalid managed case rules: " + crateId);
             }
         }
@@ -35,14 +30,8 @@ public record ManagedCratesSettings(boolean enabled, Map<String, CaseSettings> c
             for (String id : section.getKeys(false)) {
                 var item = section.getConfigurationSection(id);
                 if (item == null) throw new IllegalArgumentException("Invalid case configuration: " + id);
-                Object qualifying = item.get("qualifying-rewards");
-                if (qualifying != null && (!(qualifying instanceof List<?> values)
-                        || values.stream().anyMatch(value -> !(value instanceof String)))) {
-                    throw new IllegalArgumentException("qualifying-rewards must be a list of IDs: " + id);
-                }
                 cases.put(id, new CaseSettings(id, item.getString("season", "launch"),
-                        integer(item, "pity-threshold", 20), integer(item, "choices", 3),
-                        integer(item, "rerolls", 1), item.getStringList("qualifying-rewards"),
+                        integer(item, "choices", 3), integer(item, "rerolls", 1),
                         item.getString("furniture", "")));
             }
         }

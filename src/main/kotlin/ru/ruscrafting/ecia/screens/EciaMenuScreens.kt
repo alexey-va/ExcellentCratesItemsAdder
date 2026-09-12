@@ -75,18 +75,12 @@ class EciaMenuScreens(
 
     fun renderChoices(
         opening: OpeningRecord,
-        misses: Int,
         actions: EciaMenuActions = EciaMenuActions(),
     ): PaperMenuContent {
-        require(misses >= 0) { "Pity misses must not be negative" }
-        val progress = progress(opening.pool.pityThreshold(), misses)
         val values = mapOf(
             "crate" to caseName(opening.pool.crateId()),
             "season" to opening.pool.seasonId(),
-            "progress" to progress,
-            "threshold" to thresholdLabel(opening.pool.pityThreshold()),
             "rerolls" to "${opening.rerollsUsed()}/${opening.pool.maxRerolls()}",
-            "guaranteed" to label(if (opening.guaranteed()) "guaranteed" else "ordinary"),
         )
         val offers = opening.offers().take(MAX_VISIBLE_CHOICES)
         val entries = offers.map { reward ->
@@ -109,7 +103,6 @@ class EciaMenuScreens(
         val rerollReason = when {
             opening.stage() != OpeningRecord.Stage.CHOOSING -> label("reroll-stage")
             remaining == 0 -> label("reroll-exhausted")
-            opening.guaranteed() -> label("reroll-guarantee")
             else -> label("reroll-action")
         }
         val elements = linkedMapOf(
@@ -118,10 +111,7 @@ class EciaMenuScreens(
                 configured(
                     "reroll",
                     mapOf("remaining" to remaining.toString(), "reason" to rerollReason),
-                    buildSet {
-                        if (rerollAvailable) add("available")
-                        if (opening.guaranteed()) add("guaranteed")
-                    },
+                    if (rerollAvailable) setOf("available") else emptySet(),
                 ),
                 enabled = rerollAvailable,
                 onClick = PaperMenuClickHandler {
@@ -160,11 +150,6 @@ class EciaMenuScreens(
             regions = mapOf(EciaMenuConfiguration.OFFERS to entries),
         )
     }
-
-    fun renderChoices(
-        opening: OpeningRecord,
-        actions: EciaMenuActions = EciaMenuActions(),
-    ): PaperMenuContent = renderChoices(opening, 0, actions)
 
     fun renderMail(
         openings: List<OpeningRecord>,
@@ -241,45 +226,40 @@ class EciaMenuScreens(
 
     fun renderPoolPreview(
         pool: PoolSnapshot,
-        misses: Int,
         actions: EciaMenuActions = EciaMenuActions(),
         page: Int = 0,
     ): PaperMenuContent {
-        require(misses >= 0) { "Pity misses must not be negative" }
         val entries = pool.rewards().map { reward ->
-            val guaranteed = label(if (reward.guaranteeEligible()) "guarantee-yes" else "guarantee-no")
             val rendered = preview(
                 reward,
                 "pool-reward",
-                values = mapOf(
-                    "weight" to weightShare(reward, pool),
-                    "guarantee" to guaranteed,
-                ),
+                values = mapOf("weight" to weightShare(reward, pool)),
             )
             PaperMenuEntry(
                 item = rendered.item,
                 enabled = false,
             )
         }
-        return pagedContent(
-            menu = EciaMenuConfiguration.POOL_PREVIEW,
+        val menu = EciaMenuConfiguration.POOL_PREVIEW
+        require(page >= 0) { "Menu page must not be negative" }
+        val capacity = configuration.catalog.require(menu).region(EciaMenuConfiguration.REWARDS).size
+        val lastPage = if (entries.isEmpty()) 0 else (entries.size - 1) / capacity
+        val previous = page > 0
+        val next = page < lastPage
+        return PaperMenuContent(
             title = darkTitle(label("title-pool", "crate" to caseName(pool.crateId()))),
-            info = configured(
-                "pool-info",
-                mapOf(
-                    "crate" to caseName(pool.crateId()),
-                    "season" to pool.seasonId(),
-                    "progress" to progress(pool.pityThreshold(), misses),
-                    "threshold" to thresholdLabel(pool.pityThreshold()),
-                    "choices" to pool.choiceCount().toString(),
-                    "rerolls" to pool.maxRerolls().toString(),
-                ),
+            elements = mapOf(
+                element("previous") to actionEntry("previous", previous) {
+                    if (previous) actions.page.invoke(menu, -1)
+                },
+                element("next") to actionEntry("next", next) {
+                    if (next) actions.page.invoke(menu, 1)
+                },
             ),
-            entries = entries,
-            region = EciaMenuConfiguration.REWARDS,
-            actions = actions,
-            page = page,
-            menuBackground = null,
+            regions = mapOf(
+                EciaMenuConfiguration.REWARDS to entries,
+                EciaMenuConfiguration.FOOTER to List(7) { PaperMenuEntry(background(), enabled = false) },
+            ),
         )
     }
 
@@ -296,10 +276,9 @@ class EciaMenuScreens(
         runtime: PaperMenuRuntime,
         player: Player,
         opening: OpeningRecord,
-        misses: Int,
         actions: EciaMenuActions = EciaMenuActions(),
     ): PaperMenuSession = runtime.open(player, EciaMenuConfiguration.CHOICES) {
-        renderChoices(opening, misses, actions)
+        renderChoices(opening, actions)
     }
 
     fun openMail(
@@ -326,11 +305,10 @@ class EciaMenuScreens(
         runtime: PaperMenuRuntime,
         player: Player,
         pool: PoolSnapshot,
-        misses: Int,
         actions: EciaMenuActions = EciaMenuActions(),
     ): PaperMenuSession = openPaged(runtime, player, EciaMenuConfiguration.POOL_PREVIEW, EciaMenuConfiguration.REWARDS,
         pool.rewards().size, actions) { effective, page ->
-        renderPoolPreview(pool, misses, effective, page)
+        renderPoolPreview(pool, effective, page)
     }
 
     private fun openPaged(
@@ -393,6 +371,12 @@ class EciaMenuScreens(
         onClick = PaperMenuClickHandler { action() },
     )
 
+    private fun actionEntry(template: String, enabled: Boolean, action: () -> Unit): PaperMenuEntry = PaperMenuEntry(
+        item = configured(template),
+        enabled = enabled,
+        onClick = PaperMenuClickHandler { if (enabled) action() },
+    )
+
     private fun configured(
         template: String,
         values: Map<String, String> = emptyMap(),
@@ -442,12 +426,6 @@ class EciaMenuScreens(
     private fun darkTitle(text: String): Component = Component.text(text, NamedTextColor.DARK_GRAY)
         .decoration(TextDecoration.BOLD, false)
         .decoration(TextDecoration.ITALIC, false)
-
-    private fun progress(threshold: Int, misses: Int): String =
-        if (threshold <= 0) label("pity-disabled") else "${misses.coerceAtMost(threshold - 1)}/${threshold - 1}"
-
-    private fun thresholdLabel(threshold: Int): String =
-        if (threshold <= 0) label("pity-disabled") else label("pity-threshold", "count" to (threshold - 1).toString())
 
     private fun weightShare(reward: RewardDefinition, pool: PoolSnapshot): String {
         val total = pool.rewards().sumOf(RewardDefinition::weight)

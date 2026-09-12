@@ -17,9 +17,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SeasonPoolStoreTest {
     private static final RewardDefinition COMMON = new RewardDefinition(
-            "common", 9.0, false, "deliver:common", "preview:common");
+            "common", 9.0, "deliver:common", "preview:common");
     private static final RewardDefinition RARE = new RewardDefinition(
-            "rare", 1.0, true, "deliver:rare", "preview:rare");
+            "rare", 1.0, "deliver:rare", "preview:rare");
 
     @TempDir
     Path directory;
@@ -95,6 +95,6 @@ class SeasonPoolStoreTest {
     }
 
     private static PoolSnapshot pool(String season, RewardDefinition reward) {
-        return new PoolSnapshot("crate", season, List.of(reward), 0, 3, 1);
+        return new PoolSnapshot("crate", season, List.of(reward), 3, 1);
     }
 }

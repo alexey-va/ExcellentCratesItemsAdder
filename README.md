@@ -25,13 +25,13 @@ for that administrator; `/ecia edit off` restores protection. Edit mode ends on
 disconnect or plugin shutdown. `/ecia reload` rereads configuration.
 
 `features.yml` ships disabled. Enable managed openings only after configuring
-each case and its explicit rare-reward IDs. `menus.yml` contains six-row
+each case and its immutable season. `menus.yml` contains six-row
 choice, mail, history and pool screens. Names and presentation are configurable;
 model 11001 is rejected in every menu template. Russian and English chat text
 is in `lang/`; existing protection messages in `config.yml` remain authoritative.
 Managed openings first play a short, cancellable sealed-offer reveal and then
-enable the three durable choices. Pool previews use an unframed reward grid,
-dark neutral case titles and page arrows only where another page exists.
+enable the three durable choices. Pool previews use five full reward rows and
+a fixed bottom navigation row, without an item frame around the pool.
 
 With configured cases, `enabled: false` pauses their openings while retaining
 interception and current-season key stamps. It does not return old seasonal
@@ -41,13 +41,11 @@ only. Removing a previously managed case requires an explicit key migration.
 ## Managed openings
 
 One physical key buys one selection. A configured number of distinct offers
-(up to three) is shown, with a bounded number of rerolls. When the guarantee is
-due, the offer includes an eligible reward; reroll preserves an eligible offer.
-Choosing an eligible reward resets progress. Choosing another reward leaves the
-guarantee due for the next opening. There is no duplicate conversion.
+(up to three) is shown, with a bounded number of rerolls. Every offer and reroll
+uses the frozen season weights without duplicate rewards in one visible set.
 
 - `/ecia open [crate]` — use a matching physical key.
-- `/ecia preview [crate]` — show the pool and guarantee progress.
+- `/ecia preview [crate]` — show the full frozen reward pool.
 - `/ecia resume` — continue an unfinished selection.
 - `/ecia mail` — claim saved physical rewards when inventory space is available.
 - `/ecia history` — read personal opening history.
@@ -89,7 +87,7 @@ Administrative operations require `ecia.admin` (operator by default).
 - `/ecia reconcile [online-player]` — reconcile saved evidence; it does not
   force a second payout when the outcome remains uncertain.
 - `/ecia stats [crate] [season] [page]` — compare final offers and selections
-  with base draw weights, grouped by guarantee and reroll mode. Base weight is
+  with base draw weights, grouped by ordinary and rerolled openings. Base weight is
   not the final probability after player choice. Failed debit attempts are
   excluded. Statistics retain final offers, not every intermediate reroll set.
 - `/ecia inspect [crate]` — inspect native anchors, model, key and pending mail.
@@ -112,7 +110,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ExcellentCratesItemsAdder-0.5.1.jar`.
+Output: `build/libs/ExcellentCratesItemsAdder-0.6.0.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash

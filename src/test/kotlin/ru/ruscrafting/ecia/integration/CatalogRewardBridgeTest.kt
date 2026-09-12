@@ -33,7 +33,7 @@ class CatalogRewardBridgeTest {
             val bridge = CatalogRewardBridge(payload)
             val recipe = CatalogRewardBridge.Recipe(1, CatalogRewardBridge.Provider.ARC_VOUCHER,
                 "old_case", "old_reward", "fingerprint", "frozen:archived", emptyList(), "source")
-            val reward = RewardDefinition("old_reward", 1.0, false, payload.write(recipe), "")
+            val reward = RewardDefinition("old_reward", 1.0, payload.write(recipe), "")
             assertEquals(Material.PAPER, bridge.materialize(reward)!!.single().type)
             assertEquals(1, materialized)
             assertThrows(IllegalStateException::class.java) { bridge.freeze("old_case", "old_reward", "source") }

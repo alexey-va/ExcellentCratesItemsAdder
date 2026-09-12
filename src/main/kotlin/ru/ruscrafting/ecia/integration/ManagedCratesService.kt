@@ -189,8 +189,7 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
         if (!crate.hasPermission(player)) return message(player, "no-permission")
         val season = keys.selectedSeason(player, keys.cost(crate)).orElse(settings.cases[crateId]?.seasonId())
         val pool = season?.let { seasons?.find(crateId, it)?.orElse(null) } ?: return message(player, "managed.unavailable")
-        requireScreens().openPoolPreview(requireMenus(), player, pool,
-            requireLedger().misses(player.uniqueId, crateId, season), actions(player))
+        requireScreens().openPoolPreview(requireMenus(), player, pool, actions(player))
     }
 
     private fun mail(player: Player) {
@@ -207,8 +206,7 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
     private fun show(player: Player, record: OpeningRecord) {
         cancelReveal(player.uniqueId)
         when (record.stage()) {
-            OpeningRecord.Stage.CHOOSING -> requireScreens().openChoices(requireMenus(), player, record,
-                requireLedger().misses(player.uniqueId, record.pool().crateId(), record.pool().seasonId()), actions(player))
+            OpeningRecord.Stage.CHOOSING -> requireScreens().openChoices(requireMenus(), player, record, actions(player))
             OpeningRecord.Stage.MAIL -> mail(player)
             OpeningRecord.Stage.DELIVERED -> { message(player, "managed.delivered"); mail(player) }
             OpeningRecord.Stage.ABORTED -> message(player, "managed.key-not-consumed")
@@ -327,21 +325,22 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
     }
 
     private fun renderInspection(sender: CommandSender, report: CrateInspection) {
-        message(sender, "managed.admin-title", mapOf("crate" to report.crateId(),
+        val lines = mutableListOf("managed.admin-title" to mapOf("crate" to report.crateId(),
             "status" to report.status().name, "expected" to report.expectedModel(),
             "key" to (report.nativeKeyCost()?.keyId() ?: "—"),
             "pending" to report.pendingMail().total().toString()))
         report.positions().forEach { row ->
             val position = row.position()
-            message(sender, "managed.admin-position", mapOf(
+            lines += "managed.admin-position" to mapOf(
                 "position" to "${position.world()} ${position.x()},${position.y()},${position.z()}",
                 "world" to row.worldStatus().name, "chunk" to row.chunkStatus().name,
                 "block" to row.technicalBlock().material(),
                 "model" to (row.actualModel()?.namespacedId() ?: "—"),
                 "carriers" to row.nearbyCarrierCount().toString(),
                 "geometry" to row.grounding().status().name,
-                "reasons" to row.reasons().joinToString { it.name }))
+                "reasons" to row.reasons().joinToString { it.name })
         }
+        messageBlock(sender, lines)
     }
 
     private fun statistics(sender: CommandSender, args: Array<String>) {
@@ -366,11 +365,12 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
         }
         val pages = maxOf(1, (rows.size + 7) / 8)
         require(page <= pages) { "Statistics page is outside the report" }
-        message(sender, "managed.stats-title", mapOf("crate" to crateId, "season" to season,
+        val lines = mutableListOf("managed.stats-title" to mapOf("crate" to crateId, "season" to season,
             "page" to page.toString(), "pages" to pages.toString()))
-        if (rows.isEmpty()) message(sender, "managed.stats-empty")
-        rows.drop((page - 1) * 8).take(8).forEach { message(sender, "managed.stats-row", it) }
-        message(sender, "managed.stats-note")
+        if (rows.isEmpty()) lines += "managed.stats-empty" to emptyMap()
+        rows.drop((page - 1) * 8).take(8).forEach { lines += "managed.stats-row" to it }
+        lines += "managed.stats-note" to emptyMap()
+        messageBlock(sender, lines)
     }
 
     private fun readSettings(): ManagedCratesSettings {
@@ -391,7 +391,11 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
     }
 
     private fun message(sender: CommandSender, key: String, values: Map<String, String> = emptyMap()) {
-        sender.sendMessage(runtime.locale().render(key, sender, values))
+        sender.sendMessage(runtime.locale().renderPadded(key, sender, values))
+    }
+
+    private fun messageBlock(sender: CommandSender, lines: List<Pair<String, Map<String, String>>>) {
+        sender.sendMessage(runtime.locale().renderBlock(sender, lines))
     }
     private fun updateHealth() { runtime.updateRecoveryBacklog(ledger?.snapshot()?.count { it.pending() } ?: 0) }
 
