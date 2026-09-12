@@ -1,0 +1,16 @@
+name: ExcellentCratesItemsAdder
+version: ${version}
+main: ru.ruscrafting.ecia.ExcellentCratesItemsAdderPlugin
+api-version: "1.21"
+description: Protects ItemsAdder furniture used as ExcellentCrates crate blocks.
+authors: [alexey-va]
+softdepend: [ExcellentCrates, ItemsAdder]
+commands:
+  ecia:
+    description: Manage ExcellentCrates ItemsAdder protection.
+    usage: /ecia <edit on|off|status|reload>
+    permission: ecia.admin
+permissions:
+  ecia.admin:
+    description: Allows deliberate crate furniture editing and registry reloads.
+    default: op
