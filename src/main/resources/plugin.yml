@@ -2,15 +2,17 @@ name: ExcellentCratesItemsAdder
 version: ${version}
 main: ru.ruscrafting.ecia.ExcellentCratesItemsAdderPlugin
 api-version: "1.21"
-description: Protects ItemsAdder furniture used as ExcellentCrates crate blocks.
+description: Protected ItemsAdder crates with seasonal choices, guarantees and durable reward mail.
 authors: [alexey-va]
-softdepend: [ExcellentCrates, ItemsAdder]
+softdepend: [ExcellentCrates, ItemsAdder, ARC]
 commands:
   ecia:
-    description: Manage ExcellentCrates ItemsAdder protection.
-    usage: /ecia <edit on|off|status|reload>
-    permission: ecia.admin
+    description: Open seasonal crates, recover rewards and manage protected furniture.
+    usage: /ecia <mail|history|resume|open|preview|edit|reload|stats|reconcile|inspect|repair>
 permissions:
+  ecia.use:
+    description: Allows using the ECIA command entry point.
+    default: true
   ecia.admin:
     description: Allows deliberate crate furniture editing and registry reloads.
     default: op

@@ -1,0 +1,36 @@
+prefix: ""
+protected: "<red>This crate is linked to a case. <gray>/ecia edit on <red>enables editing."
+edit-enabled: "<gold>Case editing enabled: furniture can now be broken."
+edit-disabled: "<green>Case protection enabled."
+edit-status-on: "<gold>Case editing is enabled."
+edit-status-off: "<green>Case protection is enabled."
+reloaded: "<green>Crate positions reloaded: <white><count>"
+player-only: "<red>This command is available to players only."
+no-permission: "<red>You do not have permission."
+usage: "<yellow>/ecia edit on|off|status <gray>or <yellow>/ecia reload"
+managed:
+  unavailable: '<#ffb56b>This crate is temporarily unavailable. You keep your key.'
+  busy: '<#ffe08a>Finish your current opening first.'
+  vetoed: '<#ffb56b>Server rules prevented this opening. No key was consumed.'
+  no-key: '<#ffb56b>You need a physical key from the matching season.'
+  unknown-season: '<#ffb56b>This key season is not loaded. You keep your key.'
+  native-command: '<#ffd567>Open this crate at its pedestal or with /ecia open. The addon tracks keys and rewards.'
+  player-unavailable: '<#ffb56b>The player must be online.'
+  reconciled: '<#a6efcf>Record checked. An uncertain delivery remains under review.'
+  delivered: '<#a6efcf>Reward received!'
+  key-not-consumed: '<#ffe08a>Opening cancelled. No key was consumed.'
+  review: '<#ffcc80>Delivery is under review. Your record is saved and no second key will be taken.'
+  pending: '<#ffd567>You have saved rewards or an unfinished choice. Use /ecia mail or /ecia resume.'
+  operation-refused: '<#ffcc80>The action did not finish. Check /ecia mail or resume your choice with /ecia resume.'
+  usage: '<#ffe08a>/ecia mail · history · resume · open [crate] · preview [crate]'
+  reload-failed: '<#ffb56b>Crate openings are disabled after a load failure. See the server log for details.'
+  stats-usage: '<#ffe08a>/ecia stats [crate] [season] [page]'
+  stats-title: '<#ffd567><crate> · <season> · statistics <page>/<pages>'
+  stats-empty: '<#fff2df>No confirmed openings yet.'
+  stats-row: '<#fff2df><mode> · <reward>: offered <offered>/<opened>, selected <selected>/<selections>; base weight <base>%'
+  stats-note: '<#ffcc80>Base weight describes the first draw, not the final chance with choices. Counts use the latest offers per opening; guarantee and reroll modes are separate.'
+  admin-usage: '<#ffe08a>/ecia inspect [crate] · /ecia repair [crate]'
+  admin-unavailable: '<#ffb56b>ItemsAdder is unavailable for furniture inspection.'
+  admin-title: '<#ffd567><crate> · <status> · expected <expected> · key <key> · pending <pending>'
+  admin-position: '<#fff2df><position>: world <world>, chunk <chunk>, block <block>, model <model>, carriers <carriers>, geometry <geometry>. <reasons>'
+  admin-repair: '<#ffd567><crate>: repair <status>, restored <count>. <reasons>'

@@ -1,0 +1,175 @@
+# ECIA keeps topology and wording in one validated Paper menu catalog.
+# Clicks are typed callbacks in EciaMenuScreens; this file contains no commands.
+menus:
+  case-names:
+    case_daily: "Ежедневный тайник"
+    case_weekly: "Недельная реликвия"
+    case_rank_artisan: "Дар ремесленника"
+    case_rank_knight: "Наследие рыцаря"
+    case_furniture: "Мебельная мастерская"
+    case_collections: "Коллекции героев"
+    case_mounts: "Призыв маунта"
+  case-name-fallback: "Кейс"
+  labels:
+    title-choices: "Выбор награды"
+    title-mail: "Почта наград"
+    title-history: "История открытий"
+    title-pool: "Пул наград · <crate>"
+    choice-action: "ЛКМ — выбрать этот приз"
+    guaranteed: "активна"
+    ordinary: "обычная"
+    reroll-stage: "Обновление доступно только до выбора"
+    reroll-exhausted: "Лимит обновлений исчерпан"
+    reroll-guarantee: "Гарантия сохраняется после обновления"
+    reroll-action: "ЛКМ — получить новый набор"
+    mail-claim: "ЛКМ — забрать награду"
+    mail-pending: "Ожидайте обработки"
+    guarantee-yes: "Да"
+    guarantee-no: "Нет"
+    pity-disabled: "выкл."
+    pity-threshold: "после <count> промахов"
+    status-reserved: "Ключ зарезервирован"
+    status-choosing: "Ожидает выбора"
+    status-mail: "Готово к получению"
+    status-delivering: "Доставка выполняется"
+    status-delivered: "Доставлено"
+    status-review: "На проверке"
+    status-aborted: "Открытие отменено"
+  layouts:
+    ecia-choices:
+      schema-version: 1
+      rows: 6
+      background: { template: background }
+      elements:
+        info: { slot: 4, template: choices-info, kind: decoration }
+        reroll: { slot: 45, template: reroll }
+        back: { slot: 49, template: back }
+      regions:
+        offers: { slots: [20, 22, 24] }
+    ecia-mail:
+      schema-version: 1
+      rows: 6
+      background: { template: background }
+      elements:
+        info: { slot: 4, template: mail-info, kind: decoration }
+        previous: { slot: 47, template: previous }
+        back: { slot: 49, template: back }
+        next: { slot: 51, template: next }
+      regions:
+        entries: { slots: ['10-16', '19-25', '28-34', '37-43'] }
+      pagination: { region: entries, previous: previous, next: next }
+    ecia-history:
+      schema-version: 1
+      rows: 6
+      background: { template: background }
+      elements:
+        info: { slot: 4, template: history-info, kind: decoration }
+        previous: { slot: 47, template: previous }
+        back: { slot: 49, template: back }
+        next: { slot: 51, template: next }
+      regions:
+        entries: { slots: ['10-16', '19-25', '28-34', '37-43'] }
+      pagination: { region: entries, previous: previous, next: next }
+    ecia-pool-preview:
+      schema-version: 1
+      rows: 6
+      background: { template: background }
+      elements:
+        info: { slot: 4, template: pool-info, kind: decoration }
+        previous: { slot: 47, template: previous }
+        back: { slot: 49, template: back }
+        next: { slot: 51, template: next }
+      regions:
+        rewards: { slots: ['10-16', '19-25', '28-34', '37-43'] }
+      pagination: { region: rewards, previous: previous, next: next }
+  templates:
+    background:
+      material: GRAY_STAINED_GLASS_PANE
+      custom-model-data: 11000
+      hide-tooltip: true
+      name: "<white> "
+    choices-info:
+      material: BOOK
+      name: "<#ffd567>Выберите награду"
+      lore:
+        - "<#fff2df><crate> · сезон <season>"
+        - "<light_purple>Прогресс гарантии: <progress> (<threshold>)"
+        - "<aqua>В этом открытии: <guaranteed>"
+        - "<aqua>Выберите 1 из 3"
+        - "<#ffd567>Обновления: <rerolls>"
+    choice:
+      material: CHEST
+      name: "<aqua>Награда"
+      lore:
+        - "<#fff2df>Вес первого броска: <weight>"
+        - "<#ffd567><action>"
+    reroll:
+      material: ENDER_EYE
+      glint: true
+      name: "<light_purple>Обновить варианты"
+      lore:
+        - "<#fff2df>Осталось обновлений: <remaining>"
+        - "<#ffd567><reason>"
+        - { text: "<aqua>Гарантия сохраняется", when: guaranteed }
+    back:
+      material: OAK_DOOR
+      name: "<aqua>« Назад"
+      lore:
+        - "<#fff2df>Вернуться к предыдущему экрану"
+    mail-info:
+      material: CHEST
+      name: "<#ffd567>Почта наград"
+      lore:
+        - "<#fff2df>Открытий в обработке: <pending>"
+        - "<aqua>Награды выдаются после подтверждения"
+    mail-entry:
+      material: CHEST
+      name: "<aqua>Награда из почты"
+      lore:
+        - "<#fff2df><state> · ревизия <revision>"
+        - { text: "<green><action>", when: claimable }
+        - { text: "<red>Ручная проверка; кнопка недоступна", when: review }
+    history-info:
+      material: BOOK
+      name: "<#ffd567>История открытий"
+      lore:
+        - "<#fff2df>Записей: <count>"
+        - "<aqua>История доступна только для просмотра"
+    history-entry:
+      material: CHEST
+      name: "<aqua>Награда из истории"
+      lore:
+        - "<#fff2df><state> · ревизия <revision>"
+        - "<#ffd567>Только просмотр"
+    pool-info:
+      material: BOOK
+      name: "<#ffd567>Пул <crate> · <season>"
+      lore:
+        - "<light_purple>До гарантии: <progress> (<threshold>)"
+        - "<aqua>Выберите 1 из <choices>; обновлений: <rerolls>"
+        - "<#fff2df>Вес первого броска — справочная доля"
+        - "<#ffd567>Финальный выбор зависит от выбора и обновлений"
+    pool-reward:
+      material: CHEST
+      name: "<aqua>Награда пула"
+      lore:
+        - "<#fff2df>Вес первого броска: <weight>"
+        - "<light_purple>Квалифицируется для гарантии: <guarantee>"
+    unavailable:
+      material: PAPER
+      hide-tooltip: true
+      name: "<red>Превью недоступно"
+      lore:
+        - "<#fff2df>Награда скрыта до подтверждения"
+    previous:
+      material: BLUE_STAINED_GLASS_PANE
+      custom-model-data: 11009
+      name: "<aqua>« Предыдущая"
+      lore:
+        - "<#fff2df>ЛКМ — листать"
+    next:
+      material: BLUE_STAINED_GLASS_PANE
+      custom-model-data: 11008
+      name: "<aqua>Следующая »"
+      lore:
+        - "<#fff2df>ЛКМ — листать"

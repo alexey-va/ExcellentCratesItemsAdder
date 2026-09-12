@@ -1,0 +1,36 @@
+prefix: ""
+protected: "<red>Этот сундук привязан к кейсу. <gray>/ecia edit on <red>— режим редактирования."
+edit-enabled: "<gold>Редактирование кейсов включено: мебель теперь можно ломать."
+edit-disabled: "<green>Защита кейсов включена."
+edit-status-on: "<gold>Редактирование кейсов включено."
+edit-status-off: "<green>Защита кейсов включена."
+reloaded: "<green>Координаты кейсов перечитаны: <white><count>"
+player-only: "<red>Эта команда доступна только игроку."
+no-permission: "<red>Недостаточно прав."
+usage: "<yellow>/ecia edit on|off|status <gray>или <yellow>/ecia reload"
+managed:
+  unavailable: '<#ffb56b>Кейс пока недоступен. Ключ остаётся у вас.'
+  busy: '<#ffe08a>Дождитесь завершения текущего открытия.'
+  vetoed: '<#ffb56b>Открытие отклонено правилами сервера. Ключ не списан.'
+  no-key: '<#ffb56b>Для этого кейса нужен физический ключ нужного сезона.'
+  unknown-season: '<#ffb56b>Сезон этого ключа пока не загружен. Ключ остаётся у вас.'
+  native-command: '<#ffd567>Откройте этот кейс на пьедестале или через /ecia open. Призы и ключи учитывает аддон.'
+  player-unavailable: '<#ffb56b>Игрок должен быть на сервере.'
+  reconciled: '<#a6efcf>Проверка записи завершена. Неопределённая выдача остаётся на проверке.'
+  delivered: '<#a6efcf>Награда получена!'
+  key-not-consumed: '<#ffe08a>Открытие отменено. Ключ не списан.'
+  review: '<#ffcc80>Проверяем выдачу. Запись сохранена; повторного списания не будет.'
+  pending: '<#ffd567>У вас есть сохранённые награды или незавершённый выбор. Откройте /ecia mail или /ecia resume.'
+  operation-refused: '<#ffcc80>Действие не завершено. Проверьте почту /ecia mail или продолжите выбор через /ecia resume.'
+  usage: '<#ffe08a>/ecia mail · history · resume · open [кейс] · preview [кейс]'
+  reload-failed: '<#ffb56b>Открытие кейсов выключено из-за ошибки загрузки. Подробности в журнале сервера.'
+  stats-usage: '<#ffe08a>/ecia stats [кейс] [сезон] [страница]'
+  stats-title: '<#ffd567><crate> · <season> · статистика <page>/<pages>'
+  stats-empty: '<#fff2df>Подтверждённых открытий пока нет.'
+  stats-row: '<#fff2df><mode> · <reward>: показан <offered>/<opened>, выбран <selected>/<selections>; базовый вес <base>%'
+  stats-note: '<#ffcc80>Базовый вес — первый бросок, не итоговый шанс с выбором. Показаны последние варианты каждого открытия; режимы гарантии и переброса разделены.'
+  admin-usage: '<#ffe08a>/ecia inspect [кейс] · /ecia repair [кейс]'
+  admin-unavailable: '<#ffb56b>ItemsAdder недоступен для проверки мебели.'
+  admin-title: '<#ffd567><crate> · <status> · модель <expected> · ключ <key> · ожидают <pending>'
+  admin-position: '<#fff2df><position>: мир <world>, чанк <chunk>, блок <block>, модель <model>, сущностей <carriers>, геометрия <geometry>. <reasons>'
+  admin-repair: '<#ffd567><crate>: ремонт <status>, восстановлено <count>. <reasons>'

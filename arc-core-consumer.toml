@@ -1,0 +1,14 @@
+schema = 1
+platform = "paper"
+core_version = "2.7.8"
+
+capabilities = [
+  "durable-recovery",
+  "health",
+  "localized-text",
+  "logging",
+  "paper-menu",
+  "paper-testing",
+  "runtime",
+  "scheduling",
+]
