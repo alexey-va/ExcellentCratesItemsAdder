@@ -6,8 +6,9 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -15,7 +16,7 @@ import java.util.stream.Stream;
 final class CrateRegistry {
     private final Path crateDirectory;
     private final Consumer<String> warningSink;
-    private final AtomicReference<Set<CratePosition>> positions = new AtomicReference<>(Set.of());
+    private final AtomicReference<Map<CratePosition, String>> crates = new AtomicReference<>(Map.of());
 
     CrateRegistry(Path crateDirectory, Consumer<String> warningSink) {
         this.crateDirectory = crateDirectory;
@@ -23,10 +24,10 @@ final class CrateRegistry {
     }
 
     int reload() {
-        Set<CratePosition> discovered = new HashSet<>();
+        Map<CratePosition, String> discovered = new HashMap<>();
         if (!Files.isDirectory(crateDirectory)) {
             warningSink.accept("ExcellentCrates directory does not exist: " + crateDirectory);
-            positions.set(Set.of());
+            crates.set(Map.of());
             return 0;
         }
 
@@ -41,19 +42,23 @@ final class CrateRegistry {
         } catch (IOException exception) {
             warningSink.accept("Could not scan ExcellentCrates directory " + crateDirectory + ": " + exception.getMessage());
         }
-        positions.set(Set.copyOf(discovered));
+        crates.set(Map.copyOf(discovered));
         return discovered.size();
     }
 
     boolean contains(CratePosition position) {
-        return positions.get().contains(position);
+        return crates.get().containsKey(position);
+    }
+
+    Optional<String> crateId(CratePosition position) {
+        return Optional.ofNullable(crates.get().get(position));
     }
 
     int size() {
-        return positions.get().size();
+        return crates.get().size();
     }
 
-    private void loadFile(Path path, Set<CratePosition> target) {
+    private void loadFile(Path path, Map<CratePosition, String> target) {
         YamlConfiguration yaml = new YamlConfiguration();
         try {
             yaml.load(path.toFile());
@@ -61,9 +66,21 @@ final class CrateRegistry {
             warningSink.accept("Could not read crate config " + path + ": " + exception.getMessage());
             return;
         }
+        String fileName = path.getFileName().toString();
+        String crateId = fileName.substring(0, fileName.lastIndexOf('.'));
+        if (!crateId.matches("[A-Za-z0-9_-]+")) {
+            warningSink.accept("Ignored unsafe crate id from file " + path);
+            return;
+        }
         for (String raw : yaml.getStringList("Block.Positions")) {
             CratePosition.parse(raw).ifPresentOrElse(
-                    target::add,
+                    position -> {
+                        String previous = target.putIfAbsent(position, crateId);
+                        if (previous != null && !previous.equals(crateId)) {
+                            warningSink.accept("Ignored duplicate crate position " + position + " for " + crateId
+                                    + "; already owned by " + previous);
+                        }
+                    },
                     () -> warningSink.accept("Ignored malformed crate position '" + raw + "' in " + path)
             );
         }

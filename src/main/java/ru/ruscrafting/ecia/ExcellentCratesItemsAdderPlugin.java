@@ -31,7 +31,11 @@ public final class ExcellentCratesItemsAdderPlugin extends JavaPlugin implements
 
         registry = new CrateRegistry(crateDirectory, message -> getLogger().warning(message));
         int count = registry.reload();
-        protectionListener = new CrateProtectionListener(registry, message("protected"));
+        String previewCommand = getConfig().getString(
+                "preview-command",
+                "excellentcrates preview <crate> <player>"
+        );
+        protectionListener = new CrateProtectionListener(registry, this, message("protected"), previewCommand);
         getServer().getPluginManager().registerEvents(protectionListener, this);
 
         var command = getCommand("ecia");

@@ -12,6 +12,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -25,13 +26,17 @@ final class CrateProtectionListener implements Listener {
     private static final long FEEDBACK_INTERVAL_NANOS = Duration.ofSeconds(1).toNanos();
 
     private final CrateRegistry registry;
+    private final JavaPlugin plugin;
     private final Component protectedMessage;
+    private final String previewCommand;
     private final Set<UUID> editors = new HashSet<>();
     private final Map<UUID, Long> lastFeedback = new HashMap<>();
 
-    CrateProtectionListener(CrateRegistry registry, Component protectedMessage) {
+    CrateProtectionListener(CrateRegistry registry, JavaPlugin plugin, Component protectedMessage, String previewCommand) {
         this.registry = registry;
+        this.plugin = plugin;
         this.protectedMessage = protectedMessage;
+        this.previewCommand = previewCommand;
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
@@ -49,7 +54,7 @@ final class CrateProtectionListener implements Listener {
             return;
         }
         event.setCancelled(true);
-        feedback(player);
+        feedbackAndPreview(player, CratePosition.from(target.getLocation()));
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
@@ -60,7 +65,7 @@ final class CrateProtectionListener implements Listener {
         }
         if (registry.contains(CratePosition.from(event.getBlock().getLocation()))) {
             event.setCancelled(true);
-            feedback(player);
+            feedbackAndPreview(player, CratePosition.from(event.getBlock().getLocation()));
         }
     }
 
@@ -87,11 +92,19 @@ final class CrateProtectionListener implements Listener {
         lastFeedback.clear();
     }
 
-    private void feedback(Player player) {
+    private void feedbackAndPreview(Player player, CratePosition position) {
         long now = System.nanoTime();
         Long previous = lastFeedback.put(player.getUniqueId(), now);
         if (previous == null || now - previous >= FEEDBACK_INTERVAL_NANOS) {
             player.sendActionBar(protectedMessage);
+            registry.crateId(position).ifPresent(crateId -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+                String command = previewCommand
+                        .replace("<crate>", crateId)
+                        .replace("<player>", player.getName());
+                if (!plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), command)) {
+                    plugin.getLogger().warning("Preview command was not handled for crate " + crateId);
+                }
+            }));
         }
     }
 }

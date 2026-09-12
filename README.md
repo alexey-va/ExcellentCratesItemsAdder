@@ -7,7 +7,8 @@ ItemsAdder furniture is represented by entities. A creative-mode left click can
 therefore remove a crate even when a crate plugin protects the block position.
 This addon reads every `Block.Positions` entry from ExcellentCrates and cancels
 damage to the matching ItemsAdder furniture entity. Ordinary ItemsAdder
-furniture is not affected.
+furniture is not affected. The protected left click also opens the native
+ExcellentCrates preview for the crate registered at that position.
 
 ## Requirements
 
@@ -28,6 +29,9 @@ in Bukkit persistent data.
 
 The registry automatically rereads crate positions every five seconds. You can
 also run `/ecia reload` after changing crate configuration.
+
+`preview-command` in `config.yml` controls the preview bridge. The defaults use
+`excellentcrates preview <crate> <player>` from ExcellentCrates 6.6.x.
 
 ## Admin editing
 

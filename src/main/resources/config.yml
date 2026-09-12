@@ -1,5 +1,6 @@
 excellent-crates-directory: plugins/ExcellentCrates/crates
 registry-refresh-ticks: 100
+preview-command: "excellentcrates preview <crate> <player>"
 messages:
   protected: "<red>Этот сундук привязан к кейсу. <gray>/ecia edit on <red>— режим редактирования."
   edit-enabled: "<gold>Редактирование кейсов включено: мебель теперь можно ломать."
