@@ -29,6 +29,9 @@ each case and its explicit rare-reward IDs. `menus.yml` contains six-row
 choice, mail, history and pool screens. Names and presentation are configurable;
 model 11001 is rejected in every menu template. Russian and English chat text
 is in `lang/`; existing protection messages in `config.yml` remain authoritative.
+Managed openings first play a short, cancellable sealed-offer reveal and then
+enable the three durable choices. Pool previews use an unframed reward grid,
+dark neutral case titles and page arrows only where another page exists.
 
 With configured cases, `enabled: false` pauses their openings while retaining
 interception and current-season key stamps. It does not return old seasonal
@@ -109,7 +112,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ExcellentCratesItemsAdder-0.4.0.jar`.
+Output: `build/libs/ExcellentCratesItemsAdder-0.5.0.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash

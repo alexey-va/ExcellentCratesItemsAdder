@@ -1,6 +1,8 @@
 package ru.ruscrafting.ecia.screens
 
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import ru.arc.menu.MenuElementId
@@ -129,9 +131,32 @@ class EciaMenuScreens(
             element("back") to actionEntry("back") { actions.back.invoke() },
         )
         return PaperMenuContent(
-            title = Component.text(label("title-choices")),
+            title = darkTitle(label("title-choices")),
             background = background(),
             elements = elements,
+            regions = mapOf(EciaMenuConfiguration.OFFERS to entries),
+        )
+    }
+
+    fun renderReveal(opening: OpeningRecord, frameIndex: Int): PaperMenuContent {
+        val offers = opening.offers().take(MAX_VISIBLE_CHOICES)
+        val frame = OpeningRevealPlan.frame(frameIndex, offers.size)
+        val entries = offers.mapIndexed { index, reward ->
+            val item = when {
+                index < frame.revealed -> preview(reward, "reveal-reward").item
+                index == frame.highlighted -> configured("reveal-active")
+                else -> configured("reveal-sealed")
+            }
+            PaperMenuEntry(item = item, enabled = false)
+        }
+        return PaperMenuContent(
+            title = darkTitle(caseName(opening.pool.crateId())),
+            elements = mapOf(
+                element("info") to PaperMenuEntry(
+                    configured("reveal-info", mapOf("crate" to caseName(opening.pool.crateId()))),
+                    enabled = false,
+                ),
+            ),
             regions = mapOf(EciaMenuConfiguration.OFFERS to entries),
         )
     }
@@ -144,6 +169,7 @@ class EciaMenuScreens(
     fun renderMail(
         openings: List<OpeningRecord>,
         actions: EciaMenuActions = EciaMenuActions(),
+        page: Int = 0,
     ): PaperMenuContent {
         val pending = openings.count(OpeningRecord::pending)
         val entries = openings.map { opening ->
@@ -173,17 +199,19 @@ class EciaMenuScreens(
         }
         return pagedContent(
             menu = EciaMenuConfiguration.MAIL,
-            title = Component.text(label("title-mail")),
+            title = darkTitle(label("title-mail")),
             info = configured("mail-info", mapOf("pending" to pending.toString())),
             entries = entries,
             region = EciaMenuConfiguration.ENTRIES,
             actions = actions,
+            page = page,
         )
     }
 
     fun renderHistory(
         openings: List<OpeningRecord>,
         actions: EciaMenuActions = EciaMenuActions(),
+        page: Int = 0,
     ): PaperMenuContent {
         val entries = openings.map { opening ->
             val reward = selectedRewardOrNull(opening)
@@ -202,11 +230,12 @@ class EciaMenuScreens(
         }
         return pagedContent(
             menu = EciaMenuConfiguration.HISTORY,
-            title = Component.text(label("title-history")),
+            title = darkTitle(label("title-history")),
             info = configured("history-info", mapOf("count" to openings.size.toString())),
             entries = entries,
             region = EciaMenuConfiguration.ENTRIES,
             actions = actions,
+            page = page,
         )
     }
 
@@ -214,6 +243,7 @@ class EciaMenuScreens(
         pool: PoolSnapshot,
         misses: Int,
         actions: EciaMenuActions = EciaMenuActions(),
+        page: Int = 0,
     ): PaperMenuContent {
         require(misses >= 0) { "Pity misses must not be negative" }
         val entries = pool.rewards().map { reward ->
@@ -233,7 +263,7 @@ class EciaMenuScreens(
         }
         return pagedContent(
             menu = EciaMenuConfiguration.POOL_PREVIEW,
-            title = Component.text(label("title-pool", "crate" to caseName(pool.crateId()))),
+            title = darkTitle(label("title-pool", "crate" to caseName(pool.crateId()))),
             info = configured(
                 "pool-info",
                 mapOf(
@@ -248,7 +278,18 @@ class EciaMenuScreens(
             entries = entries,
             region = EciaMenuConfiguration.REWARDS,
             actions = actions,
+            page = page,
+            menuBackground = null,
         )
+    }
+
+    fun openReveal(
+        runtime: PaperMenuRuntime,
+        player: Player,
+        opening: OpeningRecord,
+        frame: () -> Int,
+    ): PaperMenuSession = runtime.open(player, EciaMenuConfiguration.CHOICES) {
+        renderReveal(opening, frame())
     }
 
     fun openChoices(
@@ -266,8 +307,9 @@ class EciaMenuScreens(
         player: Player,
         openings: List<OpeningRecord>,
         actions: EciaMenuActions = EciaMenuActions(),
-    ): PaperMenuSession = openPaged(runtime, player, EciaMenuConfiguration.MAIL, actions) { effective ->
-        renderMail(openings, effective)
+    ): PaperMenuSession = openPaged(runtime, player, EciaMenuConfiguration.MAIL, EciaMenuConfiguration.ENTRIES,
+        openings.size, actions) { effective, page ->
+        renderMail(openings, effective, page)
     }
 
     fun openHistory(
@@ -275,8 +317,9 @@ class EciaMenuScreens(
         player: Player,
         openings: List<OpeningRecord>,
         actions: EciaMenuActions = EciaMenuActions(),
-    ): PaperMenuSession = openPaged(runtime, player, EciaMenuConfiguration.HISTORY, actions) { effective ->
-        renderHistory(openings, effective)
+    ): PaperMenuSession = openPaged(runtime, player, EciaMenuConfiguration.HISTORY, EciaMenuConfiguration.ENTRIES,
+        openings.size, actions) { effective, page ->
+        renderHistory(openings, effective, page)
     }
 
     fun openPoolPreview(
@@ -285,27 +328,36 @@ class EciaMenuScreens(
         pool: PoolSnapshot,
         misses: Int,
         actions: EciaMenuActions = EciaMenuActions(),
-    ): PaperMenuSession = openPaged(runtime, player, EciaMenuConfiguration.POOL_PREVIEW, actions) { effective ->
-        renderPoolPreview(pool, misses, effective)
+    ): PaperMenuSession = openPaged(runtime, player, EciaMenuConfiguration.POOL_PREVIEW, EciaMenuConfiguration.REWARDS,
+        pool.rewards().size, actions) { effective, page ->
+        renderPoolPreview(pool, misses, effective, page)
     }
 
     private fun openPaged(
         runtime: PaperMenuRuntime,
         player: Player,
         menu: MenuId,
+        region: ru.arc.menu.MenuRegionId,
+        entryCount: Int,
         actions: EciaMenuActions,
-        content: (EciaMenuActions) -> PaperMenuContent,
+        content: (EciaMenuActions, Int) -> PaperMenuContent,
     ): PaperMenuSession {
+        val capacity = configuration.catalog.require(menu).region(region).size
+        val lastPage = if (entryCount == 0) 0 else (entryCount - 1) / capacity
+        var page = 0
         lateinit var session: PaperMenuSession
         val effective = actions.copy(
             page = EciaMenuActions.Page { id, delta ->
-                val result = if (delta < 0) session.previousPage() else session.nextPage()
+                val target = (page + delta).coerceIn(0, lastPage)
+                if (target == page) return@Page
+                page = target
+                val result = session.setPage(page)
                 if (result != PaperMenuSessionResult.UNCHANGED && result != PaperMenuSessionResult.NO_PAGINATION) {
                     actions.page.invoke(id, delta)
                 }
             },
         )
-        session = runtime.open(player, menu) { content(effective) }
+        session = runtime.open(player, menu) { content(effective, page) }
         return session
     }
 
@@ -316,17 +368,25 @@ class EciaMenuScreens(
         entries: List<PaperMenuEntry>,
         region: ru.arc.menu.MenuRegionId,
         actions: EciaMenuActions,
-    ): PaperMenuContent = PaperMenuContent(
-        title = title,
-        background = background(),
-        elements = mapOf(
+        page: Int,
+        menuBackground: ItemStack? = background(),
+    ): PaperMenuContent {
+        require(page >= 0) { "Menu page must not be negative" }
+        val capacity = configuration.catalog.require(menu).region(region).size
+        val lastPage = if (entries.isEmpty()) 0 else (entries.size - 1) / capacity
+        val elements = linkedMapOf(
             element("info") to PaperMenuEntry(info, enabled = false),
-            element("previous") to actionEntry("previous") { actions.page.invoke(menu, -1) },
             element("back") to actionEntry("back") { actions.back.invoke() },
-            element("next") to actionEntry("next") { actions.page.invoke(menu, 1) },
-        ),
-        regions = mapOf(region to entries),
-    )
+        )
+        if (page > 0) elements[element("previous")] = actionEntry("previous") { actions.page.invoke(menu, -1) }
+        if (page < lastPage) elements[element("next")] = actionEntry("next") { actions.page.invoke(menu, 1) }
+        return PaperMenuContent(
+            title = title,
+            background = menuBackground,
+            elements = elements,
+            regions = mapOf(region to entries),
+        )
+    }
 
     private fun actionEntry(template: String, action: () -> Unit): PaperMenuEntry = PaperMenuEntry(
         item = configured(template),
@@ -379,6 +439,10 @@ class EciaMenuScreens(
 
     private fun caseName(crateId: String): String = caseNames[crateId.lowercase(Locale.ROOT)] ?: caseNameFallback
 
+    private fun darkTitle(text: String): Component = Component.text(text, NamedTextColor.DARK_GRAY)
+        .decoration(TextDecoration.BOLD, false)
+        .decoration(TextDecoration.ITALIC, false)
+
     private fun progress(threshold: Int, misses: Int): String =
         if (threshold <= 0) label("pity-disabled") else "${misses.coerceAtMost(threshold - 1)}/${threshold - 1}"
 
@@ -410,5 +474,19 @@ class EciaMenuScreens(
 
     private companion object {
         const val MAX_VISIBLE_CHOICES = 3
+    }
+}
+
+internal data class OpeningRevealFrame(val highlighted: Int?, val revealed: Int)
+
+internal object OpeningRevealPlan {
+    const val FRAME_COUNT = 9
+    const val REVEAL_START = 6
+
+    fun frame(index: Int, offerCount: Int): OpeningRevealFrame {
+        require(index >= 0) { "Reveal frame must not be negative" }
+        require(offerCount in 1..3) { "Reveal needs between one and three offers" }
+        if (index < REVEAL_START) return OpeningRevealFrame(index % offerCount, 0)
+        return OpeningRevealFrame(null, (index - REVEAL_START + 1).coerceIn(0, offerCount))
     }
 }

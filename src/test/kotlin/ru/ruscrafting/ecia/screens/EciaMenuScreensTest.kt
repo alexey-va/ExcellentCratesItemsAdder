@@ -2,6 +2,7 @@ package ru.ruscrafting.ecia.screens
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import net.kyori.adventure.text.format.TextDecoration
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.AfterEach
@@ -101,6 +102,41 @@ class EciaMenuScreensTest {
         )
         actions.choiceSelect.invoke(openingId, 7L, "rare")
         assertEquals("$openingId:7:rare", calls.single())
+    }
+
+    @Test
+    fun revealCyclesSealsThenUncoversEachOffer() {
+        assertEquals(OpeningRevealFrame(0, 0), OpeningRevealPlan.frame(0, 3))
+        assertEquals(OpeningRevealFrame(2, 0), OpeningRevealPlan.frame(5, 3))
+        assertEquals(OpeningRevealFrame(null, 1), OpeningRevealPlan.frame(6, 3))
+        assertEquals(OpeningRevealFrame(null, 3), OpeningRevealPlan.frame(8, 3))
+
+        val content = EciaMenuScreens(EciaMenuConfiguration.loadResource())
+            .renderReveal(opening(OpeningRecord.Stage.CHOOSING), 6)
+        assertEquals(2, content.regions.getValue(EciaMenuConfiguration.OFFERS).size)
+        assertTrue(content.regions.getValue(EciaMenuConfiguration.OFFERS).none { it.enabled })
+        assertEquals(null, content.background)
+    }
+
+    @Test
+    fun poolPreviewHasNoFrameAndShowsOnlyUsefulPageArrows() {
+        val configuration = EciaMenuConfiguration.loadResource()
+        val screens = EciaMenuScreens(configuration)
+        val rewards = (1..35).map { RewardDefinition("reward-$it", 1.0, it == 1, "delivery-$it", "") }
+        val pool = PoolSnapshot("case_daily", "summer", rewards, 4, 3, 1)
+
+        val first = screens.renderPoolPreview(pool, misses = 0, page = 0)
+        val second = screens.renderPoolPreview(pool, misses = 0, page = 1)
+        val expectedTitle = Component.text("Ежедневный тайник", NamedTextColor.DARK_GRAY)
+            .decoration(TextDecoration.BOLD, false)
+            .decoration(TextDecoration.ITALIC, false)
+
+        assertEquals(expectedTitle, first.title)
+        assertEquals(null, first.background)
+        assertFalse(first.elements.containsKey(MenuElementId.of("previous")))
+        assertTrue(first.elements.containsKey(MenuElementId.of("next")))
+        assertTrue(second.elements.containsKey(MenuElementId.of("previous")))
+        assertFalse(second.elements.containsKey(MenuElementId.of("next")))
     }
 
     private fun opening(stage: OpeningRecord.Stage, selected: String = ""): OpeningRecord {

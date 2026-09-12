@@ -4,17 +4,17 @@ menus:
   case-names:
     case_daily: "Ежедневный тайник"
     case_weekly: "Недельная реликвия"
-    case_rank_artisan: "Дар ремесленника"
-    case_rank_knight: "Наследие рыцаря"
-    case_furniture: "Мебельная мастерская"
-    case_collections: "Коллекции героев"
-    case_mounts: "Призыв маунта"
+    case_rank_artisan: "Кейс Ремесленника"
+    case_rank_knight: "Кейс Рыцаря"
+    case_furniture: "Дом мастера"
+    case_collections: "Сокровищница коллекций"
+    case_mounts: "Зверинец маунтов"
   case-name-fallback: "Кейс"
   labels:
     title-choices: "Выбор награды"
     title-mail: "Почта наград"
     title-history: "История открытий"
-    title-pool: "Пул наград · <crate>"
+    title-pool: "<crate>"
     choice-action: "ЛКМ — выбрать этот приз"
     guaranteed: "активна"
     ordinary: "обычная"
@@ -73,7 +73,6 @@ menus:
     ecia-pool-preview:
       schema-version: 1
       rows: 6
-      background: { template: background }
       elements:
         info: { slot: 4, template: pool-info, kind: decoration }
         previous: { slot: 47, template: previous }
@@ -103,6 +102,29 @@ menus:
       lore:
         - "<#fff2df>Вес первого броска: <weight>"
         - "<#ffd567><action>"
+    reveal-info:
+      material: CLOCK
+      glint: true
+      name: "<#ffd567>Кейс открывается"
+      lore:
+        - "<#fff2df><crate>"
+        - "<#969696>Печати раскроются по очереди"
+    reveal-sealed:
+      material: ENDER_CHEST
+      name: "<#969696>Запечатанная награда"
+      lore:
+        - "<#fff2df>Призы перемешиваются…"
+    reveal-active:
+      material: ENDER_CHEST
+      glint: true
+      name: "<#ffd567>Печать дрожит"
+      lore:
+        - "<#fff2df>Ещё мгновение…"
+    reveal-reward:
+      material: CHEST
+      name: "<#a6efcf>Награда раскрыта"
+      lore:
+        - "<#fff2df>Сейчас можно будет выбрать"
     reroll:
       material: ENDER_EYE
       glint: true

@@ -66,6 +66,10 @@ object EciaMenuConfiguration {
         "choice" to PaperMenuTextContract(
             values = setOf("weight", "action"),
         ),
+        "reveal-info" to PaperMenuTextContract(values = setOf("crate")),
+        "reveal-sealed" to PaperMenuTextContract(),
+        "reveal-active" to PaperMenuTextContract(),
+        "reveal-reward" to PaperMenuTextContract(),
         "reroll" to PaperMenuTextContract(
             values = setOf("remaining", "reason"),
             flags = setOf("available", "guaranteed"),
