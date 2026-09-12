@@ -6,7 +6,9 @@ A small Paper addon that protects ItemsAdder furniture used as physical
 ItemsAdder furniture is represented by entities. A creative-mode left click can
 therefore remove a crate even when a crate plugin protects the block position.
 This addon reads every `Block.Positions` entry from ExcellentCrates and cancels
-damage to the matching ItemsAdder furniture entity. Ordinary ItemsAdder
+damage to the matching ItemsAdder furniture entity. It accepts both the
+ItemsAdder persistent-data marker and the display/interaction entity types used
+by modern and legacy furniture implementations. Ordinary ItemsAdder
 furniture is not affected. The protected left click also opens the native
 ExcellentCrates preview for the crate registered at that position.
 

@@ -39,16 +39,13 @@ final class CrateProtectionListener implements Listener {
         this.previewCommand = previewCommand;
     }
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onFurnitureDamage(EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof Player player)) {
             return;
         }
         Entity target = event.getEntity();
-        boolean furniture = "furniture".equals(target.getPersistentDataContainer().get(
-                ITEMSADDER_BEHAVIOUR,
-                PersistentDataType.STRING
-        ));
+        boolean furniture = isFurnitureCarrier(target);
         boolean registered = target.getWorld() != null && registry.contains(CratePosition.from(target.getLocation()));
         if (!ProtectionPolicy.shouldProtect(player.getGameMode(), editors.contains(player.getUniqueId()), furniture, registered)) {
             return;
@@ -57,7 +54,7 @@ final class CrateProtectionListener implements Listener {
         feedbackAndPreview(player, CratePosition.from(target.getLocation()));
     }
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onCrateBlockBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
         if (player.getGameMode() != GameMode.CREATIVE || editors.contains(player.getUniqueId())) {
@@ -90,6 +87,14 @@ final class CrateProtectionListener implements Listener {
     void clear() {
         editors.clear();
         lastFeedback.clear();
+    }
+
+    private boolean isFurnitureCarrier(Entity target) {
+        String behaviour = target.getPersistentDataContainer().get(
+                ITEMSADDER_BEHAVIOUR,
+                PersistentDataType.STRING
+        );
+        return "furniture".equals(behaviour) || FurnitureCarrierPolicy.isKnownCarrier(target.getType());
     }
 
     private void feedbackAndPreview(Player player, CratePosition position) {
