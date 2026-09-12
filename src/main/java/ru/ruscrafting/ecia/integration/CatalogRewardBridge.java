@@ -65,7 +65,7 @@ public final class CatalogRewardBridge {
         Recipe recipe = payload.read(reward.deliveryPayload(), Recipe.class);
         if (recipe.provider() == Provider.FROZEN_ITEMS) return payload.restore(recipe.nativeItems());
         ArcItemMaterializer provider = provider();
-        if (provider == null || !provider.capability().getAvailable()) return null;
+        if (provider == null) return null;
         var request = new ArcItemMaterializationRequest(recipe.categoryId(), recipe.entryId());
         var items = provider.materialize(new ArcItemMaterializationReference.FreshVoucher(
                 request, recipe.providerFingerprint(), recipe.sourceKey()));

@@ -61,7 +61,7 @@ separately and distinguish potential key openings from recurring income.
 
 ## Current verification boundary
 
-The full addon composite build on 2026-09-12 passed 71 tests with zero failures,
+The full addon composite build on 2026-09-12 passed 72 tests with zero failures,
 errors or skips, and produced the 0.4.0 shaded JAR. The consumer architecture
 contract passed for arc-core 2.7.8. The shared paper API is compile-only and is
 not present in the addon JAR. See [verification-20260912.md](verification-20260912.md)

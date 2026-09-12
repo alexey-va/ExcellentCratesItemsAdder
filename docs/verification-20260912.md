@@ -3,7 +3,7 @@
 ## Verified locally
 
 Command: `./gradlew --no-daemon -ParcCoreDir=/absolute/path/to/arc-core test shadowJar`.
-Result: **71 tests, 0 failures, 0 errors, 0 skipped**. The composite uses
+Result: **72 tests, 0 failures, 0 errors, 0 skipped**. The composite uses
 arc-core source commit `5881ef254a668c576ed560b230cae3d0aa91b515` (2.7.8).
 The consumer architecture verifier passed. The packaged addon contains its
 menu/locale/features resources and excludes the shared `ru.arc.paper.api` classes.
@@ -16,6 +16,8 @@ The regression suite covers:
   bounded reroll; one prepared prize and one delivery; player ownership checks.
 - Mail remaining available after full inventory, durable-write failure and
   readback ambiguity; no blind replay of an unresolved delivery.
+- Archived provider delivery after the current catalog becomes unavailable,
+  while new snapshot preparation remains refused.
 - Immutable season rules and failed journal writes; pity based on the selected
   reward, with separate season progress and a preserved guarantee on reroll.
 - Exclusion of unpaid attempts from analytics and separation of final offers
