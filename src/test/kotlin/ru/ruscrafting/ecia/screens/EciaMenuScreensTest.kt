@@ -40,7 +40,6 @@ class EciaMenuScreensTest {
         val configuration = EciaMenuConfiguration.loadResource()
 
         assertEquals(6, configuration.catalog.require(EciaMenuConfiguration.CHOICES).rows)
-        assertEquals(6, configuration.catalog.require(EciaMenuConfiguration.MAIL).rows)
         assertEquals(6, configuration.catalog.require(EciaMenuConfiguration.HISTORY).rows)
         assertEquals(6, configuration.catalog.require(EciaMenuConfiguration.POOL_PREVIEW).rows)
         assertEquals(3, configuration.catalog.require(EciaMenuConfiguration.CHOICES).region(EciaMenuConfiguration.OFFERS).size)
@@ -55,15 +54,9 @@ class EciaMenuScreensTest {
     }
 
     @Test
-    fun reviewMailEntryIsReadOnlyAndChoicesStayVisible() {
+    fun choicesStayVisibleWithoutBackOrMailControls() {
         val configuration = EciaMenuConfiguration.loadResource()
         val screens = EciaMenuScreens(configuration)
-        val opening = opening(OpeningRecord.Stage.REVIEW, selected = "rare")
-
-        val mail = screens.renderMail(listOf(opening))
-        val mailEntry = mail.regions.getValue(EciaMenuConfiguration.ENTRIES).single()
-        assertFalse(mailEntry.enabled)
-        assertTrue(!mailEntry.item.itemMeta.hasCustomModelData() || mailEntry.item.itemMeta.customModelData != 11001)
 
         val choices = screens.renderChoices(opening(OpeningRecord.Stage.CHOOSING))
         assertEquals(2, choices.regions.getValue(EciaMenuConfiguration.OFFERS).size)
@@ -72,6 +65,7 @@ class EciaMenuScreensTest {
         val infoLore = choices.elements.getValue(MenuElementId.of("info")).item.itemMeta.lore().toString()
         val rerollLore = choices.elements.getValue(MenuElementId.of("reroll")).item.itemMeta.lore().toString()
         assertFalse(infoLore.contains("summer"))
+        assertTrue(infoLore.contains("1 награда"))
         assertTrue(rerollLore.contains("▶"))
     }
 

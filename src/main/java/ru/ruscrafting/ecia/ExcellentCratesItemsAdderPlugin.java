@@ -204,7 +204,7 @@ public final class ExcellentCratesItemsAdderPlugin extends JavaPlugin implements
             @NotNull String[] args
     ) {
         if (args.length == 1) {
-            var options = new java.util.ArrayList<>(List.of("mail", "history", "resume", "open", "preview"));
+            var options = new java.util.ArrayList<>(List.of("history", "resume", "open", "preview"));
             if (sender.hasPermission(ADMIN_PERMISSION)) {
                 options.addAll(List.of("edit", "reload", "stats", "reconcile", "inspect", "repair"));
             }

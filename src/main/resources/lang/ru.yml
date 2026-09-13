@@ -20,9 +20,11 @@ managed:
   delivered: '<#a6efcf>Награда получена!'
   key-not-consumed: '<#ffe08a>Открытие отменено. Ключ не списан.'
   review: "<#ffcc80>Проверяем выдачу.\n   <#fff2df>Запись сохранена.\n   <#fff2df>Повторного списания не будет."
-  pending: "<#ffd567>Есть сохранённые награды\n   <#ffd567>или незавершённый выбор.\n   <#fff2df>Откройте /ecia mail или /ecia resume."
-  operation-refused: "<#ffcc80>Действие не завершено.\n   <#fff2df>Проверьте /ecia mail\n   <#fff2df>или продолжите через /ecia resume."
-  usage: '<#ffe08a>/ecia mail · history · resume · open [кейс] · preview [кейс]'
+  pending: "<#ffd567>Есть незавершённое открытие.\n   <#fff2df>Продолжите через /ecia resume."
+  operation-refused: "<#ffcc80>Действие не завершено.\n   <#fff2df>Продолжите через /ecia resume."
+  inventory-full: "<#ffcc80>В инвентаре не хватает места.\n   <#fff2df>Освободите слоты и введите /ecia resume."
+  nothing-pending: '<#969696>Незавершённых открытий нет.'
+  usage: '<#ffe08a>/ecia history · resume · open [кейс] · preview [кейс]'
   reload-failed: "<#ffb56b>Открытие кейсов выключено.\n   <#fff2df>Причина — ошибка загрузки.\n   <#fff2df>Подробности в журнале сервера."
   stats-usage: '<#ffe08a>/ecia stats [кейс] [страница]'
   stats-title: '<#ffd567><crate> · статистика <page>/<pages>'

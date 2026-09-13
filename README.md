@@ -2,7 +2,7 @@
 
 Paper addon for [ExcellentCrates](https://github.com/nulli0n/ExcellentCrates-spigot)
 and ItemsAdder. It protects furniture used as crate anchors, including creative
-left clicks, and provides optional reward choices with durable mail.
+left clicks, and provides optional reward choices with durable recovery.
 
 ## Requirements
 
@@ -25,12 +25,14 @@ for that administrator; `/ecia edit off` restores protection. Edit mode ends on
 disconnect or plugin shutdown. `/ecia reload` rereads configuration.
 
 `features.yml` ships disabled. Enable managed openings only after configuring
-each case and its immutable season. `menus.yml` contains six-row
-choice, mail, history and pool screens. Names and presentation are configurable;
+each case and its frozen reward pool. `menus.yml` contains six-row
+choice, history and pool screens. Names and presentation are configurable;
 model 11001 is rejected in every menu template. Russian and English chat text
 is in `lang/`; existing protection messages in `config.yml` remain authoritative.
 Managed openings first play a short, cancellable sealed-offer reveal and then
-enable the three durable choices. Pool previews use five full reward rows and
+enable the three durable choices. Selecting one starts a player-only display-
+entity reel over the physical crate; the selected item stops beneath its pointer
+before delivery. Pool previews use five full reward rows and
 a fixed bottom navigation row, without an item frame around the pool.
 
 With configured cases, `enabled: false` pauses their openings while retaining
@@ -40,21 +42,20 @@ only. Removing a previously managed case requires an explicit key migration.
 
 ## Managed openings
 
-One physical key buys one bundle. A configured number of distinct headline
-offers (up to three) is shown; the selected headline reward is delivered with
-weighted, distinct extras up to `bundle-size`. A reroll keeps two offers and
+One physical key buys one selected reward. A configured number of distinct
+offers (up to three) is shown. A reroll keeps two offers and
 replaces only the highest-weight visible option instead of redrawing all three.
 
 - `/ecia open [crate]` — use a matching physical key.
 - `/ecia preview [crate]` — show the full frozen reward pool.
 - `/ecia resume` — continue an unfinished selection.
-- `/ecia mail` — claim saved physical rewards when inventory space is available.
 - `/ecia history` — read personal opening history.
 
 Player commands require `ecia.use` (default true); crate-specific native
 permissions still apply. Rewards enter the inventory as real items, including
 fresh redeemable ARC vouchers. No reward command is interpreted as proof of
-delivery. A full inventory leaves the reward in mail without dropping it.
+delivery. A full inventory preserves the pending opening; free slots and use
+`/ecia resume` to retry delivery.
 
 ## Seasons and recovery
 
@@ -91,7 +92,7 @@ Administrative operations require `ecia.admin` (operator by default).
   with base draw weights, grouped by ordinary and rerolled openings. Base weight is
   not the final probability after player choice. Failed debit attempts are
   excluded. Statistics retain final offers, not every intermediate reroll set.
-- `/ecia inspect [crate]` — inspect native anchors, model, key and pending mail.
+- `/ecia inspect [crate]` — inspect native anchors, model, key and pending openings.
 - `/ecia repair [crate]` — repair only verified empty anchors through ItemsAdder;
   foreign blocks, ambiguous carriers or missing grounding evidence block repair.
 
@@ -111,7 +112,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ExcellentCratesItemsAdder-0.7.0.jar`.
+Output: `build/libs/ExcellentCratesItemsAdder-0.8.0.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash

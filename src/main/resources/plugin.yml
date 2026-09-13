@@ -2,13 +2,13 @@ name: ExcellentCratesItemsAdder
 version: ${version}
 main: ru.ruscrafting.ecia.ExcellentCratesItemsAdderPlugin
 api-version: "1.21"
-description: Protected ItemsAdder crates with reward choices and durable reward mail.
+description: Protected ItemsAdder crates with reward choices and durable delivery recovery.
 authors: [alexey-va]
 softdepend: [ExcellentCrates, ItemsAdder, ARC]
 commands:
   ecia:
     description: Open crates, recover rewards and manage protected furniture.
-    usage: /ecia <mail|history|resume|open|preview|edit|reload|stats|reconcile|inspect|repair>
+    usage: /ecia <history|resume|open|preview|edit|reload|stats|reconcile|inspect|repair>
 permissions:
   ecia.use:
     description: Allows using the ECIA command entry point.

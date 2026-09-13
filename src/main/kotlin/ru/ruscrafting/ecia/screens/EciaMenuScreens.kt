@@ -31,7 +31,6 @@ import java.util.UUID
 data class EciaMenuActions(
     val choiceSelect: ChoiceSelect = ChoiceSelect { _, _, _ -> },
     val reroll: Reroll = Reroll { _, _ -> },
-    val claim: Claim = Claim { _, _ -> },
     val page: Page = Page { _, _ -> },
 ) {
     fun interface ChoiceSelect {
@@ -42,10 +41,6 @@ data class EciaMenuActions(
         fun invoke(opening: UUID, revision: Long)
     }
 
-    fun interface Claim {
-        fun invoke(opening: UUID, revision: Long)
-    }
-
     fun interface Page {
         fun invoke(menu: MenuId, delta: Int)
     }
@@ -53,8 +48,8 @@ data class EciaMenuActions(
 }
 
 /**
- * Paper inventory views for opening choices, pending mail, history and a
- * frozen pool preview. It only renders content and invokes typed callbacks;
+ * Paper inventory views for opening choices, history and a frozen pool
+ * preview. It only renders content and invokes typed callbacks;
  * durable opening mutations remain in the parent service.
  */
 class EciaMenuScreens(
@@ -75,7 +70,6 @@ class EciaMenuScreens(
     ): PaperMenuContent {
         val values = mapOf(
             "crate" to caseName(opening.pool.crateId()),
-            "bundle" to opening.pool.bundleSize().toString(),
             "rerolls" to "${opening.rerollsUsed()}/${opening.pool.maxRerolls()}",
         )
         val offers = opening.offers().take(MAX_VISIBLE_CHOICES)
@@ -143,48 +137,6 @@ class EciaMenuScreens(
                 ),
             ),
             regions = mapOf(EciaMenuConfiguration.OFFERS to entries),
-        )
-    }
-
-    fun renderMail(
-        openings: List<OpeningRecord>,
-        actions: EciaMenuActions = EciaMenuActions(),
-        page: Int = 0,
-    ): PaperMenuContent {
-        val pending = openings.count(OpeningRecord::pending)
-        val entries = openings.map { opening ->
-            val reward = selectedRewardOrNull(opening)
-            val claimable = opening.stage() == OpeningRecord.Stage.MAIL && reward != null
-            val state = stateLabel(opening.stage())
-            val rendered = preview(
-                reward,
-                "mail-entry",
-                values = mapOf(
-                    "state" to state,
-                    "action" to if (claimable) label("mail-claim") else label("mail-pending"),
-                    "revision" to opening.revision().toString(),
-                ),
-                flags = buildSet {
-                    if (claimable) add("claimable")
-                    if (opening.stage() == OpeningRecord.Stage.REVIEW) add("review")
-                },
-            )
-            PaperMenuEntry(
-                item = rendered.item,
-                enabled = claimable && rendered.available,
-                onClick = PaperMenuClickHandler {
-                    if (claimable && rendered.available) actions.claim.invoke(opening.id(), opening.revision())
-                },
-            )
-        }
-        return pagedContent(
-            menu = EciaMenuConfiguration.MAIL,
-            title = darkTitle(label("title-mail")),
-            info = configured("mail-info", mapOf("pending" to pending.toString())),
-            entries = entries,
-            region = EciaMenuConfiguration.ENTRIES,
-            actions = actions,
-            page = page,
         )
     }
 
@@ -274,16 +226,6 @@ class EciaMenuScreens(
         actions: EciaMenuActions = EciaMenuActions(),
     ): PaperMenuSession = runtime.open(player, EciaMenuConfiguration.CHOICES) {
         renderChoices(opening, actions)
-    }
-
-    fun openMail(
-        runtime: PaperMenuRuntime,
-        player: Player,
-        openings: List<OpeningRecord>,
-        actions: EciaMenuActions = EciaMenuActions(),
-    ): PaperMenuSession = openPaged(runtime, player, EciaMenuConfiguration.MAIL, EciaMenuConfiguration.ENTRIES,
-        openings.size, actions) { effective, page ->
-        renderMail(openings, effective, page)
     }
 
     fun openHistory(

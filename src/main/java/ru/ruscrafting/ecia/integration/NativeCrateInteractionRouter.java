@@ -35,7 +35,7 @@ import java.util.function.Predicate;
 public final class NativeCrateInteractionRouter implements Listener, CratesAddon, AutoCloseable {
     private final JavaPlugin plugin;
     private final Predicate<String> managed;
-    private final BiConsumer<Player, Crate> open;
+    private final BiConsumer<Player, ManagedOpenTarget> open;
     private final BiConsumer<Player, Crate> preview;
     private final Consumer<Player> nativeOpenDenied;
     private final Predicate<Player> editor;
@@ -48,7 +48,7 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
     private boolean closed;
 
     public NativeCrateInteractionRouter(JavaPlugin plugin, Predicate<String> managed,
-            BiConsumer<Player, Crate> open, BiConsumer<Player, Crate> preview, Consumer<Player> nativeOpenDenied,
+            BiConsumer<Player, ManagedOpenTarget> open, BiConsumer<Player, Crate> preview, Consumer<Player> nativeOpenDenied,
             Predicate<Player> editor, Runnable reloaded) {
         this.plugin = plugin;
         this.managed = managed;
@@ -139,7 +139,7 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
             // absent from this addon's key-only journal contract.
             nativeOpenDenied.accept(event.getPlayer());
         } else {
-            open.accept(event.getPlayer(), crate);
+            open.accept(event.getPlayer(), new ManagedOpenTarget(crate, event.getClickedBlock().getLocation()));
         }
         return true;
     }

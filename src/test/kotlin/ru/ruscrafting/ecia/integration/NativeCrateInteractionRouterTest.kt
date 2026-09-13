@@ -7,6 +7,7 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import io.mockk.Runs
 import org.bukkit.Material
+import org.bukkit.Location
 import org.bukkit.block.Block
 import org.bukkit.block.BlockFace
 import org.bukkit.entity.Player
@@ -33,6 +34,7 @@ import su.nightexpress.excellentcrates.crate.CrateManager
 import su.nightexpress.excellentcrates.crate.impl.Crate
 import su.nightexpress.excellentcrates.crate.listener.CrateListener
 import java.util.concurrent.atomic.AtomicInteger
+import org.junit.jupiter.api.Assertions.assertEquals
 
 class NativeCrateInteractionRouterTest {
     @Test
@@ -86,6 +88,20 @@ class NativeCrateInteractionRouterTest {
             withRouter(fixture, open = { _, _ -> opens.incrementAndGet() }) { _, _, _ ->
                 paper.server.pluginManager.callEvent(interaction(fixture.player, fixture.block))
                 assertTrue(opens.get() == 1)
+            }
+        }
+    }
+
+    @Test
+    fun physicalOpeningKeepsClickedCrateLocation() {
+        MockBukkitTestRuntime.open().use { paper ->
+            val fixture = fixture(paper)
+            var target: ManagedOpenTarget? = null
+            withRouter(fixture, open = { _, opened -> target = opened }) { _, _, _ ->
+                paper.server.pluginManager.callEvent(interaction(fixture.player, fixture.block))
+
+                assertTrue(target?.crate() === fixture.crate)
+                assertEquals(fixture.block.location, target?.anchor())
             }
         }
     }
@@ -160,6 +176,7 @@ class NativeCrateInteractionRouterTest {
         every { crate.id } returns "case_daily"
         val player = paper.addPlayer("RouterPlayer")
         val block = mockk<Block>(relaxed = true)
+        every { block.location } returns Location(player.world, 3.0, 4.0, 5.0)
         every { manager.getCrateByItem(any()) } returns null
         every { manager.getCrateByBlock(block) } returns crate
         mockkStatic(CratesAPI::class)
@@ -173,7 +190,7 @@ class NativeCrateInteractionRouterTest {
 
     private fun withRouter(
         fixture: Fixture,
-        open: (Player, Crate) -> Unit = { _, _ -> },
+        open: (Player, ManagedOpenTarget) -> Unit = { _, _ -> },
         body: (NativeCrateInteractionRouter, Player, Crate) -> Unit,
     ) {
         val router = NativeCrateInteractionRouter(

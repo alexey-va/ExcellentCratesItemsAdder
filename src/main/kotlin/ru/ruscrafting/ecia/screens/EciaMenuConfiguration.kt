@@ -28,7 +28,6 @@ object EciaMenuConfiguration {
     private val labelsByConfiguration = Collections.synchronizedMap(WeakHashMap<PaperMenuConfiguration, Map<String, String>>())
 
     val CHOICES = MenuId.of("ecia-choices")
-    val MAIL = MenuId.of("ecia-mail")
     val HISTORY = MenuId.of("ecia-history")
     val POOL_PREVIEW = MenuId.of("ecia-pool-preview")
 
@@ -45,10 +44,6 @@ object EciaMenuConfiguration {
             requiredElements = elements("info", "reroll"),
             requiredRegions = setOf(OFFERS),
         ),
-        MAIL to MenuContract(
-            requiredElements = elements("info", "previous", "next"),
-            requiredRegions = setOf(ENTRIES),
-        ),
         HISTORY to MenuContract(
             requiredElements = elements("info", "previous", "next"),
             requiredRegions = setOf(ENTRIES),
@@ -62,7 +57,7 @@ object EciaMenuConfiguration {
     val textContracts: Map<String, PaperMenuTextContract> = mapOf(
         "background" to PaperMenuTextContract(),
         "choices-info" to PaperMenuTextContract(
-            values = setOf("crate", "bundle", "rerolls"),
+            values = setOf("crate", "rerolls"),
         ),
         "choice" to PaperMenuTextContract(
             values = setOf("weight", "action"),
@@ -75,11 +70,6 @@ object EciaMenuConfiguration {
             values = setOf("remaining", "reason"),
             flags = setOf("available"),
         ),
-        "mail-info" to PaperMenuTextContract(values = setOf("pending")),
-        "mail-entry" to PaperMenuTextContract(
-            values = setOf("state", "action", "revision"),
-            flags = setOf("claimable", "review"),
-        ),
         "history-info" to PaperMenuTextContract(values = setOf("count")),
         "history-entry" to PaperMenuTextContract(
             values = setOf("state", "revision"),
@@ -91,9 +81,8 @@ object EciaMenuConfiguration {
     )
 
     val requiredLabels: Set<String> = setOf(
-        "title-choices", "title-mail", "title-history", "title-pool",
+        "title-choices", "title-history", "title-pool",
         "choice-action", "reroll-stage", "reroll-exhausted", "reroll-action",
-        "mail-claim", "mail-pending",
         "status-reserved", "status-choosing", "status-mail", "status-delivering",
         "status-delivered", "status-review", "status-aborted",
     )

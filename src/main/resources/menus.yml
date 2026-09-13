@@ -11,16 +11,13 @@ menus:
     case_mounts: "Зверинец маунтов"
   case-name-fallback: "Кейс"
   labels:
-    title-choices: "Выбор набора"
-    title-mail: "Почта наград"
+    title-choices: "Выбор награды"
     title-history: "История открытий"
     title-pool: "<crate>"
-    choice-action: "ЛКМ — выбрать основу"
+    choice-action: "ЛКМ — выбрать"
     reroll-stage: "Обновление уже недоступно"
     reroll-exhausted: "Обновление уже использовано"
     reroll-action: "ЛКМ — обновить"
-    mail-claim: "ЛКМ — забрать награду"
-    mail-pending: "Ожидайте обработки"
     status-reserved: "Ключ зарезервирован"
     status-choosing: "Ожидает выбора"
     status-mail: "Готово к получению"
@@ -38,17 +35,6 @@ menus:
         reroll: { slot: 45, template: reroll }
       regions:
         offers: { slots: [20, 22, 24] }
-    ecia-mail:
-      schema-version: 1
-      rows: 6
-      background: { template: background }
-      elements:
-        info: { slot: 4, template: mail-info, kind: decoration }
-        previous: { slot: 47, template: previous }
-        next: { slot: 51, template: next }
-      regions:
-        entries: { slots: ['10-16', '19-25', '28-34', '37-43'] }
-      pagination: { region: entries, previous: previous, next: next }
     ecia-history:
       schema-version: 1
       rows: 6
@@ -78,11 +64,11 @@ menus:
       name: "<white> "
     choices-info:
       material: BOOK
-      name: "<#ffd567>Выберите основу набора"
+      name: "<#ffd567>Выберите награду"
       lore:
         - ""
         - "<#b8b8b8><crate>"
-        - "<#8c8c8c>В наборе: <#ffd567><bundle> награды"
+        - "<#8c8c8c>За открытие: <#ffd567>1 награда"
         - "<#8c8c8c>Обновление: <light_purple><rerolls>"
     choice:
       material: CHEST
@@ -97,23 +83,27 @@ menus:
       glint: true
       name: "<#ffd567>Кейс открывается"
       lore:
+        - ""
         - "<#fff2df><crate>"
         - "<#969696>Печати раскроются по очереди"
     reveal-sealed:
       material: ENDER_CHEST
       name: "<#969696>Запечатанная награда"
       lore:
+        - ""
         - "<#fff2df>Призы перемешиваются…"
     reveal-active:
       material: ENDER_CHEST
       glint: true
       name: "<#ffd567>Печать дрожит"
       lore:
+        - ""
         - "<#fff2df>Ещё мгновение…"
     reveal-reward:
       material: CHEST
       name: "<#a6efcf>Награда раскрыта"
       lore:
+        - ""
         - "<#fff2df>Сейчас можно будет выбрать"
     reroll:
       material: ENDER_EYE
@@ -126,41 +116,32 @@ menus:
         - ""
         - { text: "<#8c8c8c>[<light_purple>▶<#8c8c8c>] <light_purple><reason>", when: available }
         - { text: "<#969696><reason>", unless: available }
-    mail-info:
-      material: CHEST
-      name: "<#ffd567>Почта наград"
-      lore:
-        - "<#fff2df>Открытий в обработке: <pending>"
-        - "<aqua>Награды выдаются после подтверждения"
-    mail-entry:
-      material: CHEST
-      name: "<aqua>Награда из почты"
-      lore:
-        - "<#fff2df><state> · ревизия <revision>"
-        - { text: "<green><action>", when: claimable }
-        - { text: "<red>Ручная проверка; кнопка недоступна", when: review }
     history-info:
       material: BOOK
       name: "<#ffd567>История открытий"
       lore:
+        - ""
         - "<#fff2df>Записей: <count>"
         - "<aqua>История доступна только для просмотра"
     history-entry:
       material: CHEST
       name: "<aqua>Награда из истории"
       lore:
+        - ""
         - "<#fff2df><state> · ревизия <revision>"
         - "<#ffd567>Только просмотр"
     pool-reward:
       material: CHEST
       name: "<aqua>Награда пула"
       lore:
+        - ""
         - "<#fff2df>Шанс: <weight>"
     unavailable:
       material: PAPER
       hide-tooltip: true
       name: "<red>Превью недоступно"
       lore:
+        - ""
         - "<#fff2df>Награда скрыта до подтверждения"
     previous:
       material: BLUE_STAINED_GLASS_PANE
