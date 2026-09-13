@@ -30,7 +30,7 @@ managed:
   stats-title: '<#ffd567><crate> · статистика <page>/<pages>'
   stats-empty: '<#fff2df>Подтверждённых открытий пока нет.'
   stats-row: '<#fff2df><mode> · <reward>: показан <offered>/<opened>, выбран <selected>/<selections>; шанс <base>%'
-  stats-note: '<#ffcc80>Показаны последние варианты каждого открытия; обычные и переброшенные открытия разделены.'
+  stats-note: '<#ffcc80>На открытие приходится один ролл; старые записи с обновлением показаны отдельно.'
   admin-usage: '<#ffe08a>/ecia inspect [кейс] · /ecia repair [кейс]'
   admin-unavailable: '<#ffb56b>ItemsAdder недоступен для проверки мебели.'
   admin-title: '<#ffd567><crate> · <status> · модель <expected> · ключ <key> · ожидают <pending>'

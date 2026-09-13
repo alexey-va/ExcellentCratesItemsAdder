@@ -25,4 +25,12 @@ internal object WorldRouletteTrack {
         val base = floor(travelled + 1.0e-9).toInt().coerceAtMost(TRAVEL_CELLS)
         return WorldRouletteFrame(base, base - travelled, progress)
     }
+
+    fun cells(sequenceIndex: Int, frame: WorldRouletteFrame): Double =
+        sequenceIndex - frame.baseIndex - CENTER_SLOT + frame.offsetCells
+
+    fun visible(sequenceIndex: Int, frame: WorldRouletteFrame): Boolean =
+        cells(sequenceIndex, frame) in -VISIBLE_EDGE..VISIBLE_EDGE
+
+    private const val VISIBLE_EDGE = CENTER_SLOT + 0.5
 }

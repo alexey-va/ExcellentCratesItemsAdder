@@ -11,30 +11,16 @@ menus:
     case_mounts: "Зверинец маунтов"
   case-name-fallback: "Кейс"
   labels:
-    title-choices: "Выбор награды"
     title-history: "История открытий"
     title-pool: "<crate>"
-    choice-action: "ЛКМ — выбрать"
-    reroll-stage: "Обновление уже недоступно"
-    reroll-exhausted: "Обновление уже использовано"
-    reroll-action: "ЛКМ — обновить"
     status-reserved: "Ключ зарезервирован"
-    status-choosing: "Ожидает выбора"
+    status-choosing: "Результат определяется"
     status-mail: "Готово к получению"
     status-delivering: "Доставка выполняется"
     status-delivered: "Доставлено"
     status-review: "На проверке"
     status-aborted: "Открытие отменено"
   layouts:
-    ecia-choices:
-      schema-version: 1
-      rows: 6
-      background: { template: background }
-      elements:
-        info: { slot: 4, template: choices-info, kind: decoration }
-        reroll: { slot: 45, template: reroll }
-      regions:
-        offers: { slots: [20, 22, 24] }
     ecia-history:
       schema-version: 1
       rows: 6
@@ -62,60 +48,6 @@ menus:
       custom-model-data: 11000
       hide-tooltip: true
       name: "<white> "
-    choices-info:
-      material: BOOK
-      name: "<#ffd567>Выберите награду"
-      lore:
-        - ""
-        - "<#b8b8b8><crate>"
-        - "<#8c8c8c>За открытие: <#ffd567>1 награда"
-        - "<#8c8c8c>Обновление: <light_purple><rerolls>"
-    choice:
-      material: CHEST
-      name: "<aqua>Награда"
-      lore:
-        - ""
-        - "<#8c8c8c>Шанс: <#fff2df><weight>"
-        - ""
-        - "<#8c8c8c>[<#5fe18b>▶<#8c8c8c>] <#5fe18b><action>"
-    reveal-info:
-      material: CLOCK
-      glint: true
-      name: "<#ffd567>Кейс открывается"
-      lore:
-        - ""
-        - "<#fff2df><crate>"
-        - "<#969696>Печати раскроются по очереди"
-    reveal-sealed:
-      material: ENDER_CHEST
-      name: "<#969696>Запечатанная награда"
-      lore:
-        - ""
-        - "<#fff2df>Призы перемешиваются…"
-    reveal-active:
-      material: ENDER_CHEST
-      glint: true
-      name: "<#ffd567>Печать дрожит"
-      lore:
-        - ""
-        - "<#fff2df>Ещё мгновение…"
-    reveal-reward:
-      material: CHEST
-      name: "<#a6efcf>Награда раскрыта"
-      lore:
-        - ""
-        - "<#fff2df>Сейчас можно будет выбрать"
-    reroll:
-      material: ENDER_EYE
-      glint: true
-      name: "<light_purple>Обновить варианты"
-      lore:
-        - ""
-        - "<#b8b8b8>Заменяет самый обычный вариант."
-        - "<#8c8c8c>Осталось: <light_purple><remaining>"
-        - ""
-        - { text: "<#8c8c8c>[<light_purple>▶<#8c8c8c>] <light_purple><reason>", when: available }
-        - { text: "<#969696><reason>", unless: available }
     history-info:
       material: BOOK
       name: "<#ffd567>История открытий"

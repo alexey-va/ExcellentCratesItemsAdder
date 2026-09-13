@@ -46,7 +46,7 @@ public final class ManagedOpeningEngine {
         UUID id = UUID.randomUUID();
         var planned = inventory.debit(player, id, matchingKey, keyAmount);
         if (planned.isEmpty()) return Optional.empty();
-        OfferSet offers = random.generate(pool);
+        OfferSet offers = random.generateOne(pool);
         OpeningRecord record = ledger.reserve(id, playerId, pool, offers.rewards(), payload.write(planned.get()));
         OpeningRecord settled = switch (inventory.apply(player, planned.get())) {
             case APPLIED -> ledger.debitConfirmed(id, playerId, record.revision());

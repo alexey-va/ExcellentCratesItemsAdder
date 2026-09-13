@@ -24,6 +24,13 @@ public final class WeightedOfferGenerator {
         return new OfferSet(selected);
     }
 
+    /** Performs the single headline draw used by the world roulette. */
+    public OfferSet generateOne(PoolSnapshot pool) {
+        Objects.requireNonNull(pool, "pool");
+        List<RewardDefinition> rewards = pool.rewards();
+        return new OfferSet(List.of(rewards.get(weightedIndex(rewards))));
+    }
+
     public OfferSet reroll(PoolSnapshot pool, OfferSet currentOffer, int rerollsUsed) {
         Objects.requireNonNull(pool, "pool");
         Objects.requireNonNull(currentOffer, "currentOffer");

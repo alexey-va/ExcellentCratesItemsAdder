@@ -2,7 +2,7 @@ name: ExcellentCratesItemsAdder
 version: ${version}
 main: ru.ruscrafting.ecia.ExcellentCratesItemsAdderPlugin
 api-version: "1.21"
-description: Protected ItemsAdder crates with reward choices and durable delivery recovery.
+description: Protected ItemsAdder crates with animated weighted rolls and durable delivery recovery.
 authors: [alexey-va]
 softdepend: [ExcellentCrates, ItemsAdder, ARC]
 commands:

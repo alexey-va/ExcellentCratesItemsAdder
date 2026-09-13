@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "title": "ECIA: один weighted-ролл вместо выбора из трёх",
+  "assumptions": [
+    "До изменения один физический ключ создаёт три различных предложения, игрок выбирает одно; после изменения ключ создаёт ровно одно предложение по тем же весам.",
+    "Рулетка визуализирует уже записанную награду и не выполняет дополнительный бросок при остановке или выдаче.",
+    "Bundle-size остаётся равен 1 для всех семи тестовых кейсов; состав наград, веса и стоимость ключей не меняются.",
+    "Low/base/high: 0/1/5 использованных ключей на игрока в день — сценарий нагрузки, а не telemetry; ценность выбора лучшего из трёх отдельно не монетизируется."
+  ],
+  "participants": [1, 10, 50],
+  "currencies": {
+    "crate_reward_bundle": {
+      "minor_per_unit": 1,
+      "disposable_per_player_day": {
+        "before": ["0", "0", "0"],
+        "after": ["0", "0", "0"]
+      },
+      "flows": [
+        {
+          "id": "managed_case_claim",
+          "kind": "item",
+          "source": "ManagedCratesService + classic/plugins/ExcellentCratesItemsAdder/features.yml",
+          "basis": "Один подтверждённо списанный физический ключ выдаёт один настроенный комплект; меняется только число доступных игроку вариантов.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {"value": "1", "unit": "major"},
+            "events_per_player_day": ["0", "1", "5"]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {"value": "1", "unit": "major"},
+            "events_per_player_day": ["0", "1", "5"]
+          }
+        }
+      ]
+    }
+  },
+  "prices": []
+}

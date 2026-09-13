@@ -48,7 +48,7 @@ class ManagedOpeningEngineTest {
         }
     }
 
-    @Test void restartAndRepeatedClicksKeepOneKeyOnePreparedBundle() {
+    @Test void oneWeightedRollAndRepeatedClicksKeepOneKeyOnePreparedBundle() {
         try (var runtime = MockBukkitTestRuntime.Companion.open()) {
             var player = runtime.addPlayer("CrateQA");
             var store = new MemoryStore();
@@ -67,10 +67,11 @@ class ManagedOpeningEngineTest {
             player.getInventory().setItem(0, new ItemStack(Material.TRIPWIRE_HOOK, 2));
             var opening = engine.open(player, pool, stack -> stack.getType() == Material.TRIPWIRE_HOOK, 1).orElseThrow();
             assertEquals(OpeningRecord.Stage.CHOOSING, opening.stage());
+            assertEquals(1, opening.offers().size());
             assertEquals(opening, engine.open(player, pool, stack -> true, 1).orElseThrow());
             assertEquals(1, player.getInventory().getItem(0).getAmount());
             for (int slot = 0; slot < 36; slot++) player.getInventory().setItem(slot, new ItemStack(Material.STONE, 64));
-            var mail = engine.select(player, opening.id(), opening.revision(), "prize");
+            var mail = engine.select(player, opening.id(), opening.revision(), opening.offers().getFirst().id());
             var prepared = engine.claim(player, mail.id(), mail.revision());
             assertEquals(OpeningRecord.Stage.MAIL, prepared.stage());
             assertEquals(3, preparations.get());

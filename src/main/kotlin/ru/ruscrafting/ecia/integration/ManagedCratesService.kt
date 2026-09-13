@@ -2,8 +2,6 @@ package ru.ruscrafting.ecia.integration
 
 import org.bukkit.Bukkit
 import org.bukkit.Location
-import org.bukkit.Sound
-import org.bukkit.SoundCategory
 import org.bukkit.command.CommandSender
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
@@ -14,7 +12,6 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.server.ServerLoadEvent
 import ru.arc.config.Config
-import ru.arc.core.ScheduledTask
 import ru.ruscrafting.ecia.analytics.OpeningAnalytics
 import ru.ruscrafting.ecia.admin.CrateAdminService
 import ru.ruscrafting.ecia.admin.CrateInspection
@@ -32,7 +29,6 @@ import ru.ruscrafting.ecia.roll.WeightedOfferGenerator
 import ru.ruscrafting.ecia.screens.EciaMenuActions
 import ru.ruscrafting.ecia.screens.EciaMenuConfiguration
 import ru.ruscrafting.ecia.screens.EciaMenuScreens
-import ru.ruscrafting.ecia.screens.OpeningRevealPlan
 import ru.ruscrafting.ecia.season.SeasonPoolStore
 import su.nightexpress.excellentcrates.CratesAPI
 import java.time.Clock
@@ -55,8 +51,6 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
     private var screens: EciaMenuScreens? = null
     private var router: NativeCrateInteractionRouter? = null
     private val roulette = WorldRouletteAnimator(plugin, runtime, payload)
-    private val reveals = mutableMapOf<java.util.UUID, RevealAnimation>()
-    private val openingAnchors = mutableMapOf<java.util.UUID, Location>()
     private var ready = false
     private var closed = false
 
@@ -79,9 +73,7 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
     }
 
     fun reload() {
-        cancelReveals()
         roulette.close()
-        openingAnchors.clear()
         ready = false
         configurationFailed = true
         runCatching {
@@ -177,8 +169,7 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
             return message(player, "managed.busy")
         }
         requireLedger().active(player.uniqueId).orElse(null)?.let {
-            if (anchor != null && it.stage() == OpeningRecord.Stage.CHOOSING) openingAnchors[it.id()] = anchor.clone()
-            show(player, it)
+            show(player, it, anchor)
             return
         }
         val cost = keys.cost(crate)
@@ -187,8 +178,7 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
         if (router?.allowManagedOpen(player, crate) != true) return message(player, "managed.vetoed")
         val record = requireEngine().open(player, pool, keys.matches(cost.keyId(), season), cost.amount()).orElse(null)
             ?: return message(player, "managed.no-key")
-        if (anchor != null) openingAnchors[record.id()] = anchor.clone()
-        reveal(player, record)
+        show(player, record, anchor)
         updateHealth()
     }
 
@@ -198,7 +188,7 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
         if (!crate.hasPermission(player)) return message(player, "no-permission")
         val season = keys.selectedSeason(player, keys.cost(crate)).orElse(settings.cases[crateId]?.seasonId())
         val pool = season?.let { seasons?.find(crateId, it)?.orElse(null) } ?: return message(player, "managed.unavailable")
-        requireScreens().openPoolPreview(requireMenus(), player, pool, actions(player))
+        requireScreens().openPoolPreview(requireMenus(), player, pool, actions())
     }
 
     private fun resume(player: Player) {
@@ -211,16 +201,15 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
     }
 
     private fun history(player: Player) {
-        requireScreens().openHistory(requireMenus(), player, records(player), actions(player))
+        requireScreens().openHistory(requireMenus(), player, records(player), actions())
     }
 
     private fun records(player: Player): List<OpeningRecord> = requireLedger().snapshot()
         .filter { it.playerId() == player.uniqueId }.sortedByDescending { it.createdAt() }
 
-    private fun show(player: Player, record: OpeningRecord) {
-        cancelReveal(player.uniqueId)
+    private fun show(player: Player, record: OpeningRecord, anchor: Location? = null) {
         when (record.stage()) {
-            OpeningRecord.Stage.CHOOSING -> requireScreens().openChoices(requireMenus(), player, record, actions(player))
+            OpeningRecord.Stage.CHOOSING -> selectAndAnimate(player, record, anchor)
             OpeningRecord.Stage.MAIL -> { player.closeInventory(); message(player, "managed.inventory-full") }
             OpeningRecord.Stage.DELIVERED -> { player.closeInventory(); message(player, "managed.delivered") }
             OpeningRecord.Stage.ABORTED -> { player.closeInventory(); message(player, "managed.key-not-consumed") }
@@ -228,63 +217,18 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
         }
     }
 
-    private fun reveal(player: Player, record: OpeningRecord) {
-        cancelReveal(player.uniqueId)
-        var frame = 0
-        val screen = requireScreens()
-        val menus = requireMenus()
-        val session = screen.openReveal(menus, player, record) { frame }
-        player.playSound(player.location, Sound.UI_BUTTON_CLICK, SoundCategory.MASTER, 0.25f, 0.8f)
-        val task = runtime.tasks().runTimer(REVEAL_PERIOD_TICKS, REVEAL_PERIOD_TICKS) {
-            val active = reveals[player.uniqueId]
-            if (active == null || active.openingId != record.id()) return@runTimer
-            if (!player.isOnline || !session.isOpen) {
-                cancelReveal(player.uniqueId)
-                return@runTimer
-            }
-            frame++
-            if (frame >= OpeningRevealPlan.FRAME_COUNT) {
-                cancelReveal(player.uniqueId)
-                player.playSound(player.location, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 0.35f, 1.35f)
-                show(player, record)
-                return@runTimer
-            }
-            session.refresh()
-            if (frame >= OpeningRevealPlan.REVEAL_START) {
-                player.playSound(player.location, Sound.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.MASTER, 0.3f,
-                    0.9f + (frame - OpeningRevealPlan.REVEAL_START) * 0.15f)
-            } else {
-                player.playSound(player.location, Sound.UI_BUTTON_CLICK, SoundCategory.MASTER, 0.18f, 0.9f + frame * 0.08f)
-            }
+    private fun selectAndAnimate(player: Player, opening: OpeningRecord, anchor: Location?) {
+        val reward = opening.offers().firstOrNull()
+            ?: throw IllegalStateException("Opening has no rolled reward")
+        val selected = requireEngine().select(player, opening.id(), opening.revision(), reward.id())
+        player.closeInventory()
+        val animated = anchor != null && roulette.start(player, anchor, selected) {
+            guarded(player) { finishSelection(player, selected) }
         }
-        if (task == null) {
-            show(player, record)
-            return
-        }
-        reveals[player.uniqueId] = RevealAnimation(record.id(), task)
+        if (!animated) finishSelection(player, selected)
     }
 
-    private fun cancelReveal(playerId: java.util.UUID) {
-        reveals.remove(playerId)?.task?.cancel()
-    }
-
-    private fun cancelReveals() {
-        reveals.values.forEach { it.task.cancel() }
-        reveals.clear()
-    }
-
-    private fun actions(player: Player) = EciaMenuActions(
-        choiceSelect = EciaMenuActions.ChoiceSelect { id, revision, reward -> guarded(player) {
-            val selected = requireEngine().select(player, id, revision, reward)
-            player.closeInventory()
-            val anchor = openingAnchors.remove(id)
-            val animated = anchor != null && roulette.start(player, anchor, selected) {
-                guarded(player) { finishSelection(player, selected) }
-            }
-            if (!animated) finishSelection(player, selected)
-        } },
-        reroll = EciaMenuActions.Reroll { id, revision -> guarded(player) { show(player, requireEngine().reroll(player, id, revision)) } },
-    )
+    private fun actions() = EciaMenuActions()
 
     private fun finishSelection(player: Player, selected: OpeningRecord) {
         val claimed = requireEngine().claim(player, selected.id(), selected.revision())
@@ -304,10 +248,7 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
 
     @EventHandler
     fun onQuit(event: PlayerQuitEvent) {
-        cancelReveal(event.player.uniqueId)
         roulette.cancel(event.player.uniqueId)
-        ledger?.snapshot()?.filter { it.playerId() == event.player.uniqueId }
-            ?.forEach { openingAnchors.remove(it.id()) }
         inventory.playerLeft(event.player.uniqueId)
     }
 
@@ -424,9 +365,7 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
         if (closed) return
         closed = true
         ready = false
-        cancelReveals()
         roulette.close()
-        openingAnchors.clear()
         plugin.clearManagedPreviewHandler()
         plugin.clearManagedOpenHandler()
         router?.close()
@@ -434,9 +373,4 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
         HandlerList.unregisterAll(this)
     }
 
-    private data class RevealAnimation(val openingId: java.util.UUID, val task: ScheduledTask)
-
-    private companion object {
-        const val REVEAL_PERIOD_TICKS = 4L
-    }
 }

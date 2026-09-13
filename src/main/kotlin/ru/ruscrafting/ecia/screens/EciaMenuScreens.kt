@@ -21,7 +21,6 @@ import ru.ruscrafting.ecia.journal.OpeningRecord
 import ru.ruscrafting.ecia.roll.PoolSnapshot
 import ru.ruscrafting.ecia.roll.RewardDefinition
 import java.util.Locale
-import java.util.UUID
 
 /**
  * Typed actions emitted by ECIA screens. Page values are signed deltas:
@@ -29,18 +28,8 @@ import java.util.UUID
  * the delta to the core session before forwarding it to the owner.
  */
 data class EciaMenuActions(
-    val choiceSelect: ChoiceSelect = ChoiceSelect { _, _, _ -> },
-    val reroll: Reroll = Reroll { _, _ -> },
     val page: Page = Page { _, _ -> },
 ) {
-    fun interface ChoiceSelect {
-        fun invoke(opening: UUID, revision: Long, reward: String)
-    }
-
-    fun interface Reroll {
-        fun invoke(opening: UUID, revision: Long)
-    }
-
     fun interface Page {
         fun invoke(menu: MenuId, delta: Int)
     }
@@ -48,8 +37,8 @@ data class EciaMenuActions(
 }
 
 /**
- * Paper inventory views for opening choices, history and a frozen pool
- * preview. It only renders content and invokes typed callbacks;
+ * Paper inventory views for opening history and a frozen pool preview.
+ * It only renders content and invokes typed callbacks;
  * durable opening mutations remain in the parent service.
  */
 class EciaMenuScreens(
@@ -62,82 +51,6 @@ class EciaMenuScreens(
 ) {
     init {
         require(labels.keys.containsAll(EciaMenuConfiguration.requiredLabels)) { "Menu labels are incomplete" }
-    }
-
-    fun renderChoices(
-        opening: OpeningRecord,
-        actions: EciaMenuActions = EciaMenuActions(),
-    ): PaperMenuContent {
-        val values = mapOf(
-            "crate" to caseName(opening.pool.crateId()),
-            "rerolls" to "${opening.rerollsUsed()}/${opening.pool.maxRerolls()}",
-        )
-        val offers = opening.offers().take(MAX_VISIBLE_CHOICES)
-        val entries = offers.map { reward ->
-            val share = weightShare(reward, opening.pool())
-            val rendered = preview(
-                reward,
-                "choice",
-                values = mapOf("weight" to share, "action" to label("choice-action")),
-            )
-            PaperMenuEntry(
-                item = rendered.item,
-                enabled = rendered.available,
-                onClick = PaperMenuClickHandler {
-                    if (rendered.available) actions.choiceSelect.invoke(opening.id(), opening.revision(), reward.id())
-                },
-            )
-        }
-        val remaining = (opening.pool.maxRerolls() - opening.rerollsUsed()).coerceAtLeast(0)
-        val rerollAvailable = opening.stage() == OpeningRecord.Stage.CHOOSING && remaining > 0
-        val rerollReason = when {
-            opening.stage() != OpeningRecord.Stage.CHOOSING -> label("reroll-stage")
-            remaining == 0 -> label("reroll-exhausted")
-            else -> label("reroll-action")
-        }
-        val elements = linkedMapOf(
-            element("info") to PaperMenuEntry(configured("choices-info", values), enabled = false),
-            element("reroll") to PaperMenuEntry(
-                configured(
-                    "reroll",
-                    mapOf("remaining" to remaining.toString(), "reason" to rerollReason),
-                    if (rerollAvailable) setOf("available") else emptySet(),
-                ),
-                enabled = rerollAvailable,
-                onClick = PaperMenuClickHandler {
-                    actions.reroll.invoke(opening.id(), opening.revision())
-                },
-            ),
-        )
-        return PaperMenuContent(
-            title = darkTitle(label("title-choices")),
-            background = background(),
-            elements = elements,
-            regions = mapOf(EciaMenuConfiguration.OFFERS to entries),
-        )
-    }
-
-    fun renderReveal(opening: OpeningRecord, frameIndex: Int): PaperMenuContent {
-        val offers = opening.offers().take(MAX_VISIBLE_CHOICES)
-        val frame = OpeningRevealPlan.frame(frameIndex, offers.size)
-        val entries = offers.mapIndexed { index, reward ->
-            val item = when {
-                index < frame.revealed -> preview(reward, "reveal-reward").item
-                index == frame.highlighted -> configured("reveal-active")
-                else -> configured("reveal-sealed")
-            }
-            PaperMenuEntry(item = item, enabled = false)
-        }
-        return PaperMenuContent(
-            title = darkTitle(caseName(opening.pool.crateId())),
-            elements = mapOf(
-                element("info") to PaperMenuEntry(
-                    configured("reveal-info", mapOf("crate" to caseName(opening.pool.crateId()))),
-                    enabled = false,
-                ),
-            ),
-            regions = mapOf(EciaMenuConfiguration.OFFERS to entries),
-        )
     }
 
     fun renderHistory(
@@ -208,24 +121,6 @@ class EciaMenuScreens(
                 EciaMenuConfiguration.FOOTER to List(7) { PaperMenuEntry(background(), enabled = false) },
             ),
         )
-    }
-
-    fun openReveal(
-        runtime: PaperMenuRuntime,
-        player: Player,
-        opening: OpeningRecord,
-        frame: () -> Int,
-    ): PaperMenuSession = runtime.open(player, EciaMenuConfiguration.CHOICES) {
-        renderReveal(opening, frame())
-    }
-
-    fun openChoices(
-        runtime: PaperMenuRuntime,
-        player: Player,
-        opening: OpeningRecord,
-        actions: EciaMenuActions = EciaMenuActions(),
-    ): PaperMenuSession = runtime.open(player, EciaMenuConfiguration.CHOICES) {
-        renderChoices(opening, actions)
     }
 
     fun openHistory(
@@ -385,22 +280,4 @@ class EciaMenuScreens(
         }
 
     private data class Preview(val item: ItemStack, val available: Boolean)
-
-    private companion object {
-        const val MAX_VISIBLE_CHOICES = 3
-    }
-}
-
-internal data class OpeningRevealFrame(val highlighted: Int?, val revealed: Int)
-
-internal object OpeningRevealPlan {
-    const val FRAME_COUNT = 9
-    const val REVEAL_START = 6
-
-    fun frame(index: Int, offerCount: Int): OpeningRevealFrame {
-        require(index >= 0) { "Reveal frame must not be negative" }
-        require(offerCount in 1..3) { "Reveal needs between one and three offers" }
-        if (index < REVEAL_START) return OpeningRevealFrame(index % offerCount, 0)
-        return OpeningRevealFrame(null, (index - REVEAL_START + 1).coerceIn(0, offerCount))
-    }
 }

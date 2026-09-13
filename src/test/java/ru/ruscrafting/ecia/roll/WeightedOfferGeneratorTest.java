@@ -54,6 +54,18 @@ class WeightedOfferGeneratorTest {
     }
 
     @Test
+    void singleRollUsesWeightsWithoutGeneratingConfiguredChoiceCount() {
+        RewardDefinition heavy = reward("heavy", 3.0);
+        RewardDefinition light = reward("light", 1.0);
+        PoolSnapshot legacyRules = new PoolSnapshot("crate", "season", List.of(heavy, light), 3, 1);
+
+        assertEquals(List.of(heavy), new WeightedOfferGenerator(new SequenceRandom(Math.nextDown(0.75)))
+                .generateOne(legacyRules).rewards());
+        assertEquals(List.of(light), new WeightedOfferGenerator(new SequenceRandom(0.75))
+                .generateOne(legacyRules).rewards());
+    }
+
+    @Test
     void rerollReplacesOnlyTheMostCommonOptionWithAnUnseenReward() {
         RewardDefinition commonest = reward("commonest", 10.0);
         RewardDefinition other = reward("other", 2.0);

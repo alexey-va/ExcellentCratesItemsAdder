@@ -30,7 +30,7 @@ managed:
   stats-title: '<#ffd567><crate> · statistics <page>/<pages>'
   stats-empty: '<#fff2df>No confirmed openings yet.'
   stats-row: '<#fff2df><mode> · <reward>: offered <offered>/<opened>, selected <selected>/<selections>; chance <base>%'
-  stats-note: '<#ffcc80>Counts use the latest offers per opening; ordinary and rerolled openings are separate.'
+  stats-note: '<#ffcc80>Each opening uses one roll; historical rerolled records remain separate.'
   admin-usage: '<#ffe08a>/ecia inspect [crate] · /ecia repair [crate]'
   admin-unavailable: '<#ffb56b>ItemsAdder is unavailable for furniture inspection.'
   admin-title: '<#ffd567><crate> · <status> · expected <expected> · key <key> · pending <pending>'

@@ -27,11 +27,9 @@ object EciaMenuConfiguration {
     private val fallbackByConfiguration = Collections.synchronizedMap(WeakHashMap<PaperMenuConfiguration, String>())
     private val labelsByConfiguration = Collections.synchronizedMap(WeakHashMap<PaperMenuConfiguration, Map<String, String>>())
 
-    val CHOICES = MenuId.of("ecia-choices")
     val HISTORY = MenuId.of("ecia-history")
     val POOL_PREVIEW = MenuId.of("ecia-pool-preview")
 
-    val OFFERS = MenuRegionId.of("offers")
     val ENTRIES = MenuRegionId.of("entries")
     val REWARDS = MenuRegionId.of("rewards")
     val FOOTER = MenuRegionId.of("footer")
@@ -40,10 +38,6 @@ object EciaMenuConfiguration {
 
     /** Semantic contracts consumed by [EciaMenuScreens]. */
     val contracts: Map<MenuId, MenuContract> = linkedMapOf(
-        CHOICES to MenuContract(
-            requiredElements = elements("info", "reroll"),
-            requiredRegions = setOf(OFFERS),
-        ),
         HISTORY to MenuContract(
             requiredElements = elements("info", "previous", "next"),
             requiredRegions = setOf(ENTRIES),
@@ -56,20 +50,6 @@ object EciaMenuConfiguration {
 
     val textContracts: Map<String, PaperMenuTextContract> = mapOf(
         "background" to PaperMenuTextContract(),
-        "choices-info" to PaperMenuTextContract(
-            values = setOf("crate", "rerolls"),
-        ),
-        "choice" to PaperMenuTextContract(
-            values = setOf("weight", "action"),
-        ),
-        "reveal-info" to PaperMenuTextContract(values = setOf("crate")),
-        "reveal-sealed" to PaperMenuTextContract(),
-        "reveal-active" to PaperMenuTextContract(),
-        "reveal-reward" to PaperMenuTextContract(),
-        "reroll" to PaperMenuTextContract(
-            values = setOf("remaining", "reason"),
-            flags = setOf("available"),
-        ),
         "history-info" to PaperMenuTextContract(values = setOf("count")),
         "history-entry" to PaperMenuTextContract(
             values = setOf("state", "revision"),
@@ -81,8 +61,7 @@ object EciaMenuConfiguration {
     )
 
     val requiredLabels: Set<String> = setOf(
-        "title-choices", "title-history", "title-pool",
-        "choice-action", "reroll-stage", "reroll-exhausted", "reroll-action",
+        "title-history", "title-pool",
         "status-reserved", "status-choosing", "status-mail", "status-delivering",
         "status-delivered", "status-review", "status-aborted",
     )
