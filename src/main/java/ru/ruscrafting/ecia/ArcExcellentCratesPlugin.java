@@ -28,6 +28,8 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin implements TabExe
     private BiFunction<CommandSender, String[], Boolean> delegatedCommandHandler;
     private ManagedCratesService managedCrates;
     private CrateHologramService crateHolograms;
+    private CrateVisualSettingsStore visualSettings;
+    private CrateVisualEditor visualEditor;
 
     @Override
     public void onEnable() {
@@ -51,6 +53,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin implements TabExe
         );
         protectionListener = new CrateProtectionListener(registry, runtime, locale.render("protected"), previewCommand);
         getServer().getPluginManager().registerEvents(protectionListener, this);
+        visualSettings = new CrateVisualSettingsStore(this);
 
         var command = getCommand("ecia");
         if (command == null) {
@@ -65,7 +68,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin implements TabExe
         runtime.info("Protecting {} ExcellentCrates furniture position(s).", count);
         if (getServer().getPluginManager().isPluginEnabled("ExcellentCrates")) {
             try {
-                crateHolograms = registerService(new CrateHologramService(this));
+                crateHolograms = registerService(new CrateHologramService(this, visualSettings));
             } catch (RuntimeException | LinkageError failure) {
                 runtime.error("Compact crate holograms are unavailable: {}", failure.toString());
             }
@@ -73,7 +76,11 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin implements TabExe
         if (getServer().getPluginManager().isPluginEnabled("ExcellentCrates")
                 && getServer().getPluginManager().isPluginEnabled("ARC")) {
             try {
-                managedCrates = registerService(new ManagedCratesService(this));
+                visualEditor = registerService(new CrateVisualEditor(this, visualSettings, anchor -> {
+                    if (crateHolograms != null) crateHolograms.refresh(anchor);
+                }));
+                protectionListener.setVisualEditorHandler(visualEditor::open);
+                managedCrates = registerService(new ManagedCratesService(this, visualSettings));
                 setDelegatedCommandHandler(managedCrates::command);
             } catch (RuntimeException | LinkageError failure) {
                 runtime.error("Managed crate service is unavailable; furniture protection remains active: {}", failure.toString());
@@ -85,6 +92,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin implements TabExe
     public void onDisable() {
         if (protectionListener != null) {
             protectionListener.clearManagedPreviewHandler();
+            protectionListener.clearVisualEditorHandler();
             protectionListener.clear();
         }
         if (runtime != null) {
@@ -100,6 +108,10 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin implements TabExe
 
     public boolean isCrateEditMode(Player player) {
         return protectionListener != null && protectionListener.isEditMode(player);
+    }
+
+    public boolean openCrateVisualEditor(Player player, CrateVisualTarget target) {
+        return visualEditor != null && visualEditor.open(player, target);
     }
 
     /** Register a managed preview route without coupling protection to domain services. */
@@ -151,6 +163,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin implements TabExe
                 return true;
             }
             reloadConfig();
+            visualSettings.reload();
             runtime.locale().reload(legacyMessages());
             protectionListener.setProtectedMessage(runtime.locale().render("protected"));
             int count = registry.reload();

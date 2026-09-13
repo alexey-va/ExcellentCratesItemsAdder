@@ -107,6 +107,38 @@ class NativeCrateInteractionRouterTest {
     }
 
     @Test
+    fun sneakingLeftClickOpensVisualEditorInsteadOfPreviewOrOpening() {
+        MockBukkitTestRuntime.open().use { paper ->
+            val fixture = fixture(paper)
+            fixture.player.isSneaking = true
+            val edits = AtomicInteger()
+            val opens = AtomicInteger()
+            withRouter(
+                fixture,
+                open = { _, _ -> opens.incrementAndGet() },
+                visualEditor = { _, target ->
+                    assertEquals(fixture.block.location, target.anchor())
+                    edits.incrementAndGet()
+                    true
+                },
+            ) { _, _, _ ->
+                val event = PlayerInteractEvent(
+                    fixture.player,
+                    Action.LEFT_CLICK_BLOCK,
+                    ItemStack(Material.TRIPWIRE_HOOK),
+                    fixture.block,
+                    BlockFace.SELF,
+                    EquipmentSlot.HAND,
+                )
+                paper.server.pluginManager.callEvent(event)
+
+                assertEquals(1, edits.get())
+                assertEquals(0, opens.get())
+            }
+        }
+    }
+
+    @Test
     fun excellentCratesRestartRebindsCurrentNativeHandler() {
         MockBukkitTestRuntime.open().use { paper ->
             val oldPlugin = mockk<CratesPlugin>(relaxed = true)
@@ -133,6 +165,7 @@ class NativeCrateInteractionRouterTest {
                     { _, _ -> },
                     { _, _ -> },
                     { },
+                    { _, _ -> false },
                     { false },
                     { },
                 )
@@ -191,6 +224,7 @@ class NativeCrateInteractionRouterTest {
     private fun withRouter(
         fixture: Fixture,
         open: (Player, ManagedOpenTarget) -> Unit = { _, _ -> },
+        visualEditor: (Player, ManagedOpenTarget) -> Boolean = { _, _ -> false },
         body: (NativeCrateInteractionRouter, Player, Crate) -> Unit,
     ) {
         val router = NativeCrateInteractionRouter(
@@ -199,6 +233,7 @@ class NativeCrateInteractionRouterTest {
             open,
             { _, _ -> },
             { },
+            visualEditor,
             { false },
             { },
         )

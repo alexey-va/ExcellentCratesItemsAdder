@@ -19,6 +19,7 @@ import org.joml.Quaternionf
 import org.joml.Vector3f
 import ru.arc.core.ScheduledTask
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
+import ru.ruscrafting.ecia.CrateVisualSettingsStore
 import ru.ruscrafting.ecia.inventory.NativeItemPayload
 import ru.ruscrafting.ecia.journal.OpeningRecord
 import ru.ruscrafting.ecia.roll.RewardDefinition
@@ -31,6 +32,7 @@ internal class WorldRouletteAnimator(
     private val plugin: ArcExcellentCratesPlugin,
     private val runtime: EciaRuntime,
     private val payload: NativeItemPayload,
+    private val visualSettings: CrateVisualSettingsStore,
 ) : AutoCloseable {
     private val sessions = mutableMapOf<UUID, Session>()
 
@@ -46,25 +48,26 @@ internal class WorldRouletteAnimator(
         }
         sequence[WorldRouletteTrack.SELECTED_INDEX] = selectedItem.clone()
 
-        val center = anchor.clone().add(0.5, REEL_HEIGHT, 0.5)
+        val visual = visualSettings.get(CrateVisualSettingsStore.Anchor.of(anchor)).roulette()
+        val center = anchor.clone().add(0.5 + visual.offsetX(), visual.offsetY(), 0.5 + visual.offsetZ())
         val axis = reelAxis(center, player.location)
         val displays = mutableListOf<ItemDisplay>()
         val entities = mutableListOf<Entity>()
         return runCatching {
             val initial = WorldRouletteTrack.frame(0)
             sequence.forEachIndexed { index, item ->
-                val position = position(center, axis, WorldRouletteTrack.cells(index, initial))
+                val position = position(center, axis, WorldRouletteTrack.cells(index, initial), visual.itemSpacing())
                 val display = player.world.spawn(position, ItemDisplay::class.java) { entity ->
-                    configure(entity)
+                    configure(entity, visual.viewRange())
                     entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GUI
-                    entity.transformation = transformation(ITEM_SCALE)
+                    entity.transformation = transformation(visual.itemScale())
                     entity.setItemStack(item.clone())
                 }
                 displays += display
                 entities += display
             }
-            val pointer = player.world.spawn(center.clone().add(0.0, POINTER_HEIGHT, 0.0), TextDisplay::class.java) { entity ->
-                configure(entity)
+            val pointer = player.world.spawn(center.clone().add(0.0, visual.pointerHeight(), 0.0), TextDisplay::class.java) { entity ->
+                configure(entity, visual.viewRange())
                 entity.text(
                     Component.text("▼", NamedTextColor.GOLD)
                         .decoration(TextDecoration.BOLD, false)
@@ -75,12 +78,12 @@ internal class WorldRouletteAnimator(
                 entity.backgroundColor = Color.fromARGB(0, 0, 0, 0)
                 entity.isSeeThrough = true
                 entity.isShadowed = true
-                entity.transformation = transformation(POINTER_SCALE)
+                entity.transformation = transformation(visual.pointerScale())
             }
             player.showEntity(plugin, pointer)
             entities += pointer
 
-            val session = Session(player, displays, entities, BooleanArray(displays.size), center, axis, onComplete)
+            val session = Session(player, displays, entities, BooleanArray(displays.size), center, axis, visual, onComplete)
             sessions[player.uniqueId] = session
             render(session, WorldRouletteTrack.frame(0))
             session.reelTask = runtime.tasks().runTimer(FRAME_PERIOD_TICKS, FRAME_PERIOD_TICKS) {
@@ -134,7 +137,7 @@ internal class WorldRouletteAnimator(
                 session.visible[sequenceIndex] = false
                 return@forEachIndexed
             }
-            display.teleport(position(session.center, session.axis, WorldRouletteTrack.cells(sequenceIndex, frame)))
+            display.teleport(position(session.center, session.axis, WorldRouletteTrack.cells(sequenceIndex, frame), session.visual.itemSpacing()))
             if (!session.visible[sequenceIndex]) session.player.showEntity(plugin, display)
             session.visible[sequenceIndex] = visible
         }
@@ -146,7 +149,7 @@ internal class WorldRouletteAnimator(
         val winner = session.displays[WorldRouletteTrack.SELECTED_INDEX]
         winner.isGlowing = true
         winner.glowColorOverride = Color.fromRGB(255, 213, 103)
-        winner.transformation = transformation(WINNER_SCALE)
+        winner.transformation = transformation(session.visual.winnerScale())
         session.player.playSound(session.center, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 0.55f, 1.25f)
     }
 
@@ -161,14 +164,14 @@ internal class WorldRouletteAnimator(
     private fun preview(reward: RewardDefinition): ItemStack? =
         runCatching { payload.items(reward.previewPayload()).firstOrNull()?.takeUnless(ItemStack::isEmpty) }.getOrNull()
 
-    private fun configure(display: Display) {
+    private fun configure(display: Display, viewRange: Float) {
         display.isPersistent = false
         display.isVisibleByDefault = false
         display.billboard = Display.Billboard.CENTER
         display.brightness = Display.Brightness(15, 15)
         display.teleportDuration = FRAME_PERIOD_TICKS.toInt()
         display.interpolationDuration = FRAME_PERIOD_TICKS.toInt()
-        display.viewRange = 24f
+        display.viewRange = viewRange
         display.shadowRadius = 0.15f
         display.shadowStrength = 0.6f
     }
@@ -180,8 +183,8 @@ internal class WorldRouletteAnimator(
         return Vector(-towardPlayer.z, 0.0, towardPlayer.x)
     }
 
-    private fun position(center: Location, axis: Vector, cells: Double): Location =
-        center.clone().add(axis.clone().multiply(cells * ITEM_SPACING))
+    private fun position(center: Location, axis: Vector, cells: Double, itemSpacing: Double): Location =
+        center.clone().add(axis.clone().multiply(cells * itemSpacing))
 
     private fun transformation(scale: Float) = Transformation(
         Vector3f(),
@@ -201,6 +204,7 @@ internal class WorldRouletteAnimator(
         val visible: BooleanArray,
         val center: Location,
         val axis: Vector,
+        val visual: CrateVisualSettingsStore.Roulette,
         val onComplete: () -> Unit,
         var frame: Int = 0,
         var reelTask: ScheduledTask? = null,
@@ -210,11 +214,5 @@ internal class WorldRouletteAnimator(
     private companion object {
         const val FRAME_PERIOD_TICKS = 1L
         const val HOLD_TICKS = 24L
-        const val REEL_HEIGHT = 3.65
-        const val ITEM_SPACING = 0.82
-        const val POINTER_HEIGHT = 1.08
-        const val ITEM_SCALE = 0.95f
-        const val WINNER_SCALE = 1.32f
-        const val POINTER_SCALE = 1.55f
     }
 }

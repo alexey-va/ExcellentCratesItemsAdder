@@ -3,11 +3,24 @@ registry-refresh-ticks: 100
 preview-command: "excellentcrates preview <crate> <player>"
 case-holograms:
   enabled: true
-  # One fixed TextDisplay with the native case name, kept close to the lid.
+  # Defaults. Shift + left-click a case to override one placed chest.
+  offset-x: 0.0
   height-above-block: 0.18
+  offset-z: 0.0
   scale: 2.0
   yaw: 0.0
+  pitch: 0.0
   view-range: 1.0
+case-roulette:
+  offset-x: 0.0
+  height-above-block: 3.65
+  offset-z: 0.0
+  item-spacing: 0.82
+  item-scale: 0.95
+  winner-scale: 1.32
+  pointer-height: 1.08
+  pointer-scale: 1.55
+  view-range: 24.0
 messages:
   protected: "<red>Этот сундук привязан к кейсу. <gray>/ecia edit on <red>— режим редактирования."
   edit-enabled: "<gold>Редактирование кейсов включено: мебель теперь можно ломать."

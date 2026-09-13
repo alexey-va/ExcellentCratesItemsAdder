@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -38,6 +39,7 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
     private final BiConsumer<Player, ManagedOpenTarget> open;
     private final BiConsumer<Player, Crate> preview;
     private final Consumer<Player> nativeOpenDenied;
+    private final BiPredicate<Player, ManagedOpenTarget> visualEditor;
     private final Predicate<Player> editor;
     private final Runnable reloaded;
     private final ThreadLocal<Set<CrateOpenEvent>> selfPermits = ThreadLocal.withInitial(HashSet::new);
@@ -49,12 +51,13 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
 
     public NativeCrateInteractionRouter(JavaPlugin plugin, Predicate<String> managed,
             BiConsumer<Player, ManagedOpenTarget> open, BiConsumer<Player, Crate> preview, Consumer<Player> nativeOpenDenied,
-            Predicate<Player> editor, Runnable reloaded) {
+            BiPredicate<Player, ManagedOpenTarget> visualEditor, Predicate<Player> editor, Runnable reloaded) {
         this.plugin = plugin;
         this.managed = managed;
         this.open = open;
         this.preview = preview;
         this.nativeOpenDenied = nativeOpenDenied;
+        this.visualEditor = visualEditor;
         this.editor = editor;
         this.reloaded = reloaded;
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
@@ -131,6 +134,10 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
         event.setUseItemInHand(Event.Result.DENY);
         event.setUseInteractedBlock(Event.Result.DENY);
         if (previouslyCancelled) return true;
+        if (leftClick && !portable && event.getPlayer().isSneaking()
+                && visualEditor.test(event.getPlayer(), new ManagedOpenTarget(crate, event.getClickedBlock().getLocation()))) {
+            return true;
+        }
         if (editor.test(event.getPlayer())) return true;
         if (leftClick) {
             preview.accept(event.getPlayer(), crate);

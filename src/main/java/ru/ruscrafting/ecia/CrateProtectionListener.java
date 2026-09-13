@@ -41,6 +41,7 @@ final class CrateProtectionListener implements Listener {
     private final Map<UUID, EntityInteraction> lastEntityInteractions = new HashMap<>();
     private volatile BiFunction<Player, String, Boolean> managedPreviewHandler;
     private volatile BiFunction<Player, String, Boolean> managedOpenHandler;
+    private volatile BiFunction<Player, CrateVisualTarget, Boolean> visualEditorHandler;
 
     CrateProtectionListener(CrateRegistry registry, EciaRuntime runtime, Component protectedMessage, String previewCommand) {
         this.registry = registry;
@@ -76,6 +77,14 @@ final class CrateProtectionListener implements Listener {
         this.managedOpenHandler = null;
     }
 
+    void setVisualEditorHandler(BiFunction<Player, CrateVisualTarget, Boolean> handler) {
+        this.visualEditorHandler = handler;
+    }
+
+    void clearVisualEditorHandler() {
+        this.visualEditorHandler = null;
+    }
+
     void setProtectedMessage(Component message) {
         this.protectedMessage = message;
     }
@@ -87,12 +96,17 @@ final class CrateProtectionListener implements Listener {
         }
         Entity target = event.getEntity();
         boolean furniture = isFurnitureCarrier(target);
-        boolean registered = target.getWorld() != null && registry.contains(CratePosition.from(target.getLocation()));
+        CratePosition position = CratePosition.from(target.getLocation());
+        boolean registered = target.getWorld() != null && registry.contains(position);
+        if (furniture && registered && player.isSneaking() && openVisualEditor(player, position, target.getLocation())) {
+            event.setCancelled(true);
+            return;
+        }
         if (!ProtectionPolicy.shouldProtect(player.getGameMode(), editors.contains(player.getUniqueId()), furniture, registered)) {
             return;
         }
         event.setCancelled(true);
-        feedbackAndPreview(player, CratePosition.from(target.getLocation()));
+        feedbackAndPreview(player, position);
     }
 
     /** Handles the ordinary right-click entity event path. */
@@ -143,6 +157,7 @@ final class CrateProtectionListener implements Listener {
     }
 
     void clear() {
+        visualEditorHandler = null;
         editors.clear();
         lastFeedback.clear();
         lastEntityInteractions.clear();
@@ -199,6 +214,18 @@ final class CrateProtectionListener implements Listener {
                 PersistentDataType.STRING
         );
         return "furniture".equals(behaviour) || FurnitureCarrierPolicy.isKnownCarrier(target.getType());
+    }
+
+    private boolean openVisualEditor(Player player, CratePosition position, org.bukkit.Location location) {
+        String crateId = registry.crateId(position).orElse(null);
+        BiFunction<Player, CrateVisualTarget, Boolean> handler = visualEditorHandler;
+        if (crateId == null || handler == null) return false;
+        try {
+            return Boolean.TRUE.equals(handler.apply(player, new CrateVisualTarget(crateId, location)));
+        } catch (RuntimeException exception) {
+            runtime.error("Crate visual editor failed for crate {}", crateId, exception);
+            return false;
+        }
     }
 
     private void feedbackAndPreview(Player player, CratePosition position) {

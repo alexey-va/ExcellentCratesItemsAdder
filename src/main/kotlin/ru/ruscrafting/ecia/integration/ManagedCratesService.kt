@@ -19,6 +19,8 @@ import ru.ruscrafting.ecia.admin.ItemsAdderGroundingProvider
 import ru.ruscrafting.ecia.admin.NativeAdminCrateGateway
 import ru.ruscrafting.ecia.admin.PendingMailCounters
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
+import ru.ruscrafting.ecia.CrateVisualSettingsStore
+import ru.ruscrafting.ecia.CrateVisualTarget
 import ru.ruscrafting.ecia.inventory.NativeItemPayload
 import ru.ruscrafting.ecia.inventory.OpeningInventoryTransactions
 import ru.ruscrafting.ecia.journal.DurableOpeningStore
@@ -35,7 +37,10 @@ import java.time.Clock
 import java.util.random.RandomGenerator
 
 /** Owns managed openings and their player-facing entry points. */
-class ManagedCratesService(private val plugin: ArcExcellentCratesPlugin) : AutoCloseable, Listener {
+class ManagedCratesService(
+    private val plugin: ArcExcellentCratesPlugin,
+    visualSettings: CrateVisualSettingsStore,
+) : AutoCloseable, Listener {
     private val runtime = plugin.runtime()
     private val root = plugin.dataFolder.toPath()
     private val payload = NativeItemPayload()
@@ -50,7 +55,7 @@ class ManagedCratesService(private val plugin: ArcExcellentCratesPlugin) : AutoC
     private var engine: ManagedOpeningEngine? = null
     private var screens: EciaMenuScreens? = null
     private var router: NativeCrateInteractionRouter? = null
-    private val roulette = WorldRouletteAnimator(plugin, runtime, payload)
+    private val roulette = WorldRouletteAnimator(plugin, runtime, payload, visualSettings)
     private var ready = false
     private var closed = false
 
@@ -107,6 +112,7 @@ class ManagedCratesService(private val plugin: ArcExcellentCratesPlugin) : AutoC
             { player, target -> guarded(player) { open(player, target.crate().id, target.anchor()) } },
             { player, crate -> guarded(player) { preview(player, crate.id) } },
             { player -> message(player, "managed.native-command") },
+            { player, target -> plugin.openCrateVisualEditor(player, CrateVisualTarget(target.crate().id, target.anchor())) },
             plugin::isCrateEditMode, this::reload)
     }
 
@@ -211,7 +217,7 @@ class ManagedCratesService(private val plugin: ArcExcellentCratesPlugin) : AutoC
         when (record.stage()) {
             OpeningRecord.Stage.CHOOSING -> selectAndAnimate(player, record, anchor)
             OpeningRecord.Stage.MAIL -> { player.closeInventory(); message(player, "managed.inventory-full") }
-            OpeningRecord.Stage.DELIVERED -> { player.closeInventory(); message(player, "managed.delivered") }
+            OpeningRecord.Stage.DELIVERED -> player.closeInventory()
             OpeningRecord.Stage.ABORTED -> { player.closeInventory(); message(player, "managed.key-not-consumed") }
             else -> { player.closeInventory(); message(player, "managed.review") }
         }
