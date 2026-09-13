@@ -14,11 +14,19 @@ import java.util.List;
 /** Native Paper bytes retain ItemsAdder, EC and voucher persistent metadata. */
 public final class NativeItemPayload {
     private static final int MAX_PAYLOAD = 2_000_000;
-    private final PaperItemStackBinaryCodec items = NativePaperItemStackBinaryCodec.INSTANCE;
+    private final PaperItemStackBinaryCodec items;
     private final ObjectMapper json = new ObjectMapper()
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES)
             .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES);
+
+    public NativeItemPayload() {
+        this(NativePaperItemStackBinaryCodec.INSTANCE);
+    }
+
+    NativeItemPayload(PaperItemStackBinaryCodec items) {
+        this.items = java.util.Objects.requireNonNull(items);
+    }
 
     public List<String> capture(ItemStack[] items) {
         return Arrays.stream(items).map(item -> item == null || item.isEmpty() ? ""

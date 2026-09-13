@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "title": "ECIA: восстановление зависшего списания ключа",
+  "assumptions": [
+    "Изменение не меняет веса, состав или количество наград кейса и не создаёт vault/tokens напрямую.",
+    "После подтверждённого локального изменения инвентаря бинарно неканоничная сериализация больше не отправляет открытие в REVIEW.",
+    "Для уже зависшей записи ручной /ecia resume допускает один набор наград без повторного списания; повторный resume не повторяет выбор или выдачу.",
+    "Low/base/high: 0/0.01/0.1 неоднозначного открытия на игрока в день — консервативное допущение для редкого аварийного пути, а не telemetry."
+  ],
+  "participants": [1, 10, 50],
+  "currencies": {
+    "crate_reward_bundle": {
+      "minor_per_unit": 1,
+      "disposable_per_player_day": {
+        "before": ["0", "0", "0"],
+        "after": ["0", "0.01", "0.1"]
+      },
+      "flows": [
+        {
+          "id": "unconfirmed_key_resume",
+          "kind": "item",
+          "source": "ManagedCratesService.resume",
+          "basis": "Один уже зарезервированный кейс на одну durable-запись; запись после восстановления покидает REVIEW.",
+          "before": {
+            "enabled": false,
+            "amount_per_event": {"value": "1", "unit": "major"},
+            "events_per_player_day": ["0", "0", "0"]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {"value": "1", "unit": "major"},
+            "events_per_player_day": ["0", "0.01", "0.1"]
+          }
+        }
+      ]
+    }
+  },
+  "prices": []
+}

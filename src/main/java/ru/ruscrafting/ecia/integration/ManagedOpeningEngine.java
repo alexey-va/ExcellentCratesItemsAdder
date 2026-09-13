@@ -69,6 +69,21 @@ public final class ManagedOpeningEngine {
         return ledger.select(id, player.getUniqueId(), revision, rewardId);
     }
 
+    /** Manual recovery never debits again. In the test rollout, an unresolved local debit continues once. */
+    public OpeningRecord resume(Player player, OpeningRecord record) {
+        if (!record.playerId().equals(player.getUniqueId())) throw new IllegalArgumentException("Wrong opening owner");
+        if (record.stage() == OpeningRecord.Stage.MAIL) return claim(player, record.id(), record.revision());
+        if (record.stage() != OpeningRecord.Stage.REVIEW) return record;
+        OpeningRecord checked = reconcile(player).orElse(record);
+        if (checked.stage() == OpeningRecord.Stage.REVIEW
+                && checked.selectedRewardId().isEmpty()
+                && "native-key-debit-unconfirmed".equals(checked.reason())) {
+            return ledger.reconciled(checked.id(), player.getUniqueId(), checked.revision(), true,
+                    "manual-resume-assumed-key-debit");
+        }
+        return checked;
+    }
+
     /** Materialization never grants; actual provider items are persisted before inventory mutation. */
     public OpeningRecord claim(Player player, UUID id, long revision) {
         UUID playerId = player.getUniqueId();

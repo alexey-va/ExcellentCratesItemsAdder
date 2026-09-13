@@ -5,14 +5,32 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.junit.jupiter.api.Test;
+import ru.arc.paper.playerstate.NativePaperItemStackBinaryCodec;
+import ru.arc.paper.playerstate.PaperItemStackBinaryCodec;
 import ru.arc.paper.testing.MockBukkitTestRuntime;
 
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class OpeningInventoryTransactionsTest {
+    @Test void semanticallyEqualInventoryAcceptsNonCanonicalBinaryEncoding() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            var codec = new NativeItemPayload(new NonCanonicalItemCodec());
+            var transactions = new OpeningInventoryTransactions(codec, p -> { }, () -> true);
+            player.getInventory().setItem(10, new ItemStack(Material.TRIPWIRE_HOOK, 56));
+            var witness = transactions.debit(player, UUID.randomUUID(), item -> true, 1).orElseThrow();
+
+            assertEquals(OpeningInventoryTransactions.Outcome.APPLIED, transactions.apply(player, witness));
+            assertEquals(55, player.getInventory().getItem(10).getAmount());
+        }
+    }
+
     @Test void keyDebitUsesExactSeasonAndSurvivesRepeatedApply() {
         try (var runtime = MockBukkitTestRuntime.Companion.open()) {
             var player = runtime.addPlayer("CrateQA");
@@ -63,6 +81,24 @@ class OpeningInventoryTransactionsTest {
             var hotReloaded = new OpeningInventoryTransactions(new NativeItemPayload(), p -> {}, () -> true);
             assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN, hotReloaded.inspect(player, first),
                     "A hot reload must not trust an in-memory receipt from a failed native save");
+        }
+    }
+
+    private static final class NonCanonicalItemCodec implements PaperItemStackBinaryCodec {
+        private final AtomicInteger sequence = new AtomicInteger();
+        @Override public byte[] encodeItems(List<? extends ItemStack> items) {
+            return NativePaperItemStackBinaryCodec.INSTANCE.encodeItems(items);
+        }
+        @Override public List<ItemStack> decodeItems(byte[] payload) {
+            return NativePaperItemStackBinaryCodec.INSTANCE.decodeItems(payload);
+        }
+        @Override public byte[] encodeItem(ItemStack item) {
+            byte[] encoded = NativePaperItemStackBinaryCodec.INSTANCE.encodeItem(item);
+            return ByteBuffer.allocate(encoded.length + Integer.BYTES)
+                    .putInt(sequence.incrementAndGet()).put(encoded).array();
+        }
+        @Override public ItemStack decodeItem(byte[] payload) {
+            return NativePaperItemStackBinaryCodec.INSTANCE.decodeItem(Arrays.copyOfRange(payload, Integer.BYTES, payload.length));
         }
     }
 }

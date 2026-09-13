@@ -24,6 +24,30 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ManagedOpeningEngineTest {
+    @Test void manualResumeContinuesOneUnconfirmedKeyDebitWithoutDebitingAgain() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            var store = new MemoryStore();
+            var ledger = new OpeningLedger(store, Clock.systemUTC());
+            var codec = new NativeItemPayload();
+            var inventory = new OpeningInventoryTransactions(codec, p -> { throw new IllegalStateException("save failed"); }, () -> true);
+            var reward = new RewardDefinition("prize", 1, "frozen", "preview");
+            var pool = new PoolSnapshot("daily", "launch", List.of(reward), 1, 0, 1);
+            var engine = new ManagedOpeningEngine(ledger, new WeightedOfferGenerator(new Random(1)), inventory, codec,
+                    definition -> new ItemStack[]{new ItemStack(Material.DIAMOND)});
+            player.getInventory().setItem(0, new ItemStack(Material.TRIPWIRE_HOOK, 2));
+
+            var review = engine.open(player, pool, stack -> stack.getType() == Material.TRIPWIRE_HOOK, 1).orElseThrow();
+            assertEquals(OpeningRecord.Stage.REVIEW, review.stage());
+            assertEquals(1, player.getInventory().getItem(0).getAmount());
+
+            var choosing = engine.resume(player, review);
+            assertEquals(OpeningRecord.Stage.CHOOSING, choosing.stage());
+            assertEquals(1, player.getInventory().getItem(0).getAmount());
+            assertEquals(choosing, engine.resume(player, choosing));
+        }
+    }
+
     @Test void restartAndRepeatedClicksKeepOneKeyOnePreparedBundle() {
         try (var runtime = MockBukkitTestRuntime.Companion.open()) {
             var player = runtime.addPlayer("CrateQA");

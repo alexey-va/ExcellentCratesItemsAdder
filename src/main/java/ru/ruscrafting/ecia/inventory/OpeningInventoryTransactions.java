@@ -105,7 +105,7 @@ public final class OpeningInventoryTransactions {
         String receipt = receipt(player, witness.kind());
         if (receipt.equals(witness.receipt())) return Outcome.APPLIED;
         return receipt.equals(witness.previousReceipt())
-                && payload.capture(player.getInventory().getContents()).equals(witness.before())
+                && sameInventory(player.getInventory().getContents(), payload.restore(witness.before()))
                 ? Outcome.NOT_APPLIED : Outcome.UNKNOWN;
     }
 
@@ -113,8 +113,9 @@ public final class OpeningInventoryTransactions {
         Outcome observed = inspect(player, witness);
         if (observed != Outcome.NOT_APPLIED) return observed;
         try {
-            player.getInventory().setContents(payload.restore(witness.after()));
-            if (!payload.capture(player.getInventory().getContents()).equals(witness.after())) {
+            ItemStack[] after = payload.restore(witness.after());
+            player.getInventory().setContents(after);
+            if (!sameInventory(player.getInventory().getContents(), after)) {
                 uncertainPlayers.add(player.getUniqueId());
                 return Outcome.UNKNOWN;
             }
@@ -168,5 +169,16 @@ public final class OpeningInventoryTransactions {
 
     private static ItemStack[] clones(ItemStack[] values) {
         return Arrays.stream(values).map(item -> item == null ? null : item.clone()).toArray(ItemStack[]::new);
+    }
+
+    private static boolean sameInventory(ItemStack[] actual, ItemStack[] expected) {
+        if (actual.length != expected.length) return false;
+        for (int slot = 0; slot < actual.length; slot++) {
+            ItemStack left = actual[slot];
+            ItemStack right = expected[slot];
+            if ((left == null || left.isEmpty()) && (right == null || right.isEmpty())) continue;
+            if (left == null || right == null || left.getAmount() != right.getAmount() || !left.isSimilar(right)) return false;
+        }
+        return true;
     }
 }

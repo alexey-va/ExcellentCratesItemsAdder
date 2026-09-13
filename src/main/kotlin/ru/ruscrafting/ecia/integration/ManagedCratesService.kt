@@ -205,11 +205,7 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
         if (roulette.isRolling(player.uniqueId)) return message(player, "managed.busy")
         val record = requireLedger().pending(player.uniqueId).orElse(null)
             ?: return message(player, "managed.nothing-pending")
-        val resumed = if (record.stage() == OpeningRecord.Stage.MAIL) {
-            requireEngine().claim(player, record.id(), record.revision())
-        } else {
-            record
-        }
+        val resumed = requireEngine().resume(player, record)
         show(player, resumed)
         updateHealth()
     }
