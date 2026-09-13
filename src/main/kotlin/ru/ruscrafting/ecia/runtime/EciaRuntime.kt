@@ -35,10 +35,10 @@ class EciaRuntime private constructor(
         PaperArcRuntime.installScheduling(plugin)
         val loggingConfig = Config(plugin.dataFolder.toPath(), "modules/logging.yml")
         ArcLogging.install(
-            platform = PaperLoggingPlatform("ECIA", "ExcellentCratesItemsAdder"),
+            platform = PaperLoggingPlatform("AEC", "ArcExcellentCrates"),
             configSource = LoggingConfigSource { loggingConfig },
         )
-        lifecycle = PaperPluginRuntime(plugin, "excellentcrates-itemsadder")
+        lifecycle = PaperPluginRuntime(plugin, "arc-excellent-crates")
         lifecycle.start("version" to plugin.pluginMeta.version)
         lifecycle.registerHealth("runtime") {
             RuntimeHealthContribution(

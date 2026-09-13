@@ -1,4 +1,4 @@
-# ExcellentCratesItemsAdder
+# ArcExcellentCrates
 
 Paper addon for [ExcellentCrates](https://github.com/nulli0n/ExcellentCrates-spigot)
 and ItemsAdder. It protects furniture used as crate anchors, including creative
@@ -114,7 +114,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ExcellentCratesItemsAdder-0.9.2.jar`.
+Output: `build/libs/ArcExcellentCrates-0.9.2.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash

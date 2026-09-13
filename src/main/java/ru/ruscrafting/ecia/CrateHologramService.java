@@ -28,7 +28,7 @@ final class CrateHologramService implements AutoCloseable {
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
     private static final long RECONCILE_TICKS = 20L;
 
-    private final ExcellentCratesItemsAdderPlugin plugin;
+    private final ArcExcellentCratesPlugin plugin;
     private final NamespacedKey marker;
     private final Map<Anchor, UUID> displays = new HashMap<>();
     private final BukkitTask task;
@@ -39,7 +39,7 @@ final class CrateHologramService implements AutoCloseable {
     private float yaw;
     private float viewRange;
 
-    CrateHologramService(ExcellentCratesItemsAdderPlugin plugin) {
+    CrateHologramService(ArcExcellentCratesPlugin plugin) {
         this.plugin = plugin;
         this.marker = new NamespacedKey(plugin, "case_hologram");
         reloadSettings();

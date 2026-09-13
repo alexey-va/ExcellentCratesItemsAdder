@@ -1,4 +1,4 @@
-rootProject.name = "ExcellentCratesItemsAdder"
+rootProject.name = "ArcExcellentCrates"
 
 // Public builds resolve the pinned release from Maven. A local checkout is
 // opt-in for ARC development and never becomes a required filesystem path.

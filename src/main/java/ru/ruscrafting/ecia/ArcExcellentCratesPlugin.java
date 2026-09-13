@@ -11,14 +11,17 @@ import ru.ruscrafting.ecia.runtime.EciaLocale;
 import ru.ruscrafting.ecia.runtime.EciaRuntime;
 import ru.ruscrafting.ecia.integration.ManagedCratesService;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.BiFunction;
 
-public final class ExcellentCratesItemsAdderPlugin extends JavaPlugin implements TabExecutor {
+public final class ArcExcellentCratesPlugin extends JavaPlugin implements TabExecutor {
     private static final String ADMIN_PERMISSION = "ecia.admin";
+    private static final String LEGACY_DATA_FOLDER = "ExcellentCratesItemsAdder";
     private CrateRegistry registry;
     private CrateProtectionListener protectionListener;
     private EciaRuntime runtime;
@@ -28,6 +31,7 @@ public final class ExcellentCratesItemsAdderPlugin extends JavaPlugin implements
 
     @Override
     public void onEnable() {
+        migrateLegacyDataFolder();
         saveDefaultConfig();
         runtime = EciaRuntime.create(this);
         EciaLocale locale = runtime.installLocale(getDataFolder().toPath(), legacyMessages());
@@ -261,5 +265,28 @@ public final class ExcellentCratesItemsAdderPlugin extends JavaPlugin implements
             }
         }
         return Map.copyOf(messages);
+    }
+
+    private void migrateLegacyDataFolder() {
+        Path current = getDataFolder().toPath();
+        Path parent = current.getParent();
+        if (parent == null) return;
+        Path legacy = parent.resolve(LEGACY_DATA_FOLDER);
+        if (!Files.isDirectory(legacy) || legacy.equals(current)) return;
+
+        try {
+            if (Files.exists(current)) {
+                try (var entries = Files.list(current)) {
+                    if (entries.findAny().isPresent()) {
+                        throw new IllegalStateException("Both legacy and ArcExcellentCrates data folders contain files");
+                    }
+                }
+                Files.delete(current);
+            }
+            Files.move(legacy, current);
+            getLogger().info("Migrated data folder from " + LEGACY_DATA_FOLDER + " to ArcExcellentCrates.");
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not migrate the legacy plugin data folder", exception);
+        }
     }
 }

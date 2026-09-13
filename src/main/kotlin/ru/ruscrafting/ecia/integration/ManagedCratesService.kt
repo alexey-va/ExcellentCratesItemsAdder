@@ -18,7 +18,7 @@ import ru.ruscrafting.ecia.admin.CrateInspection
 import ru.ruscrafting.ecia.admin.ItemsAdderGroundingProvider
 import ru.ruscrafting.ecia.admin.NativeAdminCrateGateway
 import ru.ruscrafting.ecia.admin.PendingMailCounters
-import ru.ruscrafting.ecia.ExcellentCratesItemsAdderPlugin
+import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
 import ru.ruscrafting.ecia.inventory.NativeItemPayload
 import ru.ruscrafting.ecia.inventory.OpeningInventoryTransactions
 import ru.ruscrafting.ecia.journal.DurableOpeningStore
@@ -35,7 +35,7 @@ import java.time.Clock
 import java.util.random.RandomGenerator
 
 /** Owns managed openings and their player-facing entry points. */
-class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) : AutoCloseable, Listener {
+class ManagedCratesService(private val plugin: ArcExcellentCratesPlugin) : AutoCloseable, Listener {
     private val runtime = plugin.runtime()
     private val root = plugin.dataFolder.toPath()
     private val payload = NativeItemPayload()

@@ -1,8 +1,9 @@
-name: ExcellentCratesItemsAdder
+name: ArcExcellentCrates
 version: ${version}
-main: ru.ruscrafting.ecia.ExcellentCratesItemsAdderPlugin
+main: ru.ruscrafting.ecia.ArcExcellentCratesPlugin
+provides: [ExcellentCratesItemsAdder]
 api-version: "1.21"
-description: Protected ItemsAdder crates with animated weighted rolls and durable delivery recovery.
+description: RusCrafting crate integration with protected anchors, display visuals, and durable delivery recovery.
 authors: [alexey-va]
 softdepend: [ExcellentCrates, ItemsAdder, ARC]
 commands:

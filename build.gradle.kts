@@ -100,10 +100,10 @@ tasks {
     }
     jar {
         archiveClassifier.set("plain")
-        archiveBaseName.set("ExcellentCratesItemsAdder")
+        archiveBaseName.set("ArcExcellentCrates")
     }
     shadowJar {
-        archiveBaseName.set("ExcellentCratesItemsAdder")
+        archiveBaseName.set("ArcExcellentCrates")
         archiveClassifier.set("")
         mergeServiceFiles()
         exclude("META-INF/DEPENDENCIES", "META-INF/LICENSE", "META-INF/NOTICE")

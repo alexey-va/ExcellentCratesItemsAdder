@@ -18,7 +18,7 @@ import org.bukkit.util.Vector
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import ru.arc.core.ScheduledTask
-import ru.ruscrafting.ecia.ExcellentCratesItemsAdderPlugin
+import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
 import ru.ruscrafting.ecia.inventory.NativeItemPayload
 import ru.ruscrafting.ecia.journal.OpeningRecord
 import ru.ruscrafting.ecia.roll.RewardDefinition
@@ -28,7 +28,7 @@ import kotlin.random.Random
 
 /** Player-only display-entity reel rendered above the physical crate. */
 internal class WorldRouletteAnimator(
-    private val plugin: ExcellentCratesItemsAdderPlugin,
+    private val plugin: ArcExcellentCratesPlugin,
     private val runtime: EciaRuntime,
     private val payload: NativeItemPayload,
 ) : AutoCloseable {
