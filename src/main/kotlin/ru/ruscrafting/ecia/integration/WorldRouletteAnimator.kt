@@ -128,11 +128,14 @@ internal class WorldRouletteAnimator(
 
     private fun render(session: Session, frame: WorldRouletteFrame) {
         session.displays.forEachIndexed { sequenceIndex, display ->
-            val cells = WorldRouletteTrack.cells(sequenceIndex, frame)
-            display.teleport(position(session.center, session.axis, cells))
             val visible = WorldRouletteTrack.visible(sequenceIndex, frame)
-            if (visible == session.visible[sequenceIndex]) return@forEachIndexed
-            if (visible) session.player.showEntity(plugin, display) else session.player.hideEntity(plugin, display)
+            if (!visible) {
+                if (session.visible[sequenceIndex]) session.player.hideEntity(plugin, display)
+                session.visible[sequenceIndex] = false
+                return@forEachIndexed
+            }
+            display.teleport(position(session.center, session.axis, WorldRouletteTrack.cells(sequenceIndex, frame)))
+            if (!session.visible[sequenceIndex]) session.player.showEntity(plugin, display)
             session.visible[sequenceIndex] = visible
         }
     }
@@ -205,7 +208,7 @@ internal class WorldRouletteAnimator(
     )
 
     private companion object {
-        const val FRAME_PERIOD_TICKS = 2L
+        const val FRAME_PERIOD_TICKS = 1L
         const val HOLD_TICKS = 24L
         const val REEL_HEIGHT = 3.65
         const val ITEM_SPACING = 0.82

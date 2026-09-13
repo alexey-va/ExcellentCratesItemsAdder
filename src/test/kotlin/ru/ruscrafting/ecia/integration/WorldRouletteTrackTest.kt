@@ -26,6 +26,16 @@ class WorldRouletteTrackTest {
     }
 
     @Test
+    fun reelKeepsMovingDuringTheFinalHalfSecond() {
+        val frames = (0 until WorldRouletteTrack.FRAME_COUNT).map(WorldRouletteTrack::frame)
+        val travelled = frames.map { it.baseIndex - it.offsetCells }
+        val steps = travelled.zipWithNext { left, right -> right - left }
+
+        assertTrue(steps.max() < 0.5)
+        assertTrue(travelled.last() - travelled[WorldRouletteTrack.FRAME_COUNT - 11] > 0.25)
+    }
+
+    @Test
     fun eachSequenceItemMovesContinuouslyAndIsHiddenOutsideTheWindow() {
         val frames = (0 until WorldRouletteTrack.FRAME_COUNT).map(WorldRouletteTrack::frame)
 
