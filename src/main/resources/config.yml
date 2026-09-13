@@ -1,6 +1,13 @@
 excellent-crates-directory: plugins/ExcellentCrates/crates
 registry-refresh-ticks: 100
 preview-command: "excellentcrates preview <crate> <player>"
+case-holograms:
+  enabled: true
+  # One fixed TextDisplay with the native case name, kept close to the lid.
+  height-above-block: 0.18
+  scale: 2.0
+  yaw: 0.0
+  view-range: 1.0
 messages:
   protected: "<red>Этот сундук привязан к кейсу. <gray>/ecia edit on <red>— режим редактирования."
   edit-enabled: "<gold>Редактирование кейсов включено: мебель теперь можно ломать."

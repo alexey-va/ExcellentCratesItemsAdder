@@ -34,6 +34,10 @@ player-only display-entity reel above the physical crate. The rolled item stops
 beneath its pointer before delivery. Pool previews use five full reward rows and
 a fixed bottom navigation row, without an item frame around the pool.
 
+Placed cases use one native fixed `TextDisplay` above each anchor. It contains
+only the case name, sits close to the block, and defaults to 2× scale; height,
+scale, yaw, and view range are configurable under `case-holograms`.
+
 With configured cases, `enabled: false` pauses their openings while retaining
 interception and current-season key stamps. It does not return old seasonal
 keys to native opening rules. The empty default `cases: {}` provides protection
@@ -110,7 +114,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ExcellentCratesItemsAdder-0.9.1.jar`.
+Output: `build/libs/ExcellentCratesItemsAdder-0.9.2.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash

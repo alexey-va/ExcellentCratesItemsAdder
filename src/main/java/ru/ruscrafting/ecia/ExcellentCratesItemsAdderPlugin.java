@@ -24,6 +24,7 @@ public final class ExcellentCratesItemsAdderPlugin extends JavaPlugin implements
     private EciaRuntime runtime;
     private BiFunction<CommandSender, String[], Boolean> delegatedCommandHandler;
     private ManagedCratesService managedCrates;
+    private CrateHologramService crateHolograms;
 
     @Override
     public void onEnable() {
@@ -58,6 +59,13 @@ public final class ExcellentCratesItemsAdderPlugin extends JavaPlugin implements
         runtime.scheduleRegistryRefresh(refreshTicks, () -> runtime.updateRegistrySize(registry.reload()));
         runtime.updateRegistrySize(count);
         runtime.info("Protecting {} ExcellentCrates furniture position(s).", count);
+        if (getServer().getPluginManager().isPluginEnabled("ExcellentCrates")) {
+            try {
+                crateHolograms = registerService(new CrateHologramService(this));
+            } catch (RuntimeException | LinkageError failure) {
+                runtime.error("Compact crate holograms are unavailable: {}", failure.toString());
+            }
+        }
         if (getServer().getPluginManager().isPluginEnabled("ExcellentCrates")
                 && getServer().getPluginManager().isPluginEnabled("ARC")) {
             try {
@@ -144,6 +152,7 @@ public final class ExcellentCratesItemsAdderPlugin extends JavaPlugin implements
             int count = registry.reload();
             runtime.updateRegistrySize(count);
             if (managedCrates != null) managedCrates.reload();
+            if (crateHolograms != null) crateHolograms.reload();
             sender.sendMessage(message(sender, "reloaded", "<count>", Integer.toString(count)));
             if (managedCrates != null && !managedCrates.available()) {
                 sender.sendMessage(message(sender, "managed.reload-failed"));
