@@ -21,7 +21,7 @@ class CrateVisualSettingsStoreTest {
         var edited = new CrateVisualSettingsStore.Anchor("survival", 10, 64, -3);
         var untouched = new CrateVisualSettingsStore.Anchor("survival", 11, 64, -3);
         var visuals = new CrateVisualSettingsStore.Visuals(
-                new CrateVisualSettingsStore.Hologram(.4, .7, -.2, 35f, -5f, 3.5f, 4f),
+                new CrateVisualSettingsStore.Hologram("<gold>%crate_name%</gold>", .4, .7, -.2, 35f, -5f, 3.5f, 4f),
                 new CrateVisualSettingsStore.Roulette(.2, 4.1, -.1, 1.1, 1.4f, 2f, 1.3, 2.2f, 32f)
         );
 
@@ -30,6 +30,7 @@ class CrateVisualSettingsStoreTest {
 
         assertEquals(visuals, reloaded.get(edited));
         assertEquals(reloaded.defaults(), reloaded.get(untouched));
+        assertEquals("%crate_name%", reloaded.defaults().hologram().textTemplate());
     }
 
     @Test
@@ -38,5 +39,11 @@ class CrateVisualSettingsStoreTest {
 
         assertTrue(CrateHologramService.frontFaces(display, new Location(null, 0, 0, 4)));
         assertFalse(CrateHologramService.frontFaces(display, new Location(null, 0, 0, -4)));
+    }
+
+    @Test
+    void hologramTemplateInsertsTheConfiguredCrateName() {
+        assertEquals("<gold>Легендарный кейс</gold>",
+                CrateHologramService.renderText("<gold>%crate_name%</gold>", "Легендарный кейс"));
     }
 }

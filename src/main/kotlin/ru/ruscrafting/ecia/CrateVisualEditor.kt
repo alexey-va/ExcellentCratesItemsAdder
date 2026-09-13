@@ -12,6 +12,7 @@ import ru.arc.paper.menu.PaperDialogInputId
 import ru.arc.paper.menu.PaperDialogNumberRangeInput
 import ru.arc.paper.menu.PaperDialogRuntime
 import ru.arc.paper.menu.PaperDialogScreen
+import ru.arc.paper.menu.PaperDialogTextInput
 import java.util.function.Consumer
 
 /** Native per-anchor editor entered from Shift + left-click. */
@@ -54,41 +55,124 @@ class CrateVisualEditor(
         ))
     }
 
-    private fun openHologram(player: Player, target: CrateVisualTarget, saved: Boolean = false) {
+    private fun openHologram(player: Player, target: CrateVisualTarget) {
         val anchor = CrateVisualSettingsStore.Anchor.of(target.anchor())
-        val current = store.get(anchor)
-        val value = current.hologram()
+        val value = store.get(anchor).hologram()
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.visuals.hologram",
             title = text("Голограмма · ${target.crateId()}", VIOLET, bold = true),
-            body = listOf(body(if (saved) "Сохранено. Голограмма обновлена." else "Положение считается от центра верхней грани сундука.", if (saved) SUCCESS else BODY)),
-            numberInputs = listOf(
-                input(HX, "Смещение X", -8f, 8f, value.offsetX().toFloat(), .05f),
-                input(HY, "Смещение Y", -4f, 8f, value.offsetY().toFloat(), .05f),
-                input(HZ, "Смещение Z", -8f, 8f, value.offsetZ().toFloat(), .05f),
-                input(HYAW, "Поворот по горизонтали", -180f, 180f, value.yaw(), 1f),
-                input(HPITCH, "Наклон", -90f, 90f, value.pitch(), 1f),
-                input(HSCALE, "Размер", .1f, 10f, value.scale(), .05f),
-                input(HRANGE, "Дальность отображения", .1f, 64f, value.viewRange(), .1f),
+            body = listOf(
+                body("Каждое нажатие − или + сразу меняет голограмму в мире."),
+                body("Положение считается от центра верхней грани сундука."),
             ),
-            buttons = listOf(button("save_hologram", "Сохранить изменения", SUCCESS) { context ->
-                val hologram = CrateVisualSettingsStore.Hologram(
-                    number(context, HX, value.offsetX().toFloat()).toDouble(),
-                    number(context, HY, value.offsetY().toFloat()).toDouble(),
-                    number(context, HZ, value.offsetZ().toFloat()).toDouble(),
-                    number(context, HYAW, value.yaw()),
-                    number(context, HPITCH, value.pitch()),
-                    number(context, HSCALE, value.scale()),
-                    number(context, HRANGE, value.viewRange()),
-                )
+            buttons = listOf(
+                button("hologram_text", "Текст ›", GOLD) { openHologramText(it.player, target) },
+                hologramFieldButton(target, HologramField.X, value),
+                hologramFieldButton(target, HologramField.Y, value),
+                hologramFieldButton(target, HologramField.Z, value),
+                hologramFieldButton(target, HologramField.YAW, value),
+                hologramFieldButton(target, HologramField.PITCH, value),
+                hologramFieldButton(target, HologramField.SCALE, value),
+                hologramFieldButton(target, HologramField.RANGE, value),
+            ),
+            exitButton = backButton(),
+            columns = 2,
+        ))
+    }
+
+    private fun openHologramText(player: Player, target: CrateVisualTarget, applied: Boolean = false) {
+        val anchor = CrateVisualSettingsStore.Anchor.of(target.anchor())
+        val value = store.get(anchor).hologram()
+        dialogs.open(player, PaperDialogScreen(
+            id = "arc-excellent-crates.visuals.hologram.text",
+            title = text("Текст голограммы", VIOLET, bold = true),
+            body = listOf(body(if (applied) "Текст сразу обновлён в мире." else "%crate_name% подставляет название этого кейса.", if (applied) SUCCESS else BODY)),
+            inputs = listOf(PaperDialogTextInput(
+                id = HTEXT,
+                label = text("MiniMessage-шаблон", WHITE),
+                initial = value.textTemplate(),
+                width = 420,
+                maxLength = 512,
+            )),
+            buttons = listOf(button("apply_hologram_text", "Применить текст", SUCCESS) { context ->
+                val current = store.get(anchor)
+                val template = context.text(HTEXT) ?: current.hologram().textTemplate()
+                val hologram = replaceHologram(current.hologram(), textTemplate = template)
                 store.save(anchor, CrateVisualSettingsStore.Visuals(hologram, current.roulette()))
                 changed.accept(anchor)
-                openHologram(context.player, target, saved = true)
+                openHologramText(context.player, target, applied = true)
             }),
             exitButton = backButton(),
             columns = 1,
         ))
     }
+
+    private fun hologramFieldButton(
+        target: CrateVisualTarget,
+        field: HologramField,
+        hologram: CrateVisualSettingsStore.Hologram,
+    ) = button("hologram_${field.key}", "${field.label}: ${field.format(readHologram(hologram, field))} ›", VIOLET) {
+        openHologramField(it.player, target, field)
+    }
+
+    private fun openHologramField(player: Player, target: CrateVisualTarget, field: HologramField) {
+        val anchor = CrateVisualSettingsStore.Anchor.of(target.anchor())
+        val value = readHologram(store.get(anchor).hologram(), field)
+        dialogs.open(player, PaperDialogScreen(
+            id = "arc-excellent-crates.visuals.hologram.${field.key}",
+            title = text(field.label, VIOLET, bold = true),
+            body = listOf(
+                body("Сейчас: ${field.format(value)}", WHITE),
+                body("Изменение применяется сразу. Малый шаг: ${field.formatStep(field.smallStep)}, большой: ${field.formatStep(field.largeStep)}."),
+            ),
+            buttons = listOf(
+                adjustmentButton(target, field, -field.largeStep, "− ${field.formatStep(field.largeStep)}"),
+                adjustmentButton(target, field, -field.smallStep, "− ${field.formatStep(field.smallStep)}"),
+                adjustmentButton(target, field, field.smallStep, "+ ${field.formatStep(field.smallStep)}"),
+                adjustmentButton(target, field, field.largeStep, "+ ${field.formatStep(field.largeStep)}"),
+            ),
+            exitButton = backButton(),
+            columns = 2,
+        ))
+    }
+
+    private fun adjustmentButton(target: CrateVisualTarget, field: HologramField, delta: Double, label: String) =
+        button("h_${field.key}_${if (delta < 0) "m" else "p"}_${if (kotlin.math.abs(delta) == field.smallStep) "s" else "l"}", label, if (delta < 0) DANGER else SUCCESS) { context ->
+            val anchor = CrateVisualSettingsStore.Anchor.of(target.anchor())
+            val current = store.get(anchor)
+            val old = readHologram(current.hologram(), field)
+            val next = (old + delta).coerceIn(field.minimum, field.maximum)
+            val hologram = replaceHologram(current.hologram(), field = field, number = next)
+            store.save(anchor, CrateVisualSettingsStore.Visuals(hologram, current.roulette()))
+            changed.accept(anchor)
+            openHologramField(context.player, target, field)
+        }
+
+    private fun readHologram(value: CrateVisualSettingsStore.Hologram, field: HologramField): Double = when (field) {
+        HologramField.X -> value.offsetX()
+        HologramField.Y -> value.offsetY()
+        HologramField.Z -> value.offsetZ()
+        HologramField.YAW -> value.yaw().toDouble()
+        HologramField.PITCH -> value.pitch().toDouble()
+        HologramField.SCALE -> value.scale().toDouble()
+        HologramField.RANGE -> value.viewRange().toDouble()
+    }
+
+    private fun replaceHologram(
+        value: CrateVisualSettingsStore.Hologram,
+        textTemplate: String = value.textTemplate(),
+        field: HologramField? = null,
+        number: Double = 0.0,
+    ): CrateVisualSettingsStore.Hologram = CrateVisualSettingsStore.Hologram(
+        textTemplate,
+        if (field == HologramField.X) number else value.offsetX(),
+        if (field == HologramField.Y) number else value.offsetY(),
+        if (field == HologramField.Z) number else value.offsetZ(),
+        (if (field == HologramField.YAW) number else value.yaw().toDouble()).toFloat(),
+        (if (field == HologramField.PITCH) number else value.pitch().toDouble()).toFloat(),
+        (if (field == HologramField.SCALE) number else value.scale().toDouble()).toFloat(),
+        (if (field == HologramField.RANGE) number else value.viewRange().toDouble()).toFloat(),
+    )
 
     private fun openRoulette(player: Player, target: CrateVisualTarget, saved: Boolean = false) {
         val anchor = CrateVisualSettingsStore.Anchor.of(target.anchor())
@@ -158,13 +242,7 @@ class CrateVisualEditor(
         const val SUCCESS = 0x9BD48D
         const val DANGER = 0xFF6B61
 
-        val HX = PaperDialogInputId.of("hologram_x")
-        val HY = PaperDialogInputId.of("hologram_y")
-        val HZ = PaperDialogInputId.of("hologram_z")
-        val HYAW = PaperDialogInputId.of("hologram_yaw")
-        val HPITCH = PaperDialogInputId.of("hologram_pitch")
-        val HSCALE = PaperDialogInputId.of("hologram_scale")
-        val HRANGE = PaperDialogInputId.of("hologram_range")
+        val HTEXT = PaperDialogInputId.of("hologram_text")
         val RX = PaperDialogInputId.of("roulette_x")
         val RY = PaperDialogInputId.of("roulette_y")
         val RZ = PaperDialogInputId.of("roulette_z")
@@ -174,5 +252,27 @@ class CrateVisualEditor(
         val RPOINTER_Y = PaperDialogInputId.of("roulette_pointer_y")
         val RPOINTER_SCALE = PaperDialogInputId.of("roulette_pointer_scale")
         val RRANGE = PaperDialogInputId.of("roulette_range")
+    }
+
+    private enum class HologramField(
+        val key: String,
+        val label: String,
+        val minimum: Double,
+        val maximum: Double,
+        val smallStep: Double,
+        val largeStep: Double,
+        private val decimals: Int,
+    ) {
+        X("x", "Смещение X", -8.0, 8.0, .05, .5, 2),
+        Y("y", "Смещение Y", -4.0, 8.0, .05, .5, 2),
+        Z("z", "Смещение Z", -8.0, 8.0, .05, .5, 2),
+        YAW("yaw", "Поворот", -180.0, 180.0, 1.0, 15.0, 0),
+        PITCH("pitch", "Наклон", -90.0, 90.0, 1.0, 10.0, 0),
+        SCALE("scale", "Размер", .1, 10.0, .05, .5, 2),
+        RANGE("range", "Дальность", .1, 64.0, .5, 5.0, 1),
+        ;
+
+        fun format(value: Double): String = "% .${decimals}f".format(java.util.Locale.ROOT, value).trim()
+        fun formatStep(value: Double): String = format(value)
     }
 }

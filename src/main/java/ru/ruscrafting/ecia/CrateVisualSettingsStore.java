@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /** Per-placed-crate visual geometry with config-backed defaults. */
 public final class CrateVisualSettingsStore {
@@ -35,6 +36,7 @@ public final class CrateVisualSettingsStore {
 
     public void reload() {
         defaultHologram = new Hologram(
+                Objects.requireNonNullElse(config.getString("case-holograms.text"), "%crate_name%"),
                 value("case-holograms.offset-x", 0.0, -8.0, 8.0),
                 value("case-holograms.height-above-block", 0.18, -4.0, 8.0),
                 value("case-holograms.offset-z", 0.0, -8.0, 8.0),
@@ -65,6 +67,7 @@ public final class CrateVisualSettingsStore {
             if (world == null || world.isBlank()) continue;
             Anchor anchor = new Anchor(world, yaml.getInt(path + ".x"), yaml.getInt(path + ".y"), yaml.getInt(path + ".z"));
             Hologram hologram = new Hologram(
+                    Objects.requireNonNullElse(yaml.getString(path + ".hologram.text"), defaultHologram.textTemplate()),
                     bounded(yaml.getDouble(path + ".hologram.offset-x", defaultHologram.offsetX()), -8, 8, defaultHologram.offsetX()),
                     bounded(yaml.getDouble(path + ".hologram.offset-y", defaultHologram.offsetY()), -4, 8, defaultHologram.offsetY()),
                     bounded(yaml.getDouble(path + ".hologram.offset-z", defaultHologram.offsetZ()), -8, 8, defaultHologram.offsetZ()),
@@ -134,6 +137,7 @@ public final class CrateVisualSettingsStore {
     }
 
     private static void write(YamlConfiguration yaml, String path, Hologram value) {
+        yaml.set(path + ".text", value.textTemplate());
         yaml.set(path + ".offset-x", value.offsetX()); yaml.set(path + ".offset-y", value.offsetY());
         yaml.set(path + ".offset-z", value.offsetZ()); yaml.set(path + ".yaw", value.yaw());
         yaml.set(path + ".pitch", value.pitch()); yaml.set(path + ".scale", value.scale());
@@ -171,7 +175,7 @@ public final class CrateVisualSettingsStore {
         }
     }
 
-    public record Hologram(double offsetX, double offsetY, double offsetZ, float yaw, float pitch,
+    public record Hologram(String textTemplate, double offsetX, double offsetY, double offsetZ, float yaw, float pitch,
                             float scale, float viewRange) { }
 
     public record Roulette(double offsetX, double offsetY, double offsetZ, double itemSpacing,

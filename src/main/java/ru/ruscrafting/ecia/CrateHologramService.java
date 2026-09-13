@@ -140,7 +140,7 @@ final class CrateHologramService implements AutoCloseable {
         if (!display.getLocation().toVector().equals(location.toVector())) {
             display.teleport(location);
         }
-        display.text(MINI_MESSAGE.deserialize(crate.getName()));
+        display.text(MINI_MESSAGE.deserialize(renderText(visual.textTemplate(), crate.getName())));
         display.setBillboard(Display.Billboard.FIXED);
         display.setRotation(faceYaw, visual.pitch());
         display.setAlignment(TextDisplay.TextAlignment.CENTER);
@@ -222,6 +222,10 @@ final class CrateHologramService implements AutoCloseable {
 
     static boolean frontFaces(Location display, Location viewer) {
         return display.getDirection().dot(viewer.toVector().subtract(display.toVector())) >= 0.0;
+    }
+
+    static String renderText(String template, String crateName) {
+        return template.replace("%crate_name%", crateName);
     }
 
     private void removeAll() {

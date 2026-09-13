@@ -4,6 +4,8 @@ preview-command: "excellentcrates preview <crate> <player>"
 case-holograms:
   enabled: true
   # Defaults. Shift + left-click a case to override one placed chest.
+  # MiniMessage is supported. %crate_name% inserts the configured case name.
+  text: "%crate_name%"
   offset-x: 0.0
   height-above-block: 0.18
   offset-z: 0.0
