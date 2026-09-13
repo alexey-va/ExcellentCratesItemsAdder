@@ -63,7 +63,7 @@ public final class NativeRewardPools {
                         payload.items(new ItemStack[]{reward.getPreviewItem()})));
             }
             PoolSnapshot pool = new PoolSnapshot(crate.getId(), configured.seasonId(), rewards,
-                    configured.choiceCount(), configured.maxRerolls());
+                    configured.choiceCount(), configured.maxRerolls(), configured.bundleSize());
             installed.put(crate.getId(), seasons.register(pool));
         }
         return Map.copyOf(installed);
@@ -106,6 +106,7 @@ public final class NativeRewardPools {
 
     private void verifyUnchanged(PoolSnapshot pool, ManagedCratesSettings.CaseSettings config, List<Reward> nativeRewards) {
         if (pool.choiceCount() != config.choiceCount() || pool.maxRerolls() != config.maxRerolls()
+                || pool.bundleSize() != config.bundleSize()
                 || pool.rewards().size() != nativeRewards.size()) {
             throw new IllegalStateException("Season rules changed; create a new season: " + pool.crateId());
         }

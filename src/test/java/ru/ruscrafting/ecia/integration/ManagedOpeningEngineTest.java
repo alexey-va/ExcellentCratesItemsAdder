@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ManagedOpeningEngineTest {
-    @Test void restartAndRepeatedClicksKeepOneKeyOnePreparedPrize() {
+    @Test void restartAndRepeatedClicksKeepOneKeyOnePreparedBundle() {
         try (var runtime = MockBukkitTestRuntime.Companion.open()) {
             var player = runtime.addPlayer("CrateQA");
             var store = new MemoryStore();
@@ -33,7 +33,9 @@ class ManagedOpeningEngineTest {
             var inventory = new OpeningInventoryTransactions(codec, p -> { }, () -> true);
             var preparations = new AtomicInteger();
             var reward = new RewardDefinition("prize", 1, "frozen", "preview");
-            var pool = new PoolSnapshot("daily", "launch", List.of(reward), 3, 1);
+            var bonusOne = new RewardDefinition("bonus-one", 1, "frozen-one", "preview-one");
+            var bonusTwo = new RewardDefinition("bonus-two", 1, "frozen-two", "preview-two");
+            var pool = new PoolSnapshot("daily", "launch", List.of(reward, bonusOne, bonusTwo), 3, 1, 3);
             var engine = new ManagedOpeningEngine(ledger, new WeightedOfferGenerator(new Random(1)), inventory, codec, definition -> {
                 preparations.incrementAndGet();
                 return new ItemStack[]{new ItemStack(Material.DIAMOND)};
@@ -47,9 +49,9 @@ class ManagedOpeningEngineTest {
             var mail = engine.select(player, opening.id(), opening.revision(), "prize");
             var prepared = engine.claim(player, mail.id(), mail.revision());
             assertEquals(OpeningRecord.Stage.MAIL, prepared.stage());
-            assertEquals(1, preparations.get());
+            assertEquals(3, preparations.get());
             assertEquals(prepared, engine.claim(player, prepared.id(), prepared.revision()));
-            assertEquals(1, preparations.get());
+            assertEquals(3, preparations.get());
             var restartedLedger = new OpeningLedger(store, Clock.systemUTC());
             var restarted = new ManagedOpeningEngine(restartedLedger, new WeightedOfferGenerator(new Random(2)), inventory, codec,
                     definition -> { fail("Persisted native prize must not be minted again"); return null; });
@@ -57,6 +59,7 @@ class ManagedOpeningEngineTest {
             var delivered = restarted.claim(player, prepared.id(), prepared.revision());
             assertEquals(OpeningRecord.Stage.DELIVERED, delivered.stage());
             assertEquals(Material.DIAMOND, player.getInventory().getItem(0).getType());
+            assertEquals(3, player.getInventory().getItem(0).getAmount());
             assertThrows(IllegalStateException.class, () -> restarted.claim(player, delivered.id(), delivered.revision()));
         }
     }

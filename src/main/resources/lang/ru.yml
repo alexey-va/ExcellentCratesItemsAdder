@@ -12,8 +12,8 @@ managed:
   unavailable: "<#ffb56b>Кейс пока недоступен.\n   <#fff2df>Ключ остаётся у вас."
   busy: '<#ffe08a>Дождитесь завершения текущего открытия.'
   vetoed: "<#ffb56b>Открытие отклонено правилами сервера.\n   <#fff2df>Ключ не списан."
-  no-key: '<#ffb56b>Нужен физический ключ этого сезона.'
-  unknown-season: "<#ffb56b>Сезон ключа пока не загружен.\n   <#fff2df>Ключ остаётся у вас."
+  no-key: '<#ffb56b>Нужен физический ключ этого кейса.'
+  unknown-season: "<#ffb56b>Этот ключ не подходит к кейсу.\n   <#fff2df>Ключ остаётся у вас."
   native-command: "<#ffd567>Откройте кейс на пьедестале\n   <#ffd567>или через /ecia open.\n   <#fff2df>Призы и ключи учитывает аддон."
   player-unavailable: '<#ffb56b>Игрок должен быть на сервере.'
   reconciled: '<#a6efcf>Проверка записи завершена. Неопределённая выдача остаётся на проверке.'
@@ -24,11 +24,11 @@ managed:
   operation-refused: "<#ffcc80>Действие не завершено.\n   <#fff2df>Проверьте /ecia mail\n   <#fff2df>или продолжите через /ecia resume."
   usage: '<#ffe08a>/ecia mail · history · resume · open [кейс] · preview [кейс]'
   reload-failed: "<#ffb56b>Открытие кейсов выключено.\n   <#fff2df>Причина — ошибка загрузки.\n   <#fff2df>Подробности в журнале сервера."
-  stats-usage: '<#ffe08a>/ecia stats [кейс] [сезон] [страница]'
-  stats-title: '<#ffd567><crate> · <season> · статистика <page>/<pages>'
+  stats-usage: '<#ffe08a>/ecia stats [кейс] [страница]'
+  stats-title: '<#ffd567><crate> · статистика <page>/<pages>'
   stats-empty: '<#fff2df>Подтверждённых открытий пока нет.'
-  stats-row: '<#fff2df><mode> · <reward>: показан <offered>/<opened>, выбран <selected>/<selections>; базовый вес <base>%'
-  stats-note: '<#ffcc80>Базовый вес — первый бросок, не итоговый шанс с выбором. Показаны последние варианты каждого открытия; обычные и переброшенные открытия разделены.'
+  stats-row: '<#fff2df><mode> · <reward>: показан <offered>/<opened>, выбран <selected>/<selections>; шанс <base>%'
+  stats-note: '<#ffcc80>Показаны последние варианты каждого открытия; обычные и переброшенные открытия разделены.'
   admin-usage: '<#ffe08a>/ecia inspect [кейс] · /ecia repair [кейс]'
   admin-unavailable: '<#ffb56b>ItemsAdder недоступен для проверки мебели.'
   admin-title: '<#ffd567><crate> · <status> · модель <expected> · ключ <key> · ожидают <pending>'

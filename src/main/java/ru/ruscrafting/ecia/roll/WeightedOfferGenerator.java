@@ -31,13 +31,35 @@ public final class WeightedOfferGenerator {
             throw new IllegalArgumentException("rerollsUsed must be within the configured reroll bound");
         }
 
-        int targetSize = Math.min(pool.choiceCount(), pool.rewards().size());
-        List<RewardDefinition> candidates = new ArrayList<>(pool.rewards());
-        List<RewardDefinition> selected = new ArrayList<>(targetSize);
-        while (selected.size() < targetSize) {
-            selected.add(candidates.remove(weightedIndex(candidates)));
+        List<RewardDefinition> selected = new ArrayList<>(currentOffer.rewards());
+        int replaced = 0;
+        for (int index = 1; index < selected.size(); index++) {
+            if (selected.get(index).weight() > selected.get(replaced).weight()) replaced = index;
         }
+        List<RewardDefinition> candidates = new ArrayList<>(pool.rewards());
+        candidates.removeAll(currentOffer.rewards());
+        if (candidates.isEmpty()) {
+            throw new IllegalArgumentException("reward pool has no unseen reward for reroll");
+        }
+        selected.set(replaced, candidates.remove(weightedIndex(candidates)));
         return new OfferSet(selected);
+    }
+
+    /** Builds a distinct weighted bundle with the player's selected headline reward first. */
+    public List<RewardDefinition> bundle(PoolSnapshot pool, RewardDefinition selectedReward) {
+        Objects.requireNonNull(pool, "pool");
+        Objects.requireNonNull(selectedReward, "selectedReward");
+        if (!pool.rewards().contains(selectedReward)) {
+            throw new IllegalArgumentException("selected reward is outside the pool");
+        }
+        List<RewardDefinition> candidates = new ArrayList<>(pool.rewards());
+        candidates.remove(selectedReward);
+        List<RewardDefinition> bundle = new ArrayList<>(pool.bundleSize());
+        bundle.add(selectedReward);
+        while (bundle.size() < pool.bundleSize()) {
+            bundle.add(candidates.remove(weightedIndex(candidates)));
+        }
+        return List.copyOf(bundle);
     }
 
     private int weightedIndex(List<RewardDefinition> candidates) {

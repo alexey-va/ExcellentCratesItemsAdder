@@ -2,7 +2,7 @@
 
 Paper addon for [ExcellentCrates](https://github.com/nulli0n/ExcellentCrates-spigot)
 and ItemsAdder. It protects furniture used as crate anchors, including creative
-left clicks, and provides optional seasonal reward choices with durable mail.
+left clicks, and provides optional reward choices with durable mail.
 
 ## Requirements
 
@@ -40,9 +40,10 @@ only. Removing a previously managed case requires an explicit key migration.
 
 ## Managed openings
 
-One physical key buys one selection. A configured number of distinct offers
-(up to three) is shown, with a bounded number of rerolls. Every offer and reroll
-uses the frozen season weights without duplicate rewards in one visible set.
+One physical key buys one bundle. A configured number of distinct headline
+offers (up to three) is shown; the selected headline reward is delivered with
+weighted, distinct extras up to `bundle-size`. A reroll keeps two offers and
+replaces only the highest-weight visible option instead of redrawing all three.
 
 - `/ecia open [crate]` — use a matching physical key.
 - `/ecia preview [crate]` — show the full frozen reward pool.
@@ -86,7 +87,7 @@ Administrative operations require `ecia.admin` (operator by default).
 
 - `/ecia reconcile [online-player]` — reconcile saved evidence; it does not
   force a second payout when the outcome remains uncertain.
-- `/ecia stats [crate] [season] [page]` — compare final offers and selections
+- `/ecia stats [crate] [page]` — compare final offers and selections
   with base draw weights, grouped by ordinary and rerolled openings. Base weight is
   not the final probability after player choice. Failed debit attempts are
   excluded. Statistics retain final offers, not every intermediate reroll set.
@@ -110,7 +111,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ExcellentCratesItemsAdder-0.6.0.jar`.
+Output: `build/libs/ExcellentCratesItemsAdder-0.7.0.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash

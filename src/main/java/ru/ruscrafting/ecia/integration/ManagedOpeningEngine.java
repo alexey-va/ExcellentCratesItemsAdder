@@ -12,6 +12,7 @@ import ru.ruscrafting.ecia.roll.PoolSnapshot;
 import ru.ruscrafting.ecia.roll.RewardDefinition;
 import ru.ruscrafting.ecia.roll.WeightedOfferGenerator;
 
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -77,12 +78,16 @@ public final class ManagedOpeningEngine {
         }
         if (ledger.active(playerId).isPresent()) throw new IllegalStateException("An opening is still active");
         if (record.preparedReward().isEmpty()) {
-            ItemStack[] items = materialize.apply(record.selectedReward());
-            if (items == null || items.length == 0) return record;
-            for (ItemStack item : items) {
-                if (item == null || item.isEmpty()) throw new IllegalStateException("Provider returned an empty item");
+            var items = new ArrayList<ItemStack>();
+            for (RewardDefinition reward : random.bundle(record.pool(), record.selectedReward())) {
+                ItemStack[] materialized = materialize.apply(reward);
+                if (materialized == null || materialized.length == 0) return record;
+                for (ItemStack item : materialized) {
+                    if (item == null || item.isEmpty()) throw new IllegalStateException("Provider returned an empty item");
+                    items.add(item);
+                }
             }
-            record = ledger.prepared(id, playerId, revision, payload.items(items));
+            record = ledger.prepared(id, playerId, revision, payload.items(items.toArray(ItemStack[]::new)));
         }
         var planned = inventory.delivery(player, id, payload.items(record.preparedReward()));
         if (planned.isEmpty()) return record;

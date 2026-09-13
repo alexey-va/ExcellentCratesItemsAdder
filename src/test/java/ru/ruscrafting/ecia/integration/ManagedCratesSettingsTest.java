@@ -15,7 +15,9 @@ class ManagedCratesSettingsTest {
         config.set("cases.case_daily.rerolls", "unlimited");
         assertThrows(IllegalArgumentException.class, () -> ManagedCratesSettings.read(config));
         config.set("cases.case_daily.rerolls", 1);
+        config.set("cases.case_daily.bundle-size", 3);
         assertEquals(3, ManagedCratesSettings.read(config).cases().get("case_daily").choiceCount());
+        assertEquals(3, ManagedCratesSettings.read(config).cases().get("case_daily").bundleSize());
     }
 
     @Test void enabledCratesUseBoundedChoiceAndRerollDefaults() {
@@ -25,5 +27,6 @@ class ManagedCratesSettingsTest {
         var settings = ManagedCratesSettings.read(config).cases().get("case_daily");
         assertEquals(3, settings.choiceCount());
         assertEquals(1, settings.maxRerolls());
+        assertEquals(1, settings.bundleSize());
     }
 }

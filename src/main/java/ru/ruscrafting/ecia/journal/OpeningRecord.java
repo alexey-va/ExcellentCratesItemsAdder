@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** An opening is the durable owner of one key debit and exactly one selected prize. */
+/** An opening durably owns one key debit, one selected headline reward and one prepared bundle. */
 public record OpeningRecord(
         UUID id, UUID playerId, PoolSnapshot pool, long createdAt, long updatedAt,
         long revision, Stage stage, List<RewardDefinition> offers,

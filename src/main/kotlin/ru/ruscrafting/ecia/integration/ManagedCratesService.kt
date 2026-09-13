@@ -271,7 +271,6 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
             show(player, requireEngine().claim(player, id, revision))
             updateHealth()
         } },
-        back = EciaMenuActions.Back { player.closeInventory() },
     )
 
     @EventHandler
@@ -345,9 +344,9 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
 
     private fun statistics(sender: CommandSender, args: Array<String>) {
         val crateId = args.getOrNull(1) ?: return message(sender, "managed.stats-usage")
-        val season = args.getOrNull(2) ?: settings.cases[crateId]?.seasonId()
+        val season = settings.cases[crateId]?.seasonId()
             ?: return message(sender, "managed.stats-usage")
-        val page = args.getOrNull(3)?.toIntOrNull() ?: 1
+        val page = args.getOrNull(2)?.toIntOrNull() ?: 1
         require(page > 0) { "Statistics page must be positive" }
         val groups = OpeningAnalytics.summarize(requireLedger().snapshot().filter {
             it.pool().crateId() == crateId && it.pool().seasonId() == season
@@ -365,7 +364,7 @@ class ManagedCratesService(private val plugin: ExcellentCratesItemsAdderPlugin) 
         }
         val pages = maxOf(1, (rows.size + 7) / 8)
         require(page <= pages) { "Statistics page is outside the report" }
-        val lines = mutableListOf("managed.stats-title" to mapOf("crate" to crateId, "season" to season,
+        val lines = mutableListOf("managed.stats-title" to mapOf("crate" to crateId,
             "page" to page.toString(), "pages" to pages.toString()))
         if (rows.isEmpty()) lines += "managed.stats-empty" to emptyMap()
         rows.drop((page - 1) * 8).take(8).forEach { lines += "managed.stats-row" to it }

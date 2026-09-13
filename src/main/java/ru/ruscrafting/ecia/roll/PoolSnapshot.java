@@ -11,8 +11,14 @@ public record PoolSnapshot(
         String seasonId,
         List<RewardDefinition> rewards,
         int choiceCount,
-        int maxRerolls
+        int maxRerolls,
+        int bundleSize
 ) {
+    public PoolSnapshot(String crateId, String seasonId, List<RewardDefinition> rewards,
+            int choiceCount, int maxRerolls) {
+        this(crateId, seasonId, rewards, choiceCount, maxRerolls, 1);
+    }
+
     public PoolSnapshot {
         RewardDefinition.requireIdentifier(crateId, "crateId");
         RewardDefinition.requireIdentifier(seasonId, "seasonId");
@@ -31,6 +37,9 @@ public record PoolSnapshot(
         }
         if (maxRerolls < 0) {
             throw new IllegalArgumentException("maxRerolls must be zero or positive");
+        }
+        if (bundleSize <= 0 || bundleSize > immutableRewards.size()) {
+            throw new IllegalArgumentException("bundleSize must be positive and not exceed the reward pool");
         }
         rewards = immutableRewards;
     }

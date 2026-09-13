@@ -33,7 +33,6 @@ data class EciaMenuActions(
     val reroll: Reroll = Reroll { _, _ -> },
     val claim: Claim = Claim { _, _ -> },
     val page: Page = Page { _, _ -> },
-    val back: Back = Back {},
 ) {
     fun interface ChoiceSelect {
         fun invoke(opening: UUID, revision: Long, reward: String)
@@ -51,9 +50,6 @@ data class EciaMenuActions(
         fun invoke(menu: MenuId, delta: Int)
     }
 
-    fun interface Back {
-        fun invoke()
-    }
 }
 
 /**
@@ -79,7 +75,7 @@ class EciaMenuScreens(
     ): PaperMenuContent {
         val values = mapOf(
             "crate" to caseName(opening.pool.crateId()),
-            "season" to opening.pool.seasonId(),
+            "bundle" to opening.pool.bundleSize().toString(),
             "rerolls" to "${opening.rerollsUsed()}/${opening.pool.maxRerolls()}",
         )
         val offers = opening.offers().take(MAX_VISIBLE_CHOICES)
@@ -118,7 +114,6 @@ class EciaMenuScreens(
                     actions.reroll.invoke(opening.id(), opening.revision())
                 },
             ),
-            element("back") to actionEntry("back") { actions.back.invoke() },
         )
         return PaperMenuContent(
             title = darkTitle(label("title-choices")),
@@ -354,7 +349,6 @@ class EciaMenuScreens(
         val lastPage = if (entries.isEmpty()) 0 else (entries.size - 1) / capacity
         val elements = linkedMapOf(
             element("info") to PaperMenuEntry(info, enabled = false),
-            element("back") to actionEntry("back") { actions.back.invoke() },
         )
         if (page > 0) elements[element("previous")] = actionEntry("previous") { actions.page.invoke(menu, -1) }
         if (page < lastPage) elements[element("next")] = actionEntry("next") { actions.page.invoke(menu, 1) }

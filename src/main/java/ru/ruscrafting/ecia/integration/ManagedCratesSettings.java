@@ -12,12 +12,13 @@ public record ManagedCratesSettings(boolean enabled, Map<String, CaseSettings> c
     public ManagedCratesSettings { cases = Map.copyOf(cases); }
 
     public record CaseSettings(String crateId, String seasonId,
-            int choiceCount, int maxRerolls, String furnitureId) {
+            int choiceCount, int maxRerolls, int bundleSize, String furnitureId) {
         public CaseSettings {
             requireId(crateId);
             requireId(seasonId);
             Objects.requireNonNull(furnitureId);
-            if (choiceCount < 1 || choiceCount > 3 || maxRerolls < 0 || maxRerolls > 5) {
+            if (choiceCount < 1 || choiceCount > 3 || maxRerolls < 0 || maxRerolls > 5
+                    || bundleSize < 1 || bundleSize > 5) {
                 throw new IllegalArgumentException("Invalid managed case rules: " + crateId);
             }
         }
@@ -31,7 +32,7 @@ public record ManagedCratesSettings(boolean enabled, Map<String, CaseSettings> c
                 var item = section.getConfigurationSection(id);
                 if (item == null) throw new IllegalArgumentException("Invalid case configuration: " + id);
                 cases.put(id, new CaseSettings(id, item.getString("season", "launch"),
-                        integer(item, "choices", 3), integer(item, "rerolls", 1),
+                        integer(item, "choices", 3), integer(item, "rerolls", 1), integer(item, "bundle-size", 1),
                         item.getString("furniture", "")));
             }
         }

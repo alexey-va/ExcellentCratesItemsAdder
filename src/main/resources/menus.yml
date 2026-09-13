@@ -11,14 +11,14 @@ menus:
     case_mounts: "Зверинец маунтов"
   case-name-fallback: "Кейс"
   labels:
-    title-choices: "Выбор награды"
+    title-choices: "Выбор набора"
     title-mail: "Почта наград"
     title-history: "История открытий"
     title-pool: "<crate>"
-    choice-action: "ЛКМ — выбрать этот приз"
-    reroll-stage: "Обновление доступно только до выбора"
-    reroll-exhausted: "Лимит обновлений исчерпан"
-    reroll-action: "ЛКМ — получить новый набор"
+    choice-action: "ЛКМ — выбрать основу"
+    reroll-stage: "Обновление уже недоступно"
+    reroll-exhausted: "Обновление уже использовано"
+    reroll-action: "ЛКМ — обновить"
     mail-claim: "ЛКМ — забрать награду"
     mail-pending: "Ожидайте обработки"
     status-reserved: "Ключ зарезервирован"
@@ -36,7 +36,6 @@ menus:
       elements:
         info: { slot: 4, template: choices-info, kind: decoration }
         reroll: { slot: 45, template: reroll }
-        back: { slot: 49, template: back }
       regions:
         offers: { slots: [20, 22, 24] }
     ecia-mail:
@@ -46,7 +45,6 @@ menus:
       elements:
         info: { slot: 4, template: mail-info, kind: decoration }
         previous: { slot: 47, template: previous }
-        back: { slot: 49, template: back }
         next: { slot: 51, template: next }
       regions:
         entries: { slots: ['10-16', '19-25', '28-34', '37-43'] }
@@ -58,7 +56,6 @@ menus:
       elements:
         info: { slot: 4, template: history-info, kind: decoration }
         previous: { slot: 47, template: previous }
-        back: { slot: 49, template: back }
         next: { slot: 51, template: next }
       regions:
         entries: { slots: ['10-16', '19-25', '28-34', '37-43'] }
@@ -81,17 +78,20 @@ menus:
       name: "<white> "
     choices-info:
       material: BOOK
-      name: "<#ffd567>Выберите награду"
+      name: "<#ffd567>Выберите основу набора"
       lore:
-        - "<#fff2df><crate> · сезон <season>"
-        - "<aqua>Выберите 1 из 3"
-        - "<#ffd567>Обновления: <rerolls>"
+        - ""
+        - "<#b8b8b8><crate>"
+        - "<#8c8c8c>В наборе: <#ffd567><bundle> награды"
+        - "<#8c8c8c>Обновление: <light_purple><rerolls>"
     choice:
       material: CHEST
       name: "<aqua>Награда"
       lore:
-        - "<#fff2df>Вес первого броска: <weight>"
-        - "<#ffd567><action>"
+        - ""
+        - "<#8c8c8c>Шанс: <#fff2df><weight>"
+        - ""
+        - "<#8c8c8c>[<#5fe18b>▶<#8c8c8c>] <#5fe18b><action>"
     reveal-info:
       material: CLOCK
       glint: true
@@ -120,13 +120,12 @@ menus:
       glint: true
       name: "<light_purple>Обновить варианты"
       lore:
-        - "<#fff2df>Осталось обновлений: <remaining>"
-        - "<#ffd567><reason>"
-    back:
-      material: OAK_DOOR
-      name: "<aqua>« Назад"
-      lore:
-        - "<#fff2df>Вернуться к предыдущему экрану"
+        - ""
+        - "<#b8b8b8>Заменяет самый обычный вариант."
+        - "<#8c8c8c>Осталось: <light_purple><remaining>"
+        - ""
+        - { text: "<#8c8c8c>[<light_purple>▶<#8c8c8c>] <light_purple><reason>", when: available }
+        - { text: "<#969696><reason>", unless: available }
     mail-info:
       material: CHEST
       name: "<#ffd567>Почта наград"
@@ -156,7 +155,7 @@ menus:
       material: CHEST
       name: "<aqua>Награда пула"
       lore:
-        - "<#fff2df>Вес первого броска: <weight>"
+        - "<#fff2df>Шанс: <weight>"
     unavailable:
       material: PAPER
       hide-tooltip: true
@@ -168,10 +167,12 @@ menus:
       custom-model-data: 11013
       name: "<aqua>« Предыдущая"
       lore:
-        - "<#fff2df>ЛКМ — листать"
+        - ""
+        - "<#8c8c8c>[<aqua>▶<#8c8c8c>] <aqua>ЛКМ<#b8b8b8> — листать"
     next:
       material: BLUE_STAINED_GLASS_PANE
       custom-model-data: 11012
       name: "<aqua>Следующая »"
       lore:
-        - "<#fff2df>ЛКМ — листать"
+        - ""
+        - "<#8c8c8c>[<aqua>▶<#8c8c8c>] <aqua>ЛКМ<#b8b8b8> — листать"

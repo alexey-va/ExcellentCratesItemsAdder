@@ -42,15 +42,15 @@ object EciaMenuConfiguration {
     /** Semantic contracts consumed by [EciaMenuScreens]. */
     val contracts: Map<MenuId, MenuContract> = linkedMapOf(
         CHOICES to MenuContract(
-            requiredElements = elements("info", "reroll", "back"),
+            requiredElements = elements("info", "reroll"),
             requiredRegions = setOf(OFFERS),
         ),
         MAIL to MenuContract(
-            requiredElements = elements("info", "previous", "back", "next"),
+            requiredElements = elements("info", "previous", "next"),
             requiredRegions = setOf(ENTRIES),
         ),
         HISTORY to MenuContract(
-            requiredElements = elements("info", "previous", "back", "next"),
+            requiredElements = elements("info", "previous", "next"),
             requiredRegions = setOf(ENTRIES),
         ),
         POOL_PREVIEW to MenuContract(
@@ -62,7 +62,7 @@ object EciaMenuConfiguration {
     val textContracts: Map<String, PaperMenuTextContract> = mapOf(
         "background" to PaperMenuTextContract(),
         "choices-info" to PaperMenuTextContract(
-            values = setOf("crate", "season", "rerolls"),
+            values = setOf("crate", "bundle", "rerolls"),
         ),
         "choice" to PaperMenuTextContract(
             values = setOf("weight", "action"),
@@ -75,7 +75,6 @@ object EciaMenuConfiguration {
             values = setOf("remaining", "reason"),
             flags = setOf("available"),
         ),
-        "back" to PaperMenuTextContract(),
         "mail-info" to PaperMenuTextContract(values = setOf("pending")),
         "mail-entry" to PaperMenuTextContract(
             values = setOf("state", "action", "revision"),

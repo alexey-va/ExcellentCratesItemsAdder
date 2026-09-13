@@ -68,6 +68,11 @@ class EciaMenuScreensTest {
         val choices = screens.renderChoices(opening(OpeningRecord.Stage.CHOOSING))
         assertEquals(2, choices.regions.getValue(EciaMenuConfiguration.OFFERS).size)
         assertTrue(choices.elements.getValue(MenuElementId.of("reroll")).enabled)
+        assertFalse(choices.elements.containsKey(MenuElementId.of("back")))
+        val infoLore = choices.elements.getValue(MenuElementId.of("info")).item.itemMeta.lore().toString()
+        val rerollLore = choices.elements.getValue(MenuElementId.of("reroll")).item.itemMeta.lore().toString()
+        assertFalse(infoLore.contains("summer"))
+        assertTrue(rerollLore.contains("▶"))
     }
 
     @Test
@@ -147,7 +152,7 @@ class EciaMenuScreensTest {
         val common = RewardDefinition("common", 9.0, "deliver-common", "")
         val rare = RewardDefinition("rare", 1.0, "deliver-rare", "")
         return OpeningRecord(
-            UUID.randomUUID(), UUID.randomUUID(), PoolSnapshot("crate", "summer", listOf(common, rare), 3, 1),
+            UUID.randomUUID(), UUID.randomUUID(), PoolSnapshot("crate", "summer", listOf(common, rare), 3, 1, 2),
             1L, 1L, 12L, stage, listOf(common, rare), 0, selected,
             "key-witness", "", "", "",
         )

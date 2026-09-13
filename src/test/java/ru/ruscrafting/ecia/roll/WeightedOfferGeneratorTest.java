@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.random.RandomGenerator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class WeightedOfferGeneratorTest {
@@ -52,18 +54,32 @@ class WeightedOfferGeneratorTest {
     }
 
     @Test
-    void rerollBuildsAnotherBoundedOfferWithoutDuplicates() {
-        RewardDefinition other = reward("other", 1.0);
-        RewardDefinition another = reward("another", 1.0);
-        PoolSnapshot pool = new PoolSnapshot("crate", "season", List.of(COMMON, RARE, other, another), 3, 1);
-        WeightedOfferGenerator generator = new WeightedOfferGenerator(new SequenceRandom(0.0, 0.0, 0.0, 0.0));
-
-        OfferSet initial = generator.generate(pool);
+    void rerollReplacesOnlyTheMostCommonOptionWithAnUnseenReward() {
+        RewardDefinition commonest = reward("commonest", 10.0);
+        RewardDefinition other = reward("other", 2.0);
+        RewardDefinition newReward = reward("new", 1.0);
+        PoolSnapshot pool = new PoolSnapshot("crate", "season", List.of(commonest, RARE, other, newReward), 3, 1);
+        WeightedOfferGenerator generator = new WeightedOfferGenerator(new SequenceRandom(0.0));
+        OfferSet initial = new OfferSet(List.of(commonest, RARE, other));
         OfferSet rerolled = generator.reroll(pool, initial, 0);
 
-        assertEquals(3, initial.rewards().size());
-        assertEquals(3, rerolled.rewards().size());
-        assertEquals(3, rerolled.rewards().stream().map(RewardDefinition::id).distinct().count());
+        assertEquals(List.of(newReward, RARE, other), rerolled.rewards());
+        assertFalse(rerolled.rewards().contains(commonest));
+    }
+
+    @Test
+    void bundleKeepsSelectedRewardFirstAndAddsDistinctWeightedExtras() {
+        RewardDefinition other = reward("other", 1.0);
+        RewardDefinition another = reward("another", 1.0);
+        PoolSnapshot pool = new PoolSnapshot("crate", "season", List.of(COMMON, RARE, other, another), 3, 1, 3);
+
+        List<RewardDefinition> bundle = new WeightedOfferGenerator(new SequenceRandom(0.0, 0.0))
+                .bundle(pool, RARE);
+
+        assertEquals(RARE, bundle.getFirst());
+        assertEquals(3, bundle.size());
+        assertEquals(3, bundle.stream().map(RewardDefinition::id).distinct().count());
+        assertTrue(pool.rewards().containsAll(bundle));
     }
 
     @Test
@@ -76,6 +92,8 @@ class WeightedOfferGeneratorTest {
                 "crate", "season", List.of(COMMON), 0, 0));
         assertThrows(IllegalArgumentException.class, () -> new PoolSnapshot(
                 "crate", "season", List.of(COMMON), 3, -1));
+        assertThrows(IllegalArgumentException.class, () -> new PoolSnapshot(
+                "crate", "season", List.of(COMMON), 3, 1, 2));
         assertThrows(NullPointerException.class,
                 () -> new RewardDefinition("reward", 1.0, null, "preview"));
     }
