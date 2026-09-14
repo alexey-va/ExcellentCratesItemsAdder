@@ -6,14 +6,10 @@ api-version: "1.21"
 description: RusCrafting crate integration with protected anchors, display visuals, and durable delivery recovery.
 authors: [alexey-va]
 softdepend: [ExcellentCrates, ItemsAdder, ARC]
-commands:
-  ecia:
-    description: Open crates, recover rewards and manage protected furniture.
-    usage: /ecia <history|resume|open|preview|edit|reload|stats|reconcile|inspect|repair>
 permissions:
   ecia.use:
-    description: Allows using the ECIA command entry point.
+    description: Allows opening managed crate pedestals.
     default: true
   ecia.admin:
-    description: Allows deliberate crate furniture editing and registry reloads.
+    description: Allows crate placement and per-anchor visual editing.
     default: op

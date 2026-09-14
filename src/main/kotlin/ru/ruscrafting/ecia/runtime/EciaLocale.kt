@@ -102,14 +102,13 @@ class EciaLocale(
         @JvmField
         val REQUIRED_KEYS: Set<String> = setOf(
             "protected",
-            "edit-enabled",
-            "edit-disabled",
-            "edit-status-on",
-            "edit-status-off",
-            "reloaded",
-            "player-only",
             "no-permission",
-            "usage",
+            "placement.no-target",
+            "placement.occupied",
+            "placement.unavailable",
+            "placement.no-pools",
+            "placement.failed",
+            "placement.placed",
         )
     }
 }

@@ -33,6 +33,7 @@ internal class WorldRouletteAnimator(
     private val runtime: EciaRuntime,
     private val payload: NativeItemPayload,
     private val visualSettings: CrateVisualSettingsStore,
+    private val openingEffects: CrateOpeningEffects,
 ) : AutoCloseable {
     private val sessions = mutableMapOf<UUID, Session>()
 
@@ -83,7 +84,9 @@ internal class WorldRouletteAnimator(
             player.showEntity(plugin, pointer)
             entities += pointer
 
-            val session = Session(player, displays, entities, BooleanArray(displays.size), center, axis, visual, onComplete)
+            val effect = openingEffects.open(anchor)
+            val session = Session(player, displays, entities, BooleanArray(displays.size), center, axis, visual,
+                anchor.clone(), effect, onComplete)
             sessions[player.uniqueId] = session
             render(session, WorldRouletteTrack.frame(0))
             session.reelTask = runtime.tasks().runTimer(FRAME_PERIOD_TICKS, FRAME_PERIOD_TICKS) {
@@ -93,12 +96,11 @@ internal class WorldRouletteAnimator(
                 finish(player.uniqueId, complete = false)
                 false
             } else {
-                player.playSound(anchor, Sound.BLOCK_VAULT_ACTIVATE, SoundCategory.MASTER, 0.35f, 1.15f)
                 true
             }
         }.getOrElse {
             entities.forEach { entity -> runCatching(entity::remove) }
-            sessions.remove(player.uniqueId)
+            sessions.remove(player.uniqueId)?.let { session -> openingEffects.close(session.effect) }
             runtime.warn("World roulette could not start for {}: {}", player.name, it.toString())
             false
         }
@@ -151,6 +153,7 @@ internal class WorldRouletteAnimator(
         winner.glowColorOverride = Color.fromRGB(255, 213, 103)
         winner.transformation = transformation(session.visual.winnerScale())
         session.player.playSound(session.center, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 0.55f, 1.25f)
+        openingEffects.settle(session.anchor)
     }
 
     private fun finish(playerId: UUID, complete: Boolean) {
@@ -158,6 +161,7 @@ internal class WorldRouletteAnimator(
         session.reelTask?.cancel()
         session.holdTask?.cancel()
         session.entities.forEach { entity -> runCatching(entity::remove) }
+        openingEffects.close(session.effect)
         if (complete && session.player.isOnline) session.onComplete()
     }
 
@@ -205,6 +209,8 @@ internal class WorldRouletteAnimator(
         val center: Location,
         val axis: Vector,
         val visual: CrateVisualSettingsStore.Roulette,
+        val anchor: Location,
+        val effect: CrateOpeningEffects.Token,
         val onComplete: () -> Unit,
         var frame: Int = 0,
         var reelTask: ScheduledTask? = null,

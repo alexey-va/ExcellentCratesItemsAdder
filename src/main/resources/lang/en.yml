@@ -1,38 +1,22 @@
 prefix: ""
-protected: "<red>This crate is linked to a case. <gray>/ecia edit on <red>enables editing."
-edit-enabled: "<gold>Case editing enabled: furniture can now be broken."
-edit-disabled: "<green>Case protection enabled."
-edit-status-on: "<gold>Case editing is enabled."
-edit-status-off: "<green>Case protection is enabled."
-reloaded: "<green>Crate positions reloaded: <white><count>"
-player-only: "<red>This command is available to players only."
+protected: "<red>This crate is protected."
 no-permission: "<red>You do not have permission."
-usage: "<yellow>/ecia edit on|off|status <gray>or <yellow>/ecia reload"
+placement:
+  no-target: '<#ffcc80>Look at the face next to which the crate should be placed.'
+  occupied: '<#ffb56b>That spot is occupied. Choose an empty location.'
+  unavailable: '<#ffb56b>ExcellentCrates has not loaded its reward pools yet.'
+  no-pools: '<#ffb56b>No reward pools were found.'
+  failed: '<#ffb56b>The crate was not placed. The location and configuration were left unchanged.'
+  placed: "<#a6efcf>Crate <white><crate></white> placed as <white><model></white>\n   <#fff2df><position>"
 managed:
   unavailable: '<#ffb56b>This crate is temporarily unavailable. You keep your key.'
   busy: '<#ffe08a>Finish your current opening first.'
   vetoed: '<#ffb56b>Server rules prevented this opening. No key was consumed.'
   no-key: '<#ffb56b>You need a physical key for this crate.'
   unknown-season: '<#ffb56b>This key does not match the crate. You keep your key.'
-  native-command: '<#ffd567>Open this crate at its pedestal or with /ecia open. The addon tracks keys and rewards.'
-  player-unavailable: '<#ffb56b>The player must be online.'
-  reconciled: '<#a6efcf>Record checked. An uncertain delivery remains under review.'
-  delivered: '<#a6efcf>Reward received!'
+  native-command: '<#ffd567>Use the key on this crate pedestal. The addon tracks keys and rewards.'
   key-not-consumed: '<#ffe08a>Opening cancelled. No key was consumed.'
   review: '<#ffcc80>Delivery is under review. Your record is saved and no second key will be taken.'
-  pending: '<#ffd567>You have an unfinished opening. Continue with /ecia resume.'
-  operation-refused: '<#ffcc80>The action did not finish. Continue with /ecia resume.'
-  inventory-full: '<#ffcc80>Your inventory is full. Free some slots and use /ecia resume.'
-  nothing-pending: '<#969696>There are no unfinished openings.'
-  usage: '<#ffe08a>/ecia history · resume · open [crate] · preview [crate]'
-  reload-failed: '<#ffb56b>Crate openings are disabled after a load failure. See the server log for details.'
-  stats-usage: '<#ffe08a>/ecia stats [crate] [page]'
-  stats-title: '<#ffd567><crate> · statistics <page>/<pages>'
-  stats-empty: '<#fff2df>No confirmed openings yet.'
-  stats-row: '<#fff2df><mode> · <reward>: offered <offered>/<opened>, selected <selected>/<selections>; chance <base>%'
-  stats-note: '<#ffcc80>Each opening uses one roll; historical rerolled records remain separate.'
-  admin-usage: '<#ffe08a>/ecia inspect [crate] · /ecia repair [crate]'
-  admin-unavailable: '<#ffb56b>ItemsAdder is unavailable for furniture inspection.'
-  admin-title: '<#ffd567><crate> · <status> · expected <expected> · key <key> · pending <pending>'
-  admin-position: '<#fff2df><position>: world <world>, chunk <chunk>, block <block>, model <model>, carriers <carriers>, geometry <geometry>. <reasons>'
-  admin-repair: '<#ffd567><crate>: repair <status>, restored <count>. <reasons>'
+  pending: '<#ffd567>You have an unfinished opening. Right-click a crate to continue.'
+  operation-refused: '<#ffcc80>The action did not finish. Right-click a crate to continue.'
+  inventory-full: '<#ffcc80>Your inventory is full. Free some slots and right-click a crate again.'

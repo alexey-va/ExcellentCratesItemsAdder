@@ -23,12 +23,8 @@ case-roulette:
   pointer-height: 1.08
   pointer-scale: 1.55
   view-range: 24.0
+case-ambient:
+  # Four small BlockDisplay runes orbit every stationary crate.
+  enabled: true
 messages:
-  protected: "<red>Этот сундук привязан к кейсу. <gray>/ecia edit on <red>— режим редактирования."
-  edit-enabled: "<gold>Редактирование кейсов включено: мебель теперь можно ломать."
-  edit-disabled: "<green>Защита кейсов включена."
-  edit-status-on: "<gold>Редактирование кейсов включено."
-  edit-status-off: "<green>Защита кейсов включена."
-  reloaded: "<green>Координаты кейсов перечитаны: <white><count>"
-  player-only: "<red>Режим редактирования доступен только игроку."
-  usage: "<yellow>/ecia edit on|off|status <gray>или <yellow>/ecia reload"
+  protected: "<red>Этот кейс защищён."

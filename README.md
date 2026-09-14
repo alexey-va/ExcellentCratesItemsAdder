@@ -20,9 +20,15 @@ unexpected listener layout. The build verifies the official EC binary SHA-256.
 Place the plugin JAR in `plugins/` and restart. All ExcellentCrates
 `Block.Positions` entries are reread every five seconds. Matching furniture
 entities are protected; ordinary furniture is unaffected. Left click opens the
-crate preview. `/ecia edit on` temporarily permits deliberate furniture removal
-for that administrator; `/ecia edit off` restores protection. Edit mode ends on
-disconnect or plugin shutdown. `/ecia reload` rereads configuration.
+crate preview. Shift + left-click opens the per-anchor visual editor for an
+administrator. The old `/ecia` command is not registered.
+
+The bare ExcellentCrates `/case` command is intercepted for administrators and
+opens a two-step placement flow: choose any loaded reward pool, then choose a
+vanilla chest, trapped chest, barrel, or registered ItemsAdder furniture model.
+The target is the empty block adjacent to the face under the crosshair. The
+native namespaced ExcellentCrates command remains available as an emergency
+operator route without forking ExcellentCrates.
 
 `features.yml` ships disabled. Enable managed openings only after configuring
 each case and its frozen reward pool. `menus.yml` contains six-row history and
@@ -31,7 +37,11 @@ model 11001 is rejected in every menu template. Russian and English chat text
 is in `lang/`; existing protection messages in `config.yml` remain authoritative.
 Managed openings perform one durable weighted roll and immediately start a
 player-only display-entity reel above the physical crate. The rolled item stops
-beneath its pointer before delivery. Pool previews use five full reward rows and
+beneath its pointer before delivery. A paired ItemsAdder model such as
+`akira_chest` / `akira_chest_opening` switches while the reel runs; vanilla
+chests use their native lid. World-visible sound and particle bursts accompany
+the transition. Four small BlockDisplay runes orbit every stationary crate.
+Pool previews use five full reward rows and
 a fixed bottom navigation row, without an item frame around the pool.
 
 Placed cases use one native fixed `TextDisplay` above each anchor. It contains
@@ -49,16 +59,11 @@ One physical key performs one weighted roll and buys one configured reward
 bundle. The reel only visualizes the result already written to the durable
 journal; it never rolls again while moving or when the item is delivered.
 
-- `/ecia open [crate]` — use a matching physical key.
-- `/ecia preview [crate]` — show the full frozen reward pool.
-- `/ecia resume` — continue an unfinished opening.
-- `/ecia history` — read personal opening history.
-
-Player commands require `ecia.use` (default true); crate-specific native
-permissions still apply. Rewards enter the inventory as real items, including
+Players open and preview a crate directly at its pedestal; `ecia.use` is granted
+by default and crate-specific native permissions still apply. Rewards enter the inventory as real items, including
 fresh redeemable ARC vouchers. No reward command is interpreted as proof of
-delivery. A full inventory preserves the pending opening; free slots and use
-`/ecia resume` to retry delivery.
+delivery. A full inventory preserves the pending opening; free slots and
+right-click a crate again to retry delivery.
 
 ## Seasons and recovery
 
@@ -81,22 +86,14 @@ the addon data directory and ARC's `data/reward-physical-archive` in backups.
 Managed cases support exactly one enabled physical key cost and one supported
 ARC reward or native key-give command per prize. Native cooldowns, milestones,
 extra post-open commands and restricted rewards are rejected, not ignored.
-Use `/ecia open` or the placed furniture to open these cases. Native free/forced
+Use the placed furniture to open these cases. Native free/forced
 open commands and portable crate items are rejected because their additional
 cost semantics are outside the journal contract.
 
 ## Administration
 
-Administrative operations require `ecia.admin` (operator by default).
-
-- `/ecia reconcile [online-player]` — reconcile saved evidence; it does not
-  force a second payout when the outcome remains uncertain.
-- `/ecia stats [crate] [page]` — compare durable rolls and delivered selections
-  with base draw weights. Historical rerolled openings remain in their own
-  group; failed debit attempts are excluded.
-- `/ecia inspect [crate]` — inspect native anchors, model, key and pending openings.
-- `/ecia repair [crate]` — repair only verified empty anchors through ItemsAdder;
-  foreign blocks, ambiguous carriers or missing grounding evidence block repair.
+Administrative placement and Shift + left-click visual settings require
+`ecia.admin` (operator by default).
 
 Repair requires retained reports under `grounding/<namespace>/<item>.json`
 with exact config/model hashes, the native spawn transform and collision-surface
@@ -114,7 +111,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ArcExcellentCrates-0.9.2.jar`.
+Output: `build/libs/ArcExcellentCrates-0.10.0.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash

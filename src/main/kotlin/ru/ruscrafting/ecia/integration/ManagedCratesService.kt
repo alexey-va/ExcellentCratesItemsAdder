@@ -1,6 +1,5 @@
 package ru.ruscrafting.ecia.integration
 
-import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.command.CommandSender
 import org.bukkit.configuration.file.YamlConfiguration
@@ -12,12 +11,6 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.server.ServerLoadEvent
 import ru.arc.config.Config
-import ru.ruscrafting.ecia.analytics.OpeningAnalytics
-import ru.ruscrafting.ecia.admin.CrateAdminService
-import ru.ruscrafting.ecia.admin.CrateInspection
-import ru.ruscrafting.ecia.admin.ItemsAdderGroundingProvider
-import ru.ruscrafting.ecia.admin.NativeAdminCrateGateway
-import ru.ruscrafting.ecia.admin.PendingMailCounters
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
 import ru.ruscrafting.ecia.CrateVisualSettingsStore
 import ru.ruscrafting.ecia.CrateVisualTarget
@@ -40,6 +33,7 @@ import java.util.random.RandomGenerator
 class ManagedCratesService(
     private val plugin: ArcExcellentCratesPlugin,
     visualSettings: CrateVisualSettingsStore,
+    openingEffects: CrateOpeningEffects,
 ) : AutoCloseable, Listener {
     private val runtime = plugin.runtime()
     private val root = plugin.dataFolder.toPath()
@@ -55,7 +49,7 @@ class ManagedCratesService(
     private var engine: ManagedOpeningEngine? = null
     private var screens: EciaMenuScreens? = null
     private var router: NativeCrateInteractionRouter? = null
-    private val roulette = WorldRouletteAnimator(plugin, runtime, payload, visualSettings)
+    private val roulette = WorldRouletteAnimator(plugin, runtime, payload, visualSettings, openingEffects)
     private var ready = false
     private var closed = false
 
@@ -116,54 +110,6 @@ class ManagedCratesService(
             plugin::isCrateEditMode, this::reload)
     }
 
-    fun command(sender: CommandSender, args: Array<String>): Boolean {
-        val operation = args.firstOrNull()?.lowercase() ?: "resume"
-        if (operation == "inspect" || operation == "repair") {
-            if (!sender.hasPermission("ecia.admin")) message(sender, "no-permission")
-            else guarded(sender) { administration(sender, args, operation == "repair") }
-            return true
-        }
-        if (operation == "stats") {
-            if (!sender.hasPermission("ecia.admin")) message(sender, "no-permission")
-            else guarded(sender) { statistics(sender, args) }
-            return true
-        }
-        if (operation !in setOf("history", "resume", "open", "preview", "reconcile")) return false
-        if (operation == "reconcile") {
-            if (!sender.hasPermission("ecia.admin")) message(sender, "no-permission")
-            else {
-                val player = args.getOrNull(1)?.let(Bukkit::getPlayerExact)
-                if (player == null) message(sender, "managed.player-unavailable")
-                else guarded(sender) {
-                    requireEngine().reconcile(player)
-                    updateHealth()
-                    message(sender, "managed.reconciled")
-                }
-            }
-            return true
-        }
-        if (sender !is Player) {
-            message(sender, "player-only")
-            return true
-        }
-        if (!sender.hasPermission("ecia.use")) {
-            message(sender, "no-permission")
-            return true
-        }
-        guarded(sender) {
-            when (operation) {
-                "history" -> history(sender)
-                "resume" -> resume(sender)
-                "open", "preview" -> {
-                    val id = args.getOrNull(1)
-                    if (id == null || id !in settings.cases) message(sender, "managed.usage")
-                    else if (operation == "open") open(sender, id) else preview(sender, id)
-                }
-            }
-        }
-        return true
-    }
-
     fun open(player: Player, crateId: String) = open(player, crateId, null)
 
     private fun open(player: Player, crateId: String, anchor: Location?) {
@@ -196,22 +142,6 @@ class ManagedCratesService(
         val pool = season?.let { seasons?.find(crateId, it)?.orElse(null) } ?: return message(player, "managed.unavailable")
         requireScreens().openPoolPreview(requireMenus(), player, pool, actions())
     }
-
-    private fun resume(player: Player) {
-        if (roulette.isRolling(player.uniqueId)) return message(player, "managed.busy")
-        val record = requireLedger().pending(player.uniqueId).orElse(null)
-            ?: return message(player, "managed.nothing-pending")
-        val resumed = requireEngine().resume(player, record)
-        show(player, resumed)
-        updateHealth()
-    }
-
-    private fun history(player: Player) {
-        requireScreens().openHistory(requireMenus(), player, records(player), actions())
-    }
-
-    private fun records(player: Player): List<OpeningRecord> = requireLedger().snapshot()
-        .filter { it.playerId() == player.uniqueId }.sortedByDescending { it.createdAt() }
 
     private fun show(player: Player, record: OpeningRecord, anchor: Location? = null) {
         when (record.stage()) {
@@ -264,83 +194,6 @@ class ManagedCratesService(
         if (!ready && (settings.enabled || configurationFailed)) reload()
     }
 
-    fun available(): Boolean = !configurationFailed && (!settings.enabled || ready)
-
-    fun caseIds(): List<String> = settings.cases.keys.sorted()
-
-    private fun administration(sender: CommandSender, args: Array<String>, repair: Boolean) {
-        val crateId = args.getOrNull(1) ?: return message(sender, "managed.admin-usage")
-        val configured = settings.cases[crateId] ?: return message(sender, "managed.admin-usage")
-        val iaFolder = plugin.server.pluginManager.getPlugin("ItemsAdder")?.dataFolder?.toPath()
-            ?: return message(sender, "managed.admin-unavailable")
-        val gateway = NativeAdminCrateGateway(CratesAPI.getCrateManager(),
-            ItemsAdderGroundingProvider(iaFolder, root.resolve("grounding")))
-        val service = CrateAdminService(gateway) { id -> pendingCounters(id) }
-        if (repair) {
-            val result = service.repair(crateId, configured.furnitureId())
-            message(sender, "managed.admin-repair", mapOf("crate" to crateId,
-                "status" to result.status().name, "count" to result.repairedPositions().toString(),
-                "reasons" to result.reasons().joinToString { it.name }))
-            renderInspection(sender, result.after() ?: result.before())
-        } else renderInspection(sender, service.inspect(crateId, configured.furnitureId()))
-    }
-
-    private fun pendingCounters(crateId: String): PendingMailCounters {
-        val records = requireLedger().snapshot().filter { it.pool().crateId() == crateId }
-        fun count(stage: OpeningRecord.Stage) = records.count { it.stage() == stage }
-        return PendingMailCounters(count(OpeningRecord.Stage.RESERVED), count(OpeningRecord.Stage.CHOOSING),
-            count(OpeningRecord.Stage.MAIL), count(OpeningRecord.Stage.DELIVERING), count(OpeningRecord.Stage.REVIEW))
-    }
-
-    private fun renderInspection(sender: CommandSender, report: CrateInspection) {
-        val lines = mutableListOf("managed.admin-title" to mapOf("crate" to report.crateId(),
-            "status" to report.status().name, "expected" to report.expectedModel(),
-            "key" to (report.nativeKeyCost()?.keyId() ?: "—"),
-            "pending" to report.pendingMail().total().toString()))
-        report.positions().forEach { row ->
-            val position = row.position()
-            lines += "managed.admin-position" to mapOf(
-                "position" to "${position.world()} ${position.x()},${position.y()},${position.z()}",
-                "world" to row.worldStatus().name, "chunk" to row.chunkStatus().name,
-                "block" to row.technicalBlock().material(),
-                "model" to (row.actualModel()?.namespacedId() ?: "—"),
-                "carriers" to row.nearbyCarrierCount().toString(),
-                "geometry" to row.grounding().status().name,
-                "reasons" to row.reasons().joinToString { it.name })
-        }
-        messageBlock(sender, lines)
-    }
-
-    private fun statistics(sender: CommandSender, args: Array<String>) {
-        val crateId = args.getOrNull(1) ?: return message(sender, "managed.stats-usage")
-        val season = settings.cases[crateId]?.seasonId()
-            ?: return message(sender, "managed.stats-usage")
-        val page = args.getOrNull(2)?.toIntOrNull() ?: 1
-        require(page > 0) { "Statistics page must be positive" }
-        val groups = OpeningAnalytics.summarize(requireLedger().snapshot().filter {
-            it.pool().crateId() == crateId && it.pool().seasonId() == season
-        })
-        val rows = groups.flatMap { group ->
-            val selections = group.selectedCounts().values.sum()
-            group.baseWeightShares().map { (rewardId, base) ->
-                mapOf("mode" to group.mode().name, "reward" to rewardId,
-                    "opened" to group.openingCount().toString(),
-                    "offered" to (group.offeredCounts()[rewardId] ?: 0).toString(),
-                    "selected" to (group.selectedCounts()[rewardId] ?: 0).toString(),
-                    "selections" to selections.toString(),
-                    "base" to String.format(java.util.Locale.ROOT, "%.2f", base * 100))
-            }
-        }
-        val pages = maxOf(1, (rows.size + 7) / 8)
-        require(page <= pages) { "Statistics page is outside the report" }
-        val lines = mutableListOf("managed.stats-title" to mapOf("crate" to crateId,
-            "page" to page.toString(), "pages" to pages.toString()))
-        if (rows.isEmpty()) lines += "managed.stats-empty" to emptyMap()
-        rows.drop((page - 1) * 8).take(8).forEach { lines += "managed.stats-row" to it }
-        lines += "managed.stats-note" to emptyMap()
-        messageBlock(sender, lines)
-    }
-
     private fun readSettings(): ManagedCratesSettings {
         Config(root, "features.yml").mergeMissingFromBundled("features.yml")
         return ManagedCratesSettings.read(YamlConfiguration.loadConfiguration(root.resolve("features.yml").toFile()))
@@ -362,9 +215,6 @@ class ManagedCratesService(
         sender.sendMessage(runtime.locale().renderPadded(key, sender, values))
     }
 
-    private fun messageBlock(sender: CommandSender, lines: List<Pair<String, Map<String, String>>>) {
-        sender.sendMessage(runtime.locale().renderBlock(sender, lines))
-    }
     private fun updateHealth() { runtime.updateRecoveryBacklog(ledger?.snapshot()?.count { it.pending() } ?: 0) }
 
     override fun close() {

@@ -27,8 +27,12 @@ class EciaLocaleTest : FunSpec({
         try {
             val locale = EciaLocale(root, emptyMap())
             PlainTextComponentSerializer.plainText().serialize(
-                locale.renderWithLocale("reloaded", "en-US", mapOf("count" to "<red>7")),
-            ) shouldBe "Crate positions reloaded: <red>7"
+                locale.renderWithLocale("placement.placed", "en-US", mapOf(
+                    "crate" to "<red>case_daily",
+                    "model" to "minecraft:chest",
+                    "position" to "world 1, 2, 3",
+                )),
+            ) shouldBe "Crate <red>case_daily placed as minecraft:chest\n   world 1, 2, 3"
         } finally {
             root.toFile().deleteRecursively()
         }
@@ -44,9 +48,9 @@ class EciaLocaleTest : FunSpec({
             PlainTextComponentSerializer.plainText().serialize(
                 locale.renderBlock(null, listOf(
                     "no-permission" to emptyMap(),
-                    "player-only" to emptyMap(),
+                    "placement.no-target" to emptyMap(),
                 )),
-            ) shouldBe "\n   Недостаточно прав.\n   Эта команда доступна только игроку.\n"
+            ) shouldBe "\n   Недостаточно прав.\n   Посмотрите на грань блока, рядом с которой нужно поставить кейс.\n"
         } finally {
             root.toFile().deleteRecursively()
         }

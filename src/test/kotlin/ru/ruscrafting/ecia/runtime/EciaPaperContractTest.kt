@@ -11,4 +11,11 @@ class EciaPaperContractTest : FunSpec({
             runtime.isOpen shouldBe true
         }
     }
+
+    test("does not register the removed ecia command") {
+        val descriptor = EciaPaperContractTest::class.java.classLoader
+            .getResourceAsStream("plugin.yml")!!.bufferedReader().readText()
+        descriptor.contains("commands:") shouldBe false
+        descriptor.contains("/ecia") shouldBe false
+    }
 })
