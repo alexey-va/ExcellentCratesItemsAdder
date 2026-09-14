@@ -119,7 +119,7 @@ final class CrateHologramService implements AutoCloseable {
         }
         CrateVisualSettingsStore.Hologram visual = settings.get(anchor.settingsAnchor()).hologram();
         style(entity(faces.front()), source.crate(), source.position(), visual, visual.yaw());
-        style(entity(faces.back()), source.crate(), source.position(), visual, visual.yaw() + 180.0F);
+        style(entity(faces.back()), source.crate(), source.position(), visual, visual.yaw());
     }
 
     private TextDisplay spawn(World world, WorldPos position, Anchor anchor, String face) {
@@ -141,7 +141,9 @@ final class CrateHologramService implements AutoCloseable {
             display.teleport(location);
         }
         display.text(MINI_MESSAGE.deserialize(renderText(visual.textTemplate(), crate.getName())));
-        display.setBillboard(Display.Billboard.FIXED);
+        // Client-side billboard rotation keeps the label readable while each
+        // viewer approaches the crate from a different direction.
+        display.setBillboard(Display.Billboard.CENTER);
         display.setRotation(faceYaw, visual.pitch());
         display.setAlignment(TextDisplay.TextAlignment.CENTER);
         display.setLineWidth(512);

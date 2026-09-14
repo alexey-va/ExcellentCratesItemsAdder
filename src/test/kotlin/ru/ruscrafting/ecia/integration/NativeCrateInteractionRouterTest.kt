@@ -107,7 +107,7 @@ class NativeCrateInteractionRouterTest {
     }
 
     @Test
-    fun sneakingLeftClickOpensVisualEditorInsteadOfPreviewOrOpening() {
+    fun sneakingRightClickOpensVisualEditorInsteadOfPreviewOrOpening() {
         MockBukkitTestRuntime.open().use { paper ->
             val fixture = fixture(paper)
             fixture.player.isSneaking = true
@@ -124,7 +124,7 @@ class NativeCrateInteractionRouterTest {
             ) { _, _, _ ->
                 val event = PlayerInteractEvent(
                     fixture.player,
-                    Action.LEFT_CLICK_BLOCK,
+                    Action.RIGHT_CLICK_BLOCK,
                     ItemStack(Material.TRIPWIRE_HOOK),
                     fixture.block,
                     BlockFace.SELF,

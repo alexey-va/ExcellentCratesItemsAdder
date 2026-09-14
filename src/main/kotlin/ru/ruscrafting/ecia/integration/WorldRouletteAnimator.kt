@@ -27,7 +27,7 @@ import ru.ruscrafting.ecia.runtime.EciaRuntime
 import java.util.UUID
 import kotlin.random.Random
 
-/** Player-only display-entity reel rendered above the physical crate. */
+/** Per-viewer display-entity reel rendered above the physical crate. */
 internal class WorldRouletteAnimator(
     private val plugin: ArcExcellentCratesPlugin,
     private val runtime: EciaRuntime,
@@ -51,41 +51,50 @@ internal class WorldRouletteAnimator(
 
         val visual = visualSettings.get(CrateVisualSettingsStore.Anchor.of(anchor)).roulette()
         val center = anchor.clone().add(0.5 + visual.offsetX(), visual.offsetY(), 0.5 + visual.offsetZ())
-        val axis = reelAxis(center, player.location)
-        val displays = mutableListOf<ItemDisplay>()
+        val viewers = if (visual.visibleToNearby()) {
+            plugin.server.onlinePlayers.filter {
+                it.world == center.world && it.location.distanceSquared(center) <= visual.viewRange() * visual.viewRange()
+            }.ifEmpty { listOf(player) }
+        } else listOf(player)
+        val views = mutableListOf<View>()
         val entities = mutableListOf<Entity>()
         return runCatching {
             val initial = WorldRouletteTrack.frame(0)
-            sequence.forEachIndexed { index, item ->
-                val position = position(center, axis, WorldRouletteTrack.cells(index, initial), visual.itemSpacing())
-                val display = player.world.spawn(position, ItemDisplay::class.java) { entity ->
-                    configure(entity, visual.viewRange())
-                    entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GUI
-                    entity.transformation = transformation(visual.itemScale())
-                    entity.setItemStack(item.clone())
+            viewers.forEach { viewer ->
+                val axis = reelAxis(center, viewer.eyeLocation)
+                val displays = mutableListOf<ItemDisplay>()
+                sequence.forEachIndexed { index, item ->
+                    val position = position(center, axis, WorldRouletteTrack.cells(index, initial), visual.itemSpacing())
+                    val display = player.world.spawn(position, ItemDisplay::class.java) { entity ->
+                        configure(entity, visual.viewRange())
+                        entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GUI
+                        entity.transformation = transformation(visual.itemScale())
+                        entity.setItemStack(item.clone())
+                    }
+                    displays += display
+                    entities += display
                 }
-                displays += display
-                entities += display
+                val pointer = player.world.spawn(center.clone().add(0.0, visual.pointerHeight(), 0.0), TextDisplay::class.java) { entity ->
+                    configure(entity, visual.viewRange())
+                    entity.text(
+                        Component.text("▼", NamedTextColor.GOLD)
+                            .decoration(TextDecoration.BOLD, false)
+                            .decoration(TextDecoration.ITALIC, false),
+                    )
+                    entity.alignment = TextDisplay.TextAlignment.CENTER
+                    entity.isDefaultBackground = false
+                    entity.backgroundColor = Color.fromARGB(0, 0, 0, 0)
+                    entity.isSeeThrough = true
+                    entity.isShadowed = true
+                    entity.transformation = transformation(visual.pointerScale())
+                }
+                viewer.showEntity(plugin, pointer)
+                entities += pointer
+                views += View(viewer, displays, BooleanArray(displays.size))
             }
-            val pointer = player.world.spawn(center.clone().add(0.0, visual.pointerHeight(), 0.0), TextDisplay::class.java) { entity ->
-                configure(entity, visual.viewRange())
-                entity.text(
-                    Component.text("▼", NamedTextColor.GOLD)
-                        .decoration(TextDecoration.BOLD, false)
-                        .decoration(TextDecoration.ITALIC, false),
-                )
-                entity.alignment = TextDisplay.TextAlignment.CENTER
-                entity.isDefaultBackground = false
-                entity.backgroundColor = Color.fromARGB(0, 0, 0, 0)
-                entity.isSeeThrough = true
-                entity.isShadowed = true
-                entity.transformation = transformation(visual.pointerScale())
-            }
-            player.showEntity(plugin, pointer)
-            entities += pointer
 
             val effect = openingEffects.open(anchor)
-            val session = Session(player, displays, entities, BooleanArray(displays.size), center, axis, visual,
+            val session = Session(player, views, entities, center, visual,
                 anchor.clone(), effect, onComplete)
             sessions[player.uniqueId] = session
             render(session, WorldRouletteTrack.frame(0))
@@ -127,32 +136,44 @@ internal class WorldRouletteAnimator(
         render(session, current)
         if (current.baseIndex != before.baseIndex) {
             val pitch = (0.75f + current.progress.toFloat() * 0.65f).coerceAtMost(1.4f)
-            session.player.playSound(session.center, Sound.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.MASTER, 0.18f, pitch)
+            session.views.forEach { view ->
+                if (view.viewer.isOnline) {
+                    view.viewer.playSound(session.center, Sound.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.MASTER, 0.18f, pitch)
+                }
+            }
         }
     }
 
     private fun render(session: Session, frame: WorldRouletteFrame) {
-        session.displays.forEachIndexed { sequenceIndex, display ->
-            val visible = WorldRouletteTrack.visible(sequenceIndex, frame)
-            if (!visible) {
-                if (session.visible[sequenceIndex]) session.player.hideEntity(plugin, display)
-                session.visible[sequenceIndex] = false
-                return@forEachIndexed
+        session.views.forEach { view ->
+            if (!view.viewer.isOnline || view.viewer.world != session.center.world) return@forEach
+            val axis = reelAxis(session.center, view.viewer.eyeLocation)
+            view.displays.forEachIndexed { sequenceIndex, display ->
+                val visible = WorldRouletteTrack.visible(sequenceIndex, frame)
+                if (!visible) {
+                    if (view.visible[sequenceIndex]) view.viewer.hideEntity(plugin, display)
+                    view.visible[sequenceIndex] = false
+                    return@forEachIndexed
+                }
+                display.teleport(position(session.center, axis, WorldRouletteTrack.cells(sequenceIndex, frame), session.visual.itemSpacing()))
+                if (!view.visible[sequenceIndex]) view.viewer.showEntity(plugin, display)
+                view.visible[sequenceIndex] = true
             }
-            display.teleport(position(session.center, session.axis, WorldRouletteTrack.cells(sequenceIndex, frame), session.visual.itemSpacing()))
-            if (!session.visible[sequenceIndex]) session.player.showEntity(plugin, display)
-            session.visible[sequenceIndex] = visible
         }
     }
 
     private fun settle(session: Session) {
         val frame = WorldRouletteTrack.frame(WorldRouletteTrack.FRAME_COUNT - 1)
         render(session, frame)
-        val winner = session.displays[WorldRouletteTrack.SELECTED_INDEX]
-        winner.isGlowing = true
-        winner.glowColorOverride = Color.fromRGB(255, 213, 103)
-        winner.transformation = transformation(session.visual.winnerScale())
-        session.player.playSound(session.center, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 0.55f, 1.25f)
+        session.views.forEach { view ->
+            val winner = view.displays[WorldRouletteTrack.SELECTED_INDEX]
+            winner.isGlowing = true
+            winner.glowColorOverride = Color.fromRGB(255, 213, 103)
+            winner.transformation = transformation(session.visual.winnerScale())
+            if (view.viewer.isOnline) {
+                view.viewer.playSound(session.center, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 0.55f, 1.25f)
+            }
+        }
         openingEffects.settle(session.anchor)
     }
 
@@ -203,11 +224,9 @@ internal class WorldRouletteAnimator(
 
     private data class Session(
         val player: Player,
-        val displays: List<ItemDisplay>,
+        val views: List<View>,
         val entities: List<Entity>,
-        val visible: BooleanArray,
         val center: Location,
-        val axis: Vector,
         val visual: CrateVisualSettingsStore.Roulette,
         val anchor: Location,
         val effect: CrateOpeningEffects.Token,
@@ -215,6 +234,12 @@ internal class WorldRouletteAnimator(
         var frame: Int = 0,
         var reelTask: ScheduledTask? = null,
         var holdTask: ScheduledTask? = null,
+    )
+
+    private data class View(
+        val viewer: Player,
+        val displays: List<ItemDisplay>,
+        val visible: BooleanArray,
     )
 
     private companion object {

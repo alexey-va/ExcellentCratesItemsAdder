@@ -20,7 +20,7 @@ unexpected listener layout. The build verifies the official EC binary SHA-256.
 Place the plugin JAR in `plugins/` and restart. All ExcellentCrates
 `Block.Positions` entries are reread every five seconds. Matching furniture
 entities are protected; ordinary furniture is unaffected. Left click opens the
-crate preview. Shift + left-click opens the per-anchor visual editor for an
+crate preview. Shift + right-click opens the per-anchor visual editor for an
 administrator. The old `/ecia` command is not registered.
 
 The bare ExcellentCrates `/case` command is intercepted for administrators and
@@ -40,13 +40,17 @@ player-only display-entity reel above the physical crate. The rolled item stops
 beneath its pointer before delivery. A paired ItemsAdder model such as
 `akira_chest` / `akira_chest_opening` switches while the reel runs; vanilla
 chests use their native lid. World-visible sound and particle bursts accompany
-the transition. Four small BlockDisplay runes orbit every stationary crate.
+the transition. The roulette can be private or visible to nearby players; every
+viewer receives a personal display plane that continuously turns toward them.
+While the crate is idle, real items from its reward pool emerge in one of five
+presets: fountain, orbit, crown, spiral, or pulse. Count, radius, height, scale,
+speed, and range are adjustable per placed crate.
 Pool previews use five full reward rows and
 a fixed bottom navigation row, without an item frame around the pool.
 
-Placed cases use one native fixed `TextDisplay` above each anchor. It contains
-only the case name, sits close to the block, and defaults to 2× scale; height,
-scale, yaw, and view range are configurable under `case-holograms`.
+Placed cases use a native billboard `TextDisplay` above each anchor. It contains
+only the case name, sits close to the block, and turns toward each viewer;
+height, scale, yaw offset, and view range are configurable under `case-holograms`.
 
 With configured cases, `enabled: false` pauses their openings while retaining
 interception and current-season key stamps. It does not return old seasonal
@@ -92,8 +96,10 @@ cost semantics are outside the journal contract.
 
 ## Administration
 
-Administrative placement and Shift + left-click visual settings require
-`ecia.admin` (operator by default).
+Administrative placement and Shift + right-click settings require `ecia.admin`
+(operator by default). The same editor changes the stationary animation,
+roulette audience and geometry, hologram, or physical vanilla/ItemsAdder shell
+without moving the crate anchor.
 
 Repair requires retained reports under `grounding/<namespace>/<item>.json`
 with exact config/model hashes, the native spawn transform and collision-surface
@@ -111,7 +117,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ArcExcellentCrates-0.10.0.jar`.
+Output: `build/libs/ArcExcellentCrates-0.11.0.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash

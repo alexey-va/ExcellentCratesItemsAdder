@@ -6,11 +6,13 @@ import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.SoundCategory
 import org.bukkit.block.Lidded
+import ru.ruscrafting.ecia.CrateAmbientEffectService
 import java.util.UUID
 
 /** World-visible shell, sound and particle effects around the durable roulette. */
 class CrateOpeningEffects(
     private val furniture: ItemsAdderFurnitureAccess,
+    private val ambient: CrateAmbientEffectService,
 ) : AutoCloseable {
     private val opened = mutableMapOf<Anchor, SharedOpening>()
 
@@ -36,6 +38,7 @@ class CrateOpeningEffects(
             lid != null && !changedFurniture,
             1,
         )
+        ambient.setOpening(location, true)
         burst(location, opening = true)
         return Token(anchor)
     }
@@ -55,6 +58,7 @@ class CrateOpeningEffects(
         val block = shared.location.block
         if (shared.closedFurniture != null) furniture.replace(block, shared.closedFurniture)
         if (shared.vanillaLid) (block.state as? Lidded)?.close()
+        ambient.setOpening(shared.location, false)
         burst(shared.location, opening = false)
     }
 
@@ -64,6 +68,7 @@ class CrateOpeningEffects(
             val block = shared.location.block
             if (shared.closedFurniture != null) furniture.replace(block, shared.closedFurniture)
             if (shared.vanillaLid) (block.state as? Lidded)?.close()
+            ambient.setOpening(shared.location, false)
         }
     }
 

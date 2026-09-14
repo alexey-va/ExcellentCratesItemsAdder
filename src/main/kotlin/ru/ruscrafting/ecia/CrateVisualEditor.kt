@@ -3,6 +3,8 @@ package ru.ruscrafting.ecia
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.TextColor
 import net.kyori.adventure.text.format.TextDecoration
+import org.bukkit.Material
+import org.bukkit.block.data.Directional
 import org.bukkit.entity.Player
 import ru.arc.paper.menu.PaperDialogActionId
 import ru.arc.paper.menu.PaperDialogBody
@@ -13,12 +15,16 @@ import ru.arc.paper.menu.PaperDialogNumberRangeInput
 import ru.arc.paper.menu.PaperDialogRuntime
 import ru.arc.paper.menu.PaperDialogScreen
 import ru.arc.paper.menu.PaperDialogTextInput
+import ru.ruscrafting.ecia.integration.CrateModelPairing
+import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess
 import java.util.function.Consumer
+import kotlin.math.roundToInt
 
-/** Native per-anchor editor entered from Shift + left-click. */
+/** Native per-anchor editor entered from Shift + right-click. */
 class CrateVisualEditor(
     plugin: ArcExcellentCratesPlugin,
     private val store: CrateVisualSettingsStore,
+    private val furniture: ItemsAdderFurnitureAccess,
     private val changed: Consumer<CrateVisualSettingsStore.Anchor>,
 ) : AutoCloseable {
     private val dialogs = PaperDialogRuntime(plugin)
@@ -43,7 +49,9 @@ class CrateVisualEditor(
             body = body,
             buttons = listOf(
                 button("edit_hologram", "Голограмма ›", VIOLET) { openHologram(it.player, target) },
+                button("edit_ambient", "Анимация покоя ›", VIOLET) { openAmbient(it.player, target) },
                 button("edit_roulette", "Рулетка ›", VIOLET) { openRoulette(it.player, target) },
+                button("edit_shell", "Корпус сундука ›", GOLD) { openShells(it.player, target, 0) },
                 button("reset_visuals", "Сбросить настройки", DANGER) {
                     store.reset(anchor)
                     changed.accept(anchor)
@@ -98,7 +106,7 @@ class CrateVisualEditor(
                 val current = store.get(anchor)
                 val template = context.text(HTEXT) ?: current.hologram().textTemplate()
                 val hologram = replaceHologram(current.hologram(), textTemplate = template)
-                store.save(anchor, CrateVisualSettingsStore.Visuals(hologram, current.roulette()))
+                store.save(anchor, CrateVisualSettingsStore.Visuals(hologram, current.roulette(), current.ambient()))
                 changed.accept(anchor)
                 openHologramText(context.player, target, applied = true)
             }),
@@ -143,7 +151,7 @@ class CrateVisualEditor(
             val old = readHologram(current.hologram(), field)
             val next = (old + delta).coerceIn(field.minimum, field.maximum)
             val hologram = replaceHologram(current.hologram(), field = field, number = next)
-            store.save(anchor, CrateVisualSettingsStore.Visuals(hologram, current.roulette()))
+            store.save(anchor, CrateVisualSettingsStore.Visuals(hologram, current.roulette(), current.ambient()))
             changed.accept(anchor)
             openHologramField(context.player, target, field)
         }
@@ -174,6 +182,155 @@ class CrateVisualEditor(
         (if (field == HologramField.RANGE) number else value.viewRange().toDouble()).toFloat(),
     )
 
+    private fun openAmbient(player: Player, target: CrateVisualTarget, saved: Boolean = false) {
+        val anchor = CrateVisualSettingsStore.Anchor.of(target.anchor())
+        val current = store.get(anchor)
+        val value = current.ambient()
+        val buttons = AmbientPreset.entries.map { preset ->
+            val selected = value.preset() == preset.name
+            button("ambient_${preset.name.lowercase()}", "${if (selected) "✓ " else ""}${preset.label}", if (selected) SUCCESS else VIOLET) {
+                val latest = store.get(anchor)
+                val old = latest.ambient()
+                store.save(anchor, CrateVisualSettingsStore.Visuals(
+                    latest.hologram(), latest.roulette(), CrateVisualSettingsStore.Ambient(
+                        preset.name, old.itemCount(), old.radius(), old.height(), old.itemScale(), old.speed(), old.viewRange(),
+                    ),
+                ))
+                changed.accept(anchor)
+                openAmbient(it.player, target, saved = true)
+            }
+        }.toMutableList()
+        buttons += button("ambient_fine", "Тонкая настройка ›", GOLD) { openAmbientFine(it.player, target) }
+        dialogs.open(player, PaperDialogScreen(
+            id = "arc-excellent-crates.visuals.ambient",
+            title = text("Анимация покоя · ${target.crateId()}", VIOLET, bold = true),
+            body = listOf(body(
+                if (saved) "Пресет сразу применён в мире. Все варианты показывают реальные награды пула."
+                else "Выберите характер движения предметов. Никаких декоративных палок — только содержимое кейса.",
+                if (saved) SUCCESS else BODY,
+            )),
+            buttons = buttons,
+            exitButton = backButton(),
+            columns = 2,
+        ))
+    }
+
+    private fun openAmbientFine(player: Player, target: CrateVisualTarget, saved: Boolean = false) {
+        val anchor = CrateVisualSettingsStore.Anchor.of(target.anchor())
+        val current = store.get(anchor)
+        val value = current.ambient()
+        dialogs.open(player, PaperDialogScreen(
+            id = "arc-excellent-crates.visuals.ambient.fine",
+            title = text("Тонкая настройка", VIOLET, bold = true),
+            body = listOf(body(
+                if (saved) "Изменения сразу применены к этому сундуку."
+                else "Подберите плотность и размер эффекта. Количество ограничено восемью предметами.",
+                if (saved) SUCCESS else BODY,
+            )),
+            numberInputs = listOf(
+                input(ACOUNT, "Количество предметов", 1f, 8f, value.itemCount().toFloat(), 1f),
+                input(ARADIUS, "Радиус", .1f, 3f, value.radius().toFloat(), .05f),
+                input(AHEIGHT, "Высота", .1f, 4f, value.height().toFloat(), .05f),
+                input(ASCALE, "Размер предметов", .1f, 3f, value.itemScale(), .05f),
+                input(ASPEED, "Скорость", .2f, 3f, value.speed().toFloat(), .05f),
+                input(ARANGE, "Дальность отображения", 1f, 64f, value.viewRange(), .5f),
+            ),
+            buttons = listOf(button("save_ambient", "Сохранить изменения", SUCCESS) { context ->
+                val ambient = CrateVisualSettingsStore.Ambient(
+                    value.preset(),
+                    number(context, ACOUNT, value.itemCount().toFloat()).roundToInt().coerceIn(1, 8),
+                    number(context, ARADIUS, value.radius().toFloat()).toDouble(),
+                    number(context, AHEIGHT, value.height().toFloat()).toDouble(),
+                    number(context, ASCALE, value.itemScale()),
+                    number(context, ASPEED, value.speed().toFloat()).toDouble(),
+                    number(context, ARANGE, value.viewRange()),
+                )
+                val latest = store.get(anchor)
+                store.save(anchor, CrateVisualSettingsStore.Visuals(latest.hologram(), latest.roulette(), ambient))
+                changed.accept(anchor)
+                openAmbientFine(context.player, target, saved = true)
+            }),
+            exitButton = backButton(),
+            columns = 1,
+        ))
+    }
+
+    private fun openShells(player: Player, target: CrateVisualTarget, requestedPage: Int) {
+        val registered = furniture.models().filterNot { CrateModelPairing.isOpenVariant(it.namespacedId()) }
+        val models = buildList {
+            add(Shell.Vanilla(Material.CHEST))
+            add(Shell.Vanilla(Material.TRAPPED_CHEST))
+            add(Shell.Vanilla(Material.BARREL))
+            addAll(registered.map { Shell.ItemsAdder(it.namespacedId()) })
+        }
+        val pages = maxOf(1, (models.size + SHELL_PAGE_SIZE - 1) / SHELL_PAGE_SIZE)
+        val page = requestedPage.coerceIn(0, pages - 1)
+        val registeredIds = registered.mapTo(linkedSetOf()) { it.namespacedId() }
+        val block = target.anchor().block
+        val active = furniture.at(block).orElse(null)?.namespacedId() ?: "minecraft:${block.type.name.lowercase()}"
+        val buttons = models.drop(page * SHELL_PAGE_SIZE).take(SHELL_PAGE_SIZE).mapIndexed { index, shell ->
+            val twin = (shell as? Shell.ItemsAdder)?.let { CrateModelPairing.openingModel(it.id, registeredIds) }
+            val selected = shell.id == active
+            val label = when (shell) {
+                is Shell.Vanilla -> shell.label
+                is Shell.ItemsAdder -> shell.id + if (twin != null) "  ↗" else ""
+            }
+            button("shell_${page}_$index", "${if (selected) "✓ " else ""}$label", if (selected) SUCCESS else VIOLET) {
+                replaceShell(it.player, target, shell)
+            }
+        }.toMutableList()
+        if (page > 0) buttons += button("shell_previous", "‹ Назад", WHITE) { openShells(it.player, target, page - 1) }
+        if (page + 1 < pages) buttons += button("shell_next", "Дальше ›", WHITE) { openShells(it.player, target, page + 1) }
+        dialogs.open(player, PaperDialogScreen(
+            id = "arc-excellent-crates.visuals.shell",
+            title = text("Корпус · ${target.crateId()}", GOLD, bold = true),
+            body = listOf(body("Замена происходит на месте. ↗ означает, что найдена парная открытая модель.")),
+            buttons = buttons,
+            exitButton = backButton(),
+            columns = 2,
+        ))
+    }
+
+    private fun replaceShell(player: Player, target: CrateVisualTarget, shell: Shell) {
+        val block = target.anchor().block
+        val oldFurniture = furniture.at(block).orElse(null)?.namespacedId()
+        val oldData = block.blockData.clone()
+        val changedShell = runCatching {
+            when {
+                oldFurniture != null && shell is Shell.ItemsAdder -> furniture.replace(block, shell.id)
+                oldFurniture != null && shell is Shell.Vanilla -> furniture.remove(block) && placeVanilla(player, block, shell.material)
+                oldFurniture == null && shell is Shell.ItemsAdder -> {
+                    block.type = Material.AIR
+                    furniture.spawn(shell.id, block).isPresent
+                }
+                shell is Shell.Vanilla -> placeVanilla(player, block, shell.material)
+                else -> false
+            }
+        }.getOrDefault(false)
+        if (!changedShell) {
+            runCatching {
+                furniture.remove(block)
+                block.type = Material.AIR
+                if (oldFurniture != null) furniture.spawn(oldFurniture, block) else block.blockData = oldData
+            }
+            player.sendMessage(text("Не удалось заменить корпус; прежний вариант восстановлен.", DANGER))
+            openShells(player, target, 0)
+            return
+        }
+        changed.accept(CrateVisualSettingsStore.Anchor.of(target.anchor()))
+        player.sendMessage(text("Корпус заменён на ${shell.id}.", SUCCESS))
+        openShells(player, target, 0)
+    }
+
+    private fun placeVanilla(player: Player, block: org.bukkit.block.Block, material: Material): Boolean = runCatching {
+        block.type = material
+        (block.blockData as? Directional)?.let { directional ->
+            directional.facing = player.facing.oppositeFace
+            block.blockData = directional
+        }
+        true
+    }.getOrDefault(false)
+
     private fun openRoulette(player: Player, target: CrateVisualTarget, saved: Boolean = false) {
         val anchor = CrateVisualSettingsStore.Anchor.of(target.anchor())
         val current = store.get(anchor)
@@ -193,7 +350,23 @@ class CrateVisualEditor(
                 input(RPOINTER_SCALE, "Размер указателя", .1f, 10f, value.pointerScale(), .05f),
                 input(RRANGE, "Дальность отображения", .1f, 64f, value.viewRange(), .1f),
             ),
-            buttons = listOf(button("save_roulette", "Сохранить изменения", SUCCESS) { context ->
+            buttons = listOf(
+                button(
+                    "roulette_audience",
+                    if (value.visibleToNearby()) "Зрители: все рядом" else "Зрители: только открывающий",
+                    GOLD,
+                ) { context ->
+                    val latest = store.get(anchor)
+                    val old = latest.roulette()
+                    val roulette = CrateVisualSettingsStore.Roulette(
+                        old.offsetX(), old.offsetY(), old.offsetZ(), old.itemSpacing(), old.itemScale(),
+                        old.winnerScale(), old.pointerHeight(), old.pointerScale(), old.viewRange(), !old.visibleToNearby(),
+                    )
+                    store.save(anchor, CrateVisualSettingsStore.Visuals(latest.hologram(), roulette, latest.ambient()))
+                    changed.accept(anchor)
+                    openRoulette(context.player, target, saved = true)
+                },
+                button("save_roulette", "Сохранить геометрию", SUCCESS) { context ->
                 val roulette = CrateVisualSettingsStore.Roulette(
                     number(context, RX, value.offsetX().toFloat()).toDouble(),
                     number(context, RY, value.offsetY().toFloat()).toDouble(),
@@ -204,11 +377,13 @@ class CrateVisualEditor(
                     number(context, RPOINTER_Y, value.pointerHeight().toFloat()).toDouble(),
                     number(context, RPOINTER_SCALE, value.pointerScale()),
                     number(context, RRANGE, value.viewRange()),
+                    value.visibleToNearby(),
                 )
-                store.save(anchor, CrateVisualSettingsStore.Visuals(current.hologram(), roulette))
+                store.save(anchor, CrateVisualSettingsStore.Visuals(current.hologram(), roulette, current.ambient()))
                 changed.accept(anchor)
                 openRoulette(context.player, target, saved = true)
-            }),
+                },
+            ),
             exitButton = backButton(),
             columns = 1,
         ))
@@ -252,6 +427,37 @@ class CrateVisualEditor(
         val RPOINTER_Y = PaperDialogInputId.of("roulette_pointer_y")
         val RPOINTER_SCALE = PaperDialogInputId.of("roulette_pointer_scale")
         val RRANGE = PaperDialogInputId.of("roulette_range")
+        val ACOUNT = PaperDialogInputId.of("ambient_count")
+        val ARADIUS = PaperDialogInputId.of("ambient_radius")
+        val AHEIGHT = PaperDialogInputId.of("ambient_height")
+        val ASCALE = PaperDialogInputId.of("ambient_scale")
+        val ASPEED = PaperDialogInputId.of("ambient_speed")
+        val ARANGE = PaperDialogInputId.of("ambient_range")
+        const val SHELL_PAGE_SIZE = 10
+    }
+
+    private enum class AmbientPreset(val label: String) {
+        FOUNTAIN("Фонтан наград"),
+        HALO("Живая орбита"),
+        CROWN("Корона"),
+        SPIRAL("Спираль"),
+        PULSE("Импульс"),
+    }
+
+    private sealed interface Shell {
+        val id: String
+
+        data class Vanilla(val material: Material) : Shell {
+            override val id = "minecraft:${material.name.lowercase()}"
+            val label = when (material) {
+                Material.CHEST -> "Ванильный сундук"
+                Material.TRAPPED_CHEST -> "Сундук-ловушка"
+                Material.BARREL -> "Ванильная бочка"
+                else -> material.name
+            }
+        }
+
+        data class ItemsAdder(override val id: String) : Shell
     }
 
     private enum class HologramField(

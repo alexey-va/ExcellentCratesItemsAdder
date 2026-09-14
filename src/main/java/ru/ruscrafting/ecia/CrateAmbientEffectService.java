@@ -1,18 +1,19 @@
 package ru.ruscrafting.ecia;
 
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
+import org.bukkit.entity.ItemDisplay;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
-import org.joml.AxisAngle4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import su.nightexpress.excellentcrates.CratesAPI;
+import su.nightexpress.excellentcrates.api.crate.Reward;
 import su.nightexpress.excellentcrates.crate.impl.Crate;
 import su.nightexpress.excellentcrates.util.pos.WorldPos;
 
@@ -24,21 +25,26 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Four small BlockDisplay runes orbit every placed crate while it is idle. */
-final class CrateAmbientEffectService implements AutoCloseable {
+/** Cycles real reward previews around every idle placed crate. */
+public final class CrateAmbientEffectService implements AutoCloseable {
     private static final long RECONCILE_TICKS = 40L;
-    private static final long ANIMATION_TICKS = 4L;
-    private static final int SHARDS = 4;
+    private static final long ANIMATION_TICKS = 2L;
+    private static final int BASE_PERIOD_FRAMES = 50;
 
     private final ArcExcellentCratesPlugin plugin;
+    private final CrateVisualSettingsStore settings;
     private final NamespacedKey marker;
     private final Map<Anchor, Orbit> orbits = new HashMap<>();
+    private final Set<Anchor> paused = new HashSet<>();
     private final BukkitTask reconcileTask;
     private final BukkitTask animationTask;
+    private Map<String, List<ItemStack>> rewardsByCrate = Map.of();
     private long frame;
+    private boolean closed;
 
-    CrateAmbientEffectService(ArcExcellentCratesPlugin plugin) {
+    CrateAmbientEffectService(ArcExcellentCratesPlugin plugin, CrateVisualSettingsStore settings) {
         this.plugin = plugin;
+        this.settings = settings;
         this.marker = new NamespacedKey(plugin, "case_ambient");
         removeOrphans();
         reconcile();
@@ -48,17 +54,42 @@ final class CrateAmbientEffectService implements AutoCloseable {
                 ANIMATION_TICKS, ANIMATION_TICKS);
     }
 
+    public void setRewards(Map<String, List<ItemStack>> rewards) {
+        if (closed) return;
+        Map<String, List<ItemStack>> copied = new HashMap<>();
+        rewards.forEach((crateId, items) -> {
+            List<ItemStack> usable = items.stream()
+                    .filter(item -> item != null && !item.isEmpty())
+                    .map(ItemStack::clone)
+                    .toList();
+            if (!usable.isEmpty()) copied.put(crateId, usable);
+        });
+        rewardsByCrate = Map.copyOf(copied);
+        removeAll();
+        reconcile();
+    }
+
+    public void setOpening(Location location, boolean opening) {
+        if (closed || location.getWorld() == null) return;
+        Anchor anchor = Anchor.of(location);
+        if (opening) paused.add(anchor); else paused.remove(anchor);
+    }
+
     void refresh() {
+        if (closed) return;
+        removeAll();
         reconcile();
     }
 
     private void reconcile() {
-        if (!plugin.getConfig().getBoolean("case-ambient.enabled", true) || !CratesAPI.isLoaded()) {
+        if (closed || !plugin.getConfig().getBoolean("case-ambient.enabled", true) || !CratesAPI.isLoaded()) {
             removeAll();
             return;
         }
         Set<Anchor> desired = new HashSet<>();
         for (Crate crate : CratesAPI.getCrateManager().getCrates()) {
+            List<ItemStack> rewards = previews(crate);
+            if (rewards.isEmpty()) continue;
             for (WorldPos position : crate.getBlockPositions()) {
                 Anchor anchor = Anchor.of(position);
                 desired.add(anchor);
@@ -66,85 +97,151 @@ final class CrateAmbientEffectService implements AutoCloseable {
                     remove(anchor);
                 } else if (!valid(orbits.get(anchor))) {
                     remove(anchor);
-                    orbits.put(anchor, spawn(position));
+                    orbits.put(anchor, spawn(position, rewards));
                 }
             }
         }
         Set<Anchor> obsolete = new HashSet<>(orbits.keySet());
         obsolete.removeAll(desired);
         obsolete.forEach(this::remove);
+        paused.retainAll(desired);
     }
 
-    private Orbit spawn(WorldPos source) {
+    private List<ItemStack> previews(Crate crate) {
+        List<ItemStack> managed = rewardsByCrate.get(crate.getId());
+        if (managed != null && !managed.isEmpty()) return managed;
+        return crate.getRewards().stream()
+                .map(Reward::getPreviewItem)
+                .filter(item -> item != null && !item.isEmpty())
+                .map(ItemStack::clone)
+                .toList();
+    }
+
+    private Orbit spawn(WorldPos source, List<ItemStack> rewards) {
+        CrateVisualSettingsStore.Anchor settingsAnchor = new CrateVisualSettingsStore.Anchor(
+                source.getWorldName(), source.getX(), source.getY(), source.getZ());
+        CrateVisualSettingsStore.Ambient visual = settings.get(settingsAnchor).ambient();
         World world = source.getWorld();
-        List<UUID> ids = new ArrayList<>(SHARDS);
-        for (int index = 0; index < SHARDS; index++) {
-            int shard = index;
-            Location origin = source.toLocation().add(.5, .55, .5);
-            BlockDisplay display = world.spawn(origin, BlockDisplay.class, entity -> {
+        List<UUID> ids = new ArrayList<>(visual.itemCount());
+        Location origin = source.toLocation().add(.5, .45, .5);
+        for (int index = 0; index < visual.itemCount(); index++) {
+            int slot = index;
+            ItemDisplay display = world.spawn(origin, ItemDisplay.class, entity -> {
                 entity.getPersistentDataContainer().set(marker, PersistentDataType.BYTE, (byte) 1);
-                entity.setBlock((shard & 1) == 0
-                        ? Material.AMETHYST_BLOCK.createBlockData()
-                        : Material.GOLD_BLOCK.createBlockData());
+                entity.setItemStack(rewards.get(slot % rewards.size()).clone());
+                entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.GUI);
                 entity.setPersistent(false);
                 entity.setInvulnerable(true);
                 entity.setSilent(true);
                 entity.setGravity(false);
-                entity.setBillboard(Display.Billboard.FIXED);
+                entity.setBillboard(Display.Billboard.CENTER);
                 entity.setBrightness(new Display.Brightness(15, 15));
-                entity.setViewRange(20.0F);
+                entity.setViewRange(visual.viewRange());
                 entity.setTeleportDuration((int) ANIMATION_TICKS);
                 entity.setInterpolationDuration((int) ANIMATION_TICKS);
-                entity.setShadowRadius(0.0F);
-                entity.setTransformation(transformation(shard, 0.0F));
+                entity.setShadowRadius(.12F);
+                entity.setShadowStrength(.55F);
+                entity.setTransformation(transformation(.01F, 0.0F));
             });
             ids.add(display.getUniqueId());
         }
-        return new Orbit(source.toLocation(), List.copyOf(ids));
+        return new Orbit(source.toLocation(), List.copyOf(ids), rewards.stream().map(ItemStack::clone).toList(),
+                new int[ids.size()], visual);
     }
 
     private void animate() {
+        if (closed) return;
         frame++;
-        double time = frame * 0.15D;
-        for (Orbit orbit : orbits.values()) {
+        for (Map.Entry<Anchor, Orbit> entry : orbits.entrySet()) {
+            Orbit orbit = entry.getValue();
             World world = orbit.anchor().getWorld();
             if (world == null || !world.isChunkLoaded(orbit.anchor().getBlockX() >> 4,
                     orbit.anchor().getBlockZ() >> 4)) continue;
+            boolean hidden = paused.contains(entry.getKey());
             for (int index = 0; index < orbit.displays().size(); index++) {
-                BlockDisplay display = entity(orbit.displays().get(index));
+                ItemDisplay display = entity(orbit.displays().get(index));
                 if (display == null) continue;
-                double angle = time + Math.PI * 2.0D * index / SHARDS;
-                double radius = .78D + Math.sin(time * .7D + index) * .06D;
-                Location next = orbit.anchor().clone().add(
-                        .5D + Math.cos(angle) * radius,
-                        .62D + Math.sin(time * 1.25D + index) * .18D,
-                        .5D + Math.sin(angle) * radius);
-                next.setYaw((float) Math.toDegrees(-angle));
+                if (hidden) {
+                    display.teleport(orbit.anchor().clone().add(.5, .45, .5));
+                    display.setTransformation(transformation(.01F, 0.0F));
+                    continue;
+                }
+                Frame next = frame(frame, index, orbit.visual(), orbit.rewards().size());
+                if (orbit.rewardIndices()[index] != next.rewardIndex() + 1) {
+                    display.setItemStack(orbit.rewards().get(next.rewardIndex()).clone());
+                    orbit.rewardIndices()[index] = next.rewardIndex() + 1;
+                }
+                Location location = orbit.anchor().clone().add(.5 + next.x(), .45 + next.y(), .5 + next.z());
                 try {
-                    display.teleport(next);
-                    display.setTransformation(transformation(index, (float) angle));
+                    display.teleport(location);
+                    display.setTransformation(transformation(next.scale(), next.rotation()));
                 } catch (RuntimeException ignored) {
-                    // Reconciliation recreates an entity invalidated during a
-                    // chunk/world lifecycle edge without cancelling animation.
+                    // The next reconciliation recreates entities invalidated by a chunk lifecycle edge.
                 }
             }
         }
     }
 
-    private static Transformation transformation(int index, float angle) {
-        float scale = (index & 1) == 0 ? .13F : .09F;
-        Quaternionf rotation = new Quaternionf(new AxisAngle4f(angle + index * .35F, 0.0F, 1.0F, 0.0F))
-                .rotateZ(.78F);
-        return new Transformation(new Vector3f(-scale / 2.0F, -.28F, -scale / 2.0F), rotation,
-                new Vector3f(scale, .56F, scale), new Quaternionf());
+    static Frame frame(long globalFrame, int slot, CrateVisualSettingsStore.Ambient visual, int rewardCount) {
+        int count = Math.max(1, visual.itemCount());
+        int period = Math.max(12, (int) Math.round(BASE_PERIOD_FRAMES / visual.speed()));
+        long shifted = globalFrame + (long) slot * period / count;
+        long cycle = Math.floorDiv(shifted, period);
+        double progress = Math.floorMod(shifted, period) / (double) period;
+        double angle = Math.PI * 2.0 * slot / count + globalFrame * .035 * visual.speed();
+        double envelope = Math.sin(Math.PI * progress);
+        double radius;
+        double height;
+        switch (visual.preset()) {
+            case "HALO" -> {
+                double reveal = Math.min(1.0, Math.min(progress, 1.0 - progress) * 7.0);
+                envelope = smooth(reveal);
+                radius = visual.radius() * (.82 + .18 * Math.sin(progress * Math.PI));
+                height = visual.height() * .62 + Math.sin(angle * 1.5) * .12;
+            }
+            case "CROWN" -> {
+                envelope = Math.pow(envelope, .55);
+                radius = visual.radius() * envelope;
+                height = visual.height() * envelope + Math.sin(angle * 2.0) * .08 * envelope;
+            }
+            case "SPIRAL" -> {
+                angle += progress * Math.PI * 3.0;
+                radius = visual.radius() * (.15 + .85 * progress) * envelope;
+                height = visual.height() * progress;
+            }
+            case "PULSE" -> {
+                angle = Math.PI * 2.0 * slot / count + cycle * .45;
+                radius = visual.radius() * envelope;
+                height = visual.height() * .55 * envelope;
+            }
+            default -> {
+                angle += progress * 1.1;
+                radius = visual.radius() * envelope;
+                height = visual.height() * 4.0 * progress * (1.0 - progress);
+            }
+        }
+        float scale = (float) (.01 + visual.itemScale() * Math.pow(Math.max(0.0, envelope), .72));
+        int rewardIndex = Math.floorMod((int) (cycle * count + slot), Math.max(1, rewardCount));
+        return new Frame(Math.cos(angle) * radius, height, Math.sin(angle) * radius,
+                scale, (float) (angle + progress * Math.PI), rewardIndex);
+    }
+
+    private static double smooth(double value) {
+        double clamped = Math.max(0.0, Math.min(1.0, value));
+        return clamped * clamped * (3.0 - 2.0 * clamped);
+    }
+
+    private static Transformation transformation(float scale, float rotation) {
+        return new Transformation(new Vector3f(), new Quaternionf().rotateZ(rotation),
+                new Vector3f(scale, scale, scale), new Quaternionf());
     }
 
     private boolean valid(Orbit orbit) {
         return orbit != null && orbit.displays().stream().allMatch(id -> entity(id) != null);
     }
 
-    private BlockDisplay entity(UUID id) {
-        return plugin.getServer().getEntity(id) instanceof BlockDisplay display && display.isValid()
+    private ItemDisplay entity(UUID id) {
+        return plugin.getServer().getEntity(id) instanceof ItemDisplay display && display.isValid()
                 ? display : null;
     }
 
@@ -163,6 +260,9 @@ final class CrateAmbientEffectService implements AutoCloseable {
 
     private void removeOrphans() {
         for (World world : plugin.getServer().getWorlds()) {
+            for (ItemDisplay display : world.getEntitiesByClass(ItemDisplay.class)) {
+                if (display.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) display.remove();
+            }
             for (BlockDisplay display : world.getEntitiesByClass(BlockDisplay.class)) {
                 if (display.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) display.remove();
             }
@@ -171,16 +271,27 @@ final class CrateAmbientEffectService implements AutoCloseable {
 
     @Override
     public void close() {
+        if (closed) return;
+        closed = true;
         reconcileTask.cancel();
         animationTask.cancel();
         removeAll();
+        paused.clear();
+        rewardsByCrate = Map.of();
     }
 
-    private record Orbit(Location anchor, List<UUID> displays) { }
+    record Orbit(Location anchor, List<UUID> displays, List<ItemStack> rewards, int[] rewardIndices,
+                 CrateVisualSettingsStore.Ambient visual) { }
+
+    record Frame(double x, double y, double z, float scale, float rotation, int rewardIndex) { }
 
     private record Anchor(String world, int x, int y, int z) {
         static Anchor of(WorldPos value) {
             return new Anchor(value.getWorldName(), value.getX(), value.getY(), value.getZ());
+        }
+
+        static Anchor of(Location value) {
+            return new Anchor(value.getWorld().getName(), value.getBlockX(), value.getBlockY(), value.getBlockZ());
         }
     }
 }

@@ -23,6 +23,7 @@ public final class CrateVisualSettingsStore {
     private final Map<Anchor, Visuals> overrides = new HashMap<>();
     private Hologram defaultHologram;
     private Roulette defaultRoulette;
+    private Ambient defaultAmbient;
 
     CrateVisualSettingsStore(ArcExcellentCratesPlugin plugin) {
         this(plugin.getDataFolder().toPath(), plugin.getConfig());
@@ -54,7 +55,17 @@ public final class CrateVisualSettingsStore {
                 (float) value("case-roulette.winner-scale", 1.32, 0.1, 12.0),
                 value("case-roulette.pointer-height", 1.08, -4.0, 8.0),
                 (float) value("case-roulette.pointer-scale", 1.55, 0.1, 10.0),
-                (float) value("case-roulette.view-range", 24.0, 0.1, 64.0)
+                (float) value("case-roulette.view-range", 24.0, 0.1, 64.0),
+                config.getBoolean("case-roulette.visible-to-nearby", true)
+        );
+        defaultAmbient = new Ambient(
+                preset(config.getString("case-ambient.preset")),
+                (int) value("case-ambient.item-count", 5, 1, 8),
+                value("case-ambient.radius", 0.9, 0.1, 3.0),
+                value("case-ambient.height", 1.05, 0.1, 4.0),
+                (float) value("case-ambient.item-scale", 0.7, 0.1, 3.0),
+                value("case-ambient.speed", 1.0, 0.2, 3.0),
+                (float) value("case-ambient.view-range", 20.0, 1.0, 64.0)
         );
         overrides.clear();
         if (!Files.isRegularFile(file)) return;
@@ -85,9 +96,19 @@ public final class CrateVisualSettingsStore {
                     (float) bounded(yaml.getDouble(path + ".roulette.winner-scale", defaultRoulette.winnerScale()), .1, 12, defaultRoulette.winnerScale()),
                     bounded(yaml.getDouble(path + ".roulette.pointer-height", defaultRoulette.pointerHeight()), -4, 8, defaultRoulette.pointerHeight()),
                     (float) bounded(yaml.getDouble(path + ".roulette.pointer-scale", defaultRoulette.pointerScale()), .1, 10, defaultRoulette.pointerScale()),
-                    (float) bounded(yaml.getDouble(path + ".roulette.view-range", defaultRoulette.viewRange()), .1, 64, defaultRoulette.viewRange())
+                    (float) bounded(yaml.getDouble(path + ".roulette.view-range", defaultRoulette.viewRange()), .1, 64, defaultRoulette.viewRange()),
+                    yaml.getBoolean(path + ".roulette.visible-to-nearby", defaultRoulette.visibleToNearby())
             );
-            overrides.put(anchor, new Visuals(hologram, roulette));
+            Ambient ambient = new Ambient(
+                    preset(yaml.getString(path + ".ambient.preset", defaultAmbient.preset())),
+                    (int) bounded(yaml.getDouble(path + ".ambient.item-count", defaultAmbient.itemCount()), 1, 8, defaultAmbient.itemCount()),
+                    bounded(yaml.getDouble(path + ".ambient.radius", defaultAmbient.radius()), .1, 3, defaultAmbient.radius()),
+                    bounded(yaml.getDouble(path + ".ambient.height", defaultAmbient.height()), .1, 4, defaultAmbient.height()),
+                    (float) bounded(yaml.getDouble(path + ".ambient.item-scale", defaultAmbient.itemScale()), .1, 3, defaultAmbient.itemScale()),
+                    bounded(yaml.getDouble(path + ".ambient.speed", defaultAmbient.speed()), .2, 3, defaultAmbient.speed()),
+                    (float) bounded(yaml.getDouble(path + ".ambient.view-range", defaultAmbient.viewRange()), 1, 64, defaultAmbient.viewRange())
+            );
+            overrides.put(anchor, new Visuals(hologram, roulette, ambient));
         }
     }
 
@@ -96,7 +117,7 @@ public final class CrateVisualSettingsStore {
     }
 
     public Visuals defaults() {
-        return new Visuals(defaultHologram, defaultRoulette);
+        return new Visuals(defaultHologram, defaultRoulette, defaultAmbient);
     }
 
     public void save(Anchor anchor, Visuals visuals) {
@@ -121,6 +142,7 @@ public final class CrateVisualSettingsStore {
             yaml.set(path + ".z", anchor.z());
             write(yaml, path + ".hologram", visuals.hologram());
             write(yaml, path + ".roulette", visuals.roulette());
+            write(yaml, path + ".ambient", visuals.ambient());
         }
         try {
             Files.createDirectories(file.getParent());
@@ -150,6 +172,22 @@ public final class CrateVisualSettingsStore {
         yaml.set(path + ".item-scale", value.itemScale()); yaml.set(path + ".winner-scale", value.winnerScale());
         yaml.set(path + ".pointer-height", value.pointerHeight()); yaml.set(path + ".pointer-scale", value.pointerScale());
         yaml.set(path + ".view-range", value.viewRange());
+        yaml.set(path + ".visible-to-nearby", value.visibleToNearby());
+    }
+
+    private static void write(YamlConfiguration yaml, String path, Ambient value) {
+        yaml.set(path + ".preset", value.preset()); yaml.set(path + ".item-count", value.itemCount());
+        yaml.set(path + ".radius", value.radius()); yaml.set(path + ".height", value.height());
+        yaml.set(path + ".item-scale", value.itemScale()); yaml.set(path + ".speed", value.speed());
+        yaml.set(path + ".view-range", value.viewRange());
+    }
+
+    private static String preset(String value) {
+        if (value == null) return "FOUNTAIN";
+        return switch (value.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "HALO", "CROWN", "SPIRAL", "PULSE" -> value.trim().toUpperCase(java.util.Locale.ROOT);
+            default -> "FOUNTAIN";
+        };
     }
 
     private double value(String path, double fallback, double minimum, double maximum) {
@@ -180,7 +218,10 @@ public final class CrateVisualSettingsStore {
 
     public record Roulette(double offsetX, double offsetY, double offsetZ, double itemSpacing,
                            float itemScale, float winnerScale, double pointerHeight, float pointerScale,
-                           float viewRange) { }
+                           float viewRange, boolean visibleToNearby) { }
 
-    public record Visuals(Hologram hologram, Roulette roulette) { }
+    public record Ambient(String preset, int itemCount, double radius, double height,
+                          float itemScale, double speed, float viewRange) { }
+
+    public record Visuals(Hologram hologram, Roulette roulette, Ambient ambient) { }
 }
