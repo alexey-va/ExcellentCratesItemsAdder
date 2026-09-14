@@ -186,9 +186,10 @@ class CrateVisualEditor(
         val anchor = CrateVisualSettingsStore.Anchor.of(target.anchor())
         val current = store.get(anchor)
         val value = current.ambient()
+        val selectedLabel = AmbientPreset.entries.first { it.name == value.preset() }.label
         val buttons = AmbientPreset.entries.map { preset ->
             val selected = value.preset() == preset.name
-            button("ambient_${preset.name.lowercase()}", "${if (selected) "✓ " else ""}${preset.label}", if (selected) SUCCESS else VIOLET) {
+            button("ambient_${preset.name.lowercase()}", "${if (selected) "✔" else "○"} ${preset.label}", if (selected) SUCCESS else WHITE) {
                 val latest = store.get(anchor)
                 val old = latest.ambient()
                 store.save(anchor, CrateVisualSettingsStore.Visuals(
@@ -205,8 +206,8 @@ class CrateVisualEditor(
             id = "arc-excellent-crates.visuals.ambient",
             title = text("Анимация покоя · ${target.crateId()}", VIOLET, bold = true),
             body = listOf(body(
-                if (saved) "Пресет сразу применён в мире. Все варианты показывают реальные награды пула."
-                else "Выберите характер движения предметов. Никаких декоративных палок — только содержимое кейса.",
+                if (saved) "Выбрано: $selectedLabel. Анимация сразу обновлена в мире."
+                else "Выберите одно из 15 движений. Только реальные награды пула; вариант применяется сразу.",
                 if (saved) SUCCESS else BODY,
             )),
             buttons = buttons,
@@ -442,6 +443,16 @@ class CrateVisualEditor(
         CROWN("Корона"),
         SPIRAL("Спираль"),
         PULSE("Импульс"),
+        WHEEL("Колесо фортуны"),
+        SWING("Маятник фортуны"),
+        INFINITY("Бесконечность"),
+        SATURN("Кольца Сатурна"),
+        CAROUSEL("Карусель"),
+        COMET("Кометный след"),
+        BLOOM("Цветок наград"),
+        HELIX("Двойная спираль"),
+        TIDE("Волна"),
+        CLOCKWORK("Часовой механизм"),
     }
 
     private sealed interface Shell {

@@ -109,7 +109,10 @@ omitting the server grants the key on the backend where the command is run.
 
 Shift + right-click changes the stationary animation, roulette audience and
 geometry, hologram, or physical vanilla/ItemsAdder shell without moving the
-crate anchor.
+crate anchor. Fifteen idle presets range from horizontal orbits and fountains
+to a continuously spinning fortune wheel, rocking wheel, figure eight, tilted
+rings, carousel, comet trail, flower, double helix, wave, and counter-rotating
+clockwork rings. Using a key stops the idle scene before the opening animation.
 
 Repair requires retained reports under `grounding/<namespace>/<item>.json`
 with exact config/model hashes, the native spawn transform and collision-surface
@@ -127,7 +130,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ArcExcellentCrates-0.12.1.jar`.
+Output: `build/libs/ArcExcellentCrates-0.13.0.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash

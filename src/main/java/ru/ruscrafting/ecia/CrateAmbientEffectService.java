@@ -192,6 +192,8 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         double envelope = Math.sin(Math.PI * progress);
         double radius;
         double height;
+        double x = Double.NaN;
+        double z = Double.NaN;
         switch (visual.preset()) {
             case "HALO" -> {
                 double reveal = Math.min(1.0, Math.min(progress, 1.0 - progress) * 7.0);
@@ -214,6 +216,83 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                 radius = visual.radius() * (.86 + .14 * envelope);
                 height = visual.height() * .55 * envelope;
             }
+            case "WHEEL" -> {
+                angle = Math.PI * 2.0 * slot / count + globalFrame * .055 * visual.speed();
+                envelope = 1.0;
+                radius = visual.radius();
+                height = visual.height() * .95 + Math.sin(angle) * visual.height() * .85;
+                x = Math.cos(angle) * radius;
+                z = radius * .95;
+            }
+            case "SWING" -> {
+                double swing = Math.sin(globalFrame * .045 * visual.speed()) * 1.15;
+                angle = Math.PI * 2.0 * slot / count + swing;
+                envelope = .9 + .1 * Math.cos(angle);
+                radius = visual.radius();
+                height = visual.height() * .95 + Math.sin(angle) * visual.height() * .8;
+                x = Math.cos(angle) * radius;
+                z = -radius * .95;
+            }
+            case "INFINITY" -> {
+                angle = Math.PI * 2.0 * slot / count + globalFrame * .028 * visual.speed();
+                envelope = .85 + .15 * (.5 + .5 * Math.cos(angle * 2.0));
+                radius = visual.radius();
+                height = visual.height() * 1.05 + Math.cos(angle * 2.0) * .15;
+                x = Math.sin(angle) * radius;
+                z = Math.sin(angle * 2.0) * radius * .55;
+            }
+            case "SATURN" -> {
+                envelope = 1.0;
+                radius = visual.radius();
+                height = visual.height() * .72 + Math.sin(angle) * visual.height() * .42;
+            }
+            case "CAROUSEL" -> {
+                angle = Math.PI * 2.0 * slot / count + globalFrame * .025 * visual.speed();
+                envelope = .9 + .1 * Math.sin(angle * 2.0);
+                radius = visual.radius() * (.9 + .1 * Math.sin(angle * 3.0));
+                height = visual.height() * (.58 + .2 * Math.sin(angle * 2.0));
+            }
+            case "COMET" -> {
+                double trail = count == 1 ? 0.0 : slot / (double) (count - 1);
+                angle = globalFrame * .06 * visual.speed() - slot * .24;
+                envelope = 1.0 - trail * .65;
+                radius = visual.radius() * (.82 + trail * .18);
+                height = visual.height() * .58 + Math.sin(angle * 2.0) * .1;
+            }
+            case "BLOOM" -> {
+                angle = Math.PI * 2.0 * slot / count + globalFrame * .026 * visual.speed();
+                envelope = .85 + .15 * (.5 + .5 * Math.sin(angle * 2.0));
+                radius = visual.radius() * (.91 + .09 * Math.cos(angle * 4.0));
+                height = visual.height() * .58 + Math.sin(angle * 3.0) * .18;
+            }
+            case "HELIX" -> {
+                int strand = slot & 1;
+                int strandSize = Math.max(1, (count + 1) / 2);
+                int strandSlot = slot / 2;
+                angle = Math.PI * 2.0 * strandSlot / strandSize
+                        + globalFrame * .035 * visual.speed() * (strand == 0 ? 1.0 : -1.0)
+                        + strand * Math.PI;
+                envelope = .9 + .1 * Math.sin(angle * 2.0);
+                radius = visual.radius() * .92;
+                height = visual.height() * (.58 + .3 * Math.sin(angle * 2.0 + strand * Math.PI));
+            }
+            case "TIDE" -> {
+                double lane = count == 1 ? 0.0 : slot * 2.0 / (count - 1) - 1.0;
+                double wave = globalFrame * .045 * visual.speed() + slot * .75;
+                angle = wave;
+                envelope = .85 + .15 * (.5 + .5 * Math.cos(wave));
+                radius = visual.radius();
+                height = visual.height() * (.62 + .28 * Math.sin(wave));
+                x = lane * radius * 1.4;
+                z = radius * (.9 + .12 * Math.sin(wave));
+            }
+            case "CLOCKWORK" -> {
+                boolean inner = (slot & 1) == 0;
+                angle = Math.PI * 2.0 * slot / count + globalFrame * .035 * visual.speed() * (inner ? 1.35 : -.9);
+                envelope = .94 + .06 * Math.sin(angle * 2.0);
+                radius = visual.radius() * (inner ? .82 : 1.08);
+                height = visual.height() * (inner ? .48 : .76);
+            }
             default -> {
                 angle += progress * 1.1;
                 radius = visual.radius() * (.90 + .10 * envelope);
@@ -222,7 +301,9 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         }
         float scale = (float) (.01 + visual.itemScale() * Math.pow(Math.max(0.0, envelope), .72));
         int rewardIndex = Math.floorMod((int) (cycle * count + slot), Math.max(1, rewardCount));
-        return new Frame(Math.cos(angle) * radius, height, Math.sin(angle) * radius,
+        if (!Double.isFinite(x)) x = Math.cos(angle) * radius;
+        if (!Double.isFinite(z)) z = Math.sin(angle) * radius;
+        return new Frame(x, height, z,
                 scale, (float) (angle + progress * Math.PI), rewardIndex);
     }
 

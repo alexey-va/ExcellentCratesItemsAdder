@@ -203,7 +203,9 @@ public final class CrateVisualSettingsStore {
     private static String preset(String value) {
         if (value == null) return "FOUNTAIN";
         return switch (value.trim().toUpperCase(java.util.Locale.ROOT)) {
-            case "HALO", "CROWN", "SPIRAL", "PULSE" -> value.trim().toUpperCase(java.util.Locale.ROOT);
+            case "HALO", "CROWN", "SPIRAL", "PULSE", "WHEEL", "SWING", "INFINITY", "SATURN",
+                    "CAROUSEL", "COMET", "BLOOM", "HELIX", "TIDE", "CLOCKWORK" ->
+                    value.trim().toUpperCase(java.util.Locale.ROOT);
             default -> "FOUNTAIN";
         };
     }

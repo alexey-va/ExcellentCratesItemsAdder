@@ -72,6 +72,20 @@ class CrateVisualSettingsStoreTest {
     }
 
     @Test
+    void everyShippedAmbientPresetSurvivesPersistence() {
+        for (String preset : java.util.Set.of(
+                "FOUNTAIN", "HALO", "CROWN", "SPIRAL", "PULSE",
+                "WHEEL", "SWING", "INFINITY", "SATURN", "CAROUSEL",
+                "COMET", "BLOOM", "HELIX", "TIDE", "CLOCKWORK")) {
+            MemoryConfiguration config = new MemoryConfiguration();
+            config.set("case-ambient.preset", preset);
+
+            assertEquals(preset, new CrateVisualSettingsStore(directory.resolve(preset), config)
+                    .defaults().ambient().preset());
+        }
+    }
+
+    @Test
     void frozenLegacyDefaultsMigrateWithoutChangingCustomGeometry() throws Exception {
         Files.writeString(directory.resolve("visuals.yml"), """
                 anchors:

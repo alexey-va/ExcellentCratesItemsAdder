@@ -31,7 +31,8 @@ case-roulette:
 case-ambient:
   # Real reward previews animate around every stationary managed crate.
   enabled: true
-  # FOUNTAIN, HALO, CROWN, SPIRAL or PULSE. Each placed crate can override it.
+  # FOUNTAIN, HALO, CROWN, SPIRAL, PULSE, WHEEL, SWING, INFINITY, SATURN,
+  # CAROUSEL, COMET, BLOOM, HELIX, TIDE or CLOCKWORK. Each crate can override it.
   preset: FOUNTAIN
   item-count: 5
   radius: 1.35

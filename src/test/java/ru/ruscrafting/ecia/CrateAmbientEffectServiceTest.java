@@ -3,15 +3,22 @@ package ru.ruscrafting.ecia;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CrateAmbientEffectServiceTest {
+    private static final Set<String> PRESETS = Set.of(
+            "FOUNTAIN", "HALO", "CROWN", "SPIRAL", "PULSE",
+            "WHEEL", "SWING", "INFINITY", "SATURN", "CAROUSEL",
+            "COMET", "BLOOM", "HELIX", "TIDE", "CLOCKWORK"
+    );
+
     @Test
     void everyPresetKeepsActualPreviewOutsideTheChest() {
-        for (String preset : Set.of("FOUNTAIN", "HALO", "CROWN", "SPIRAL", "PULSE")) {
+        for (String preset : PRESETS) {
             var visual = new CrateVisualSettingsStore.Ambient(preset, 5, 1.35, 1.05, .7f, 1, 20f);
             var frames = IntStream.range(0, 50)
                     .mapToObj(frame -> CrateAmbientEffectService.frame(frame, 0, visual, 7))
@@ -19,10 +26,45 @@ class CrateAmbientEffectServiceTest {
 
             assertTrue(frames.stream().mapToDouble(CrateAmbientEffectService.Frame::scale).max().orElseThrow() > .5,
                     preset + " should visibly grow");
-            assertTrue(frames.stream().mapToDouble(frame -> Math.hypot(frame.x(), frame.z())).min().orElseThrow()
-                            >= visual.radius() * .8,
-                    preset + " should never collapse into the chest");
+            assertTrue(frames.stream().noneMatch(frame ->
+                            Math.hypot(frame.x(), frame.z()) < 1.0 && frame.y() < .9),
+                    preset + " should never enter the chest volume");
         }
+    }
+
+    @Test
+    void fortuneWheelIsAVerticalRingThatKeepsSpinning() {
+        var visual = new CrateVisualSettingsStore.Ambient("WHEEL", 6, 1.35, 1.05, .7f, 1, 20f);
+        var start = CrateAmbientEffectService.frame(0, 0, visual, 7);
+        var later = CrateAmbientEffectService.frame(20, 0, visual, 7);
+
+        assertTrue(Math.abs(start.z()) >= visual.radius() * .8, "wheel should stand outside the chest");
+        assertTrue(Math.abs(start.x() - later.x()) > .2, "wheel should keep rotating while idle");
+        assertTrue(Math.abs(start.y() - later.y()) > .2, "wheel should rotate in a vertical plane");
+    }
+
+    @Test
+    void swingingFortuneWheelReversesInsteadOfLooping() {
+        var visual = new CrateVisualSettingsStore.Ambient("SWING", 6, 1.35, 1.05, .7f, 1, 20f);
+        var start = CrateAmbientEffectService.frame(0, 0, visual, 7);
+        var edge = CrateAmbientEffectService.frame(35, 0, visual, 7);
+        var returned = CrateAmbientEffectService.frame(70, 0, visual, 7);
+
+        assertTrue(Math.abs(start.x() - edge.x()) > .5, "swing should travel toward an edge");
+        assertTrue(Math.abs(start.x() - returned.x()) < .05, "swing should return after reversing");
+    }
+
+    @Test
+    void shippedPresetsHaveDistinctTrajectories() {
+        Set<String> signatures = PRESETS.stream().map(preset -> {
+            var visual = new CrateVisualSettingsStore.Ambient(preset, 6, 1.35, 1.05, .7f, 1, 20f);
+            return IntStream.of(0, 11, 23)
+                    .mapToObj(frame -> CrateAmbientEffectService.frame(frame, frame % 2, visual, 7))
+                    .map(point -> "%.3f,%.3f,%.3f".formatted(point.x(), point.y(), point.z()))
+                    .collect(Collectors.joining(";"));
+        }).collect(Collectors.toSet());
+
+        assertEquals(PRESETS.size(), signatures.size(), "every menu choice should have its own motion");
     }
 
     @Test
