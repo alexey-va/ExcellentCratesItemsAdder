@@ -1,6 +1,10 @@
 excellent-crates-directory: plugins/ExcellentCrates/crates
 registry-refresh-ticks: 100
 preview-command: "excellentcrates preview <crate> <player>"
+key-delivery:
+  # Exact ARC backend ids. One grant is routed to one backend to prevent duplicates.
+  backends: [spawn, survival]
+  timeout-ticks: 200
 case-holograms:
   enabled: true
   # Defaults. Shift + right-click a case to edit one placed chest.

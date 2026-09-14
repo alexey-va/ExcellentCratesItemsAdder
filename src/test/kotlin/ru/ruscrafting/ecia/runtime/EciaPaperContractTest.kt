@@ -12,10 +12,12 @@ class EciaPaperContractTest : FunSpec({
         }
     }
 
-    test("does not register the removed ecia command") {
+    test("registers only the standalone arc-crate administrator command") {
         val descriptor = EciaPaperContractTest::class.java.classLoader
             .getResourceAsStream("plugin.yml")!!.bufferedReader().readText()
-        descriptor.contains("commands:") shouldBe false
+        descriptor.contains("commands:") shouldBe true
+        descriptor.contains("  arc-crate:") shouldBe true
         descriptor.contains("/ecia") shouldBe false
+        descriptor.contains("  case:") shouldBe false
     }
 })

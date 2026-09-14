@@ -1,6 +1,21 @@
 prefix: ""
 protected: "<red>Этот кейс защищён."
 no-permission: "<red>Недостаточно прав."
+command:
+  player-only: "<#ffb56b>Эта часть <white>/arc-crate</white> доступна только игроку."
+  source-only: "<#ffb56b>Управление кейсами доступно на спавне. Здесь межсерверные заявки на ключи принимаются автоматически."
+  usage: "<#ffd567>Использование: <white>/arc-crate</white>, <white>/arc-crate place</white> или <white>/arc-crate key &lt;игрок&gt; &lt;ключ&gt; &lt;1-64&gt; &lt;сервер&gt;</white>."
+key:
+  no-keys: "<#ffb56b>ExcellentCrates не загрузил ни одного физического ключа."
+  unavailable: "<#ffb56b>Каталог ключей сейчас недоступен. Проверьте конфигурацию кейсов."
+  no-backends: "<#ffb56b>В <white>key-delivery.backends</white> нет допустимых серверов."
+  invalid-player: "<#ffb56b>Укажите корректный ник Minecraft."
+  invalid-amount: "<#ffb56b>Количество ключей должно быть от 1 до 64."
+  invalid-server: "<#ffb56b>Сервер <white><server></white> не разрешён для выдачи ключей."
+  unknown: "<#ffb56b>Физический ключ <white><key></white> не найден."
+  dispatch-failed: "<#ffb56b>ARC не смог отправить заявку. Ничего не выдано."
+  sent: "<#a6efcf>Заявка отправлена: <white><amount> × <key></white> для <white><player></white> на <white><server></white>."
+  received: "<#a6efcf>Получено: <white><amount> × <key></white>."
 placement:
   no-target: "<#ffcc80>Посмотрите на грань блока, рядом с которой нужно поставить кейс."
   occupied: "<#ffb56b>Эта точка занята. Выберите свободное место."

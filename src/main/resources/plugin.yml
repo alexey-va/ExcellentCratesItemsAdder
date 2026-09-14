@@ -6,10 +6,15 @@ api-version: "1.21"
 description: RusCrafting crate integration with protected anchors, display visuals, and durable delivery recovery.
 authors: [alexey-va]
 softdepend: [ExcellentCrates, ItemsAdder, ARC]
+commands:
+  arc-crate:
+    description: Opens the ArcExcellentCrates administrator center.
+    usage: /arc-crate
+    permission: ecia.admin
 permissions:
   ecia.use:
     description: Allows opening managed crate pedestals.
     default: true
   ecia.admin:
-    description: Allows crate placement and per-anchor visual editing.
+    description: Allows crate placement, visual editing, and network key grants.
     default: op

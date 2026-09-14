@@ -53,6 +53,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
         runtime.scheduleRegistryRefresh(refreshTicks, () -> runtime.updateRegistrySize(registry.reload()));
         runtime.updateRegistrySize(count);
         runtime.info("Protecting {} ExcellentCrates furniture position(s).", count);
+        NetworkKeyReceiver networkKeyReceiver = registerService(new NetworkKeyReceiver(this));
         if (getServer().getPluginManager().isPluginEnabled("ExcellentCrates")) {
             try {
                 crateHolograms = registerService(new CrateHologramService(this, visualSettings));
@@ -71,7 +72,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
                 }));
                 protectionListener.setVisualEditorHandler(visualEditor::open);
                 CrateOpeningEffects openingEffects = registerService(new CrateOpeningEffects(furniture, ambientEffects));
-                registerService(new CasePlacementEditor(this, registry, furniture, () -> {
+                registerService(new ArcCrateCommand(this, registry, furniture, networkKeyReceiver, () -> {
                     if (crateHolograms != null) crateHolograms.reload();
                     if (ambientEffects != null) ambientEffects.refresh();
                     return kotlin.Unit.INSTANCE;

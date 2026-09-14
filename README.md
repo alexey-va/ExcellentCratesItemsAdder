@@ -23,12 +23,12 @@ entities are protected; ordinary furniture is unaffected. Left click opens the
 crate preview. Shift + right-click opens the per-anchor visual editor for an
 administrator. The old `/ecia` command is not registered.
 
-The bare ExcellentCrates `/case` command is intercepted for administrators and
-opens a two-step placement flow: choose any loaded reward pool, then choose a
-vanilla chest, trapped chest, barrel, or registered ItemsAdder furniture model.
-The target is the empty block adjacent to the face under the crosshair. The
-native namespaced ExcellentCrates command remains available as an emergency
-operator route without forking ExcellentCrates.
+The addon does not intercept or alias ExcellentCrates `/case`. Its standalone
+`/arc-crate` administrator center opens placement and key-delivery flows. New
+placement chooses any loaded reward pool, then a vanilla chest, trapped chest,
+barrel, or registered ItemsAdder furniture model. The target is the empty block
+adjacent to the face under the crosshair. The native namespaced ExcellentCrates
+command remains available without forking ExcellentCrates.
 
 `features.yml` ships disabled. Enable managed openings only after configuring
 each case and its frozen reward pool. `menus.yml` contains six-row history and
@@ -96,10 +96,19 @@ cost semantics are outside the journal contract.
 
 ## Administration
 
-Administrative placement and Shift + right-click settings require `ecia.admin`
-(operator by default). The same editor changes the stationary animation,
-roulette audience and geometry, hologram, or physical vanilla/ItemsAdder shell
-without moving the crate anchor.
+`/arc-crate` and Shift + right-click settings require `ecia.admin` (operator by
+default). The command opens a native administrator center for placing a case or
+granting a physical key. The key flow selects a loaded key, player, amount from
+1 to 64, and exactly one backend from `key-delivery.backends`. ARC `/x` waits
+briefly for that player on the selected backend. The source serializes the exact
+physical key item, including its current managed season, so the lightweight
+receiver can deliver it on a backend that does not run ExcellentCrates. Requests
+are never broadcast or retried automatically. The direct form is also available
+as `/arc-crate key <player> <key> <amount> <server>`.
+
+Shift + right-click changes the stationary animation, roulette audience and
+geometry, hologram, or physical vanilla/ItemsAdder shell without moving the
+crate anchor.
 
 Repair requires retained reports under `grounding/<namespace>/<item>.json`
 with exact config/model hashes, the native spawn transform and collision-surface
@@ -117,7 +126,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ArcExcellentCrates-0.11.0.jar`.
+Output: `build/libs/ArcExcellentCrates-0.12.0.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash
