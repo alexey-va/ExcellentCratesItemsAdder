@@ -143,7 +143,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
         Map<String, String> messages = new java.util.HashMap<>();
         for (String key : EciaLocale.REQUIRED_KEYS) {
             String value = getConfig().getString("messages." + key);
-            if (value != null && !value.isBlank()) {
+            if (value != null && !value.isBlank() && !value.toLowerCase(java.util.Locale.ROOT).contains("/ecia")) {
                 messages.put(key, value);
             }
         }

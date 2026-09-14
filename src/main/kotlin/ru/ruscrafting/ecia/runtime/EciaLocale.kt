@@ -79,8 +79,35 @@ class EciaLocale(
     }
 
     private fun synchronizeFiles() {
-        Config(dataRoot, "lang/ru.yml").mergeMissingFromBundled("lang/ru.yml")
-        Config(dataRoot, "lang/en.yml").mergeMissingFromBundled("lang/en.yml")
+        val russian = Config(dataRoot, "lang/ru.yml")
+        russian.mergeMissingFromBundled("lang/ru.yml")
+        migrateRemovedCommand(russian, mapOf(
+            "protected" to "<red>Этот кейс защищён.",
+            "managed.native-command" to "<#ffd567>Откройте кейс ключом на его пьедестале.\n   <#fff2df>Призы и ключи учитывает аддон.",
+            "managed.pending" to "<#ffd567>Есть незавершённое открытие.\n   <#fff2df>Нажмите ПКМ по кейсу, чтобы продолжить.",
+            "managed.operation-refused" to "<#ffcc80>Действие не завершено.\n   <#fff2df>Нажмите ПКМ по кейсу, чтобы продолжить.",
+            "managed.inventory-full" to "<#ffcc80>В инвентаре не хватает места.\n   <#fff2df>Освободите слоты и снова нажмите ПКМ по кейсу.",
+        ))
+        val english = Config(dataRoot, "lang/en.yml")
+        english.mergeMissingFromBundled("lang/en.yml")
+        migrateRemovedCommand(english, mapOf(
+            "protected" to "<red>This crate is protected.",
+            "managed.native-command" to "<#ffd567>Use the key on this crate pedestal. The addon tracks keys and rewards.",
+            "managed.pending" to "<#ffd567>You have an unfinished opening. Right-click a crate to continue.",
+            "managed.operation-refused" to "<#ffcc80>The action did not finish. Right-click a crate to continue.",
+            "managed.inventory-full" to "<#ffcc80>Your inventory is full. Free some slots and right-click a crate again.",
+        ))
+    }
+
+    private fun migrateRemovedCommand(config: Config, replacements: Map<String, String>) {
+        var changed = false
+        replacements.forEach { (path, replacement) ->
+            if (config.string(path).contains("/ecia", ignoreCase = true)) {
+                config.setString(path, replacement)
+                changed = true
+            }
+        }
+        if (changed) config.save()
     }
 
     private fun localeTag(sender: CommandSender?): String =

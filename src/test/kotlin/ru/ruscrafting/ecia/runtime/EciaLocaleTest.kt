@@ -55,4 +55,18 @@ class EciaLocaleTest : FunSpec({
             root.toFile().deleteRecursively()
         }
     }
+
+    test("migrates removed ecia command hints from an existing catalog") {
+        val root = Files.createTempDirectory("ecia-locale-migration-")
+        try {
+            Files.createDirectories(root.resolve("lang"))
+            Files.writeString(root.resolve("lang/ru.yml"), "protected: '<red>/ecia edit on'\n")
+            val locale = EciaLocale(root, emptyMap())
+            PlainTextComponentSerializer.plainText().serialize(locale.render("protected")) shouldBe
+                "Этот кейс защищён."
+            Files.readString(root.resolve("lang/ru.yml")).contains("/ecia") shouldBe false
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
 })
