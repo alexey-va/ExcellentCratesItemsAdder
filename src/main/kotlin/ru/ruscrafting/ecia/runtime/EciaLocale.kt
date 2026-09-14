@@ -2,6 +2,7 @@ package ru.ruscrafting.ecia.runtime
 
 import net.kyori.adventure.text.Component
 import org.bukkit.command.CommandSender
+import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import ru.arc.config.Config
 import ru.arc.text.ConfigLocaleCatalog
@@ -69,9 +70,12 @@ class EciaLocale(
     private fun prepare(legacy: Map<String, String>): LocalizedMiniMessage {
         val russian = ConfigLocaleCatalog(Config(dataRoot, "lang/ru.yml"))
         val english = ConfigLocaleCatalog(Config(dataRoot, "lang/en.yml"))
+        val russianWithLegacy = LegacyOverlayCatalog(russian, legacy)
+        rejectHtmlEntities("ru", "lang/ru.yml", legacy)
+        rejectHtmlEntities("en", "lang/en.yml")
         return LocalizedMiniMessage(
             catalogs = mapOf(
-                "ru" to LegacyOverlayCatalog(russian, legacy),
+                "ru" to russianWithLegacy,
                 "en" to english,
             ),
             defaultLocale = { "ru" },
@@ -88,6 +92,10 @@ class EciaLocale(
             "managed.operation-refused" to "<#ffcc80>Действие не завершено.\n   <#fff2df>Нажмите ПКМ по кейсу, чтобы продолжить.",
             "managed.inventory-full" to "<#ffcc80>В инвентаре не хватает места.\n   <#fff2df>Освободите слоты и снова нажмите ПКМ по кейсу.",
         ))
+        migrateBrokenUsage(
+            russian,
+            "<#ffd567>Использование: <white>/arc-crate</white>, <white>/arc-crate place</white> или <white>/arc-crate key игрок ключ [количество] [сервер]</white>.",
+        )
         val english = Config(dataRoot, "lang/en.yml")
         english.mergeMissingFromBundled("lang/en.yml")
         migrateRemovedCommand(english, mapOf(
@@ -97,6 +105,10 @@ class EciaLocale(
             "managed.operation-refused" to "<#ffcc80>The action did not finish. Right-click a crate to continue.",
             "managed.inventory-full" to "<#ffcc80>Your inventory is full. Free some slots and right-click a crate again.",
         ))
+        migrateBrokenUsage(
+            english,
+            "<#ffd567>Usage: <white>/arc-crate</white>, <white>/arc-crate place</white>, or <white>/arc-crate key player key [amount] [server]</white>.",
+        )
     }
 
     private fun migrateRemovedCommand(config: Config, replacements: Map<String, String>) {
@@ -108,6 +120,29 @@ class EciaLocale(
             }
         }
         if (changed) config.save()
+    }
+
+    private fun migrateBrokenUsage(config: Config, replacement: String) {
+        if (HTML_ENTITY.containsMatchIn(config.string("command.usage"))) {
+            config.setString("command.usage", replacement)
+            config.save()
+        }
+    }
+
+    private fun rejectHtmlEntities(locale: String, relativePath: String, overlay: Map<String, String> = emptyMap()) {
+        val yaml = YamlConfiguration.loadConfiguration(dataRoot.resolve(relativePath).toFile())
+        yaml.getValues(true).forEach { (path, value) -> rejectHtmlEntities(locale, path, value) }
+        overlay.forEach { (path, value) -> rejectHtmlEntities(locale, path, value) }
+    }
+
+    private fun rejectHtmlEntities(locale: String, path: String, value: Any?) {
+        when (value) {
+            is String -> require(!HTML_ENTITY.containsMatchIn(value)) {
+                "Locale $locale contains an HTML entity at $path; use player-readable text or MiniMessage"
+            }
+            is Iterable<*> -> value.forEachIndexed { index, entry -> rejectHtmlEntities(locale, "$path[$index]", entry) }
+            is Map<*, *> -> value.forEach { (key, entry) -> rejectHtmlEntities(locale, "$path.$key", entry) }
+        }
     }
 
     private fun localeTag(sender: CommandSender?): String =
@@ -124,6 +159,7 @@ class EciaLocale(
 
     companion object {
         private const val CHAT_INDENT = "   "
+        private val HTML_ENTITY = Regex("&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]+);", RegexOption.IGNORE_CASE)
 
         /** Keys used by the currently shipped protection and administration flow. */
         @JvmField
@@ -139,6 +175,7 @@ class EciaLocale(
             "key.invalid-player",
             "key.invalid-amount",
             "key.invalid-server",
+            "key.player-not-here",
             "key.unknown",
             "key.dispatch-failed",
             "key.sent",

@@ -17,6 +17,10 @@ import java.util.Objects;
 /** Per-placed-crate visual geometry with config-backed defaults. */
 public final class CrateVisualSettingsStore {
     private static final String FILE_NAME = "visuals.yml";
+    private static final double LEGACY_ROULETTE_Y = 3.65;
+    private static final double DEFAULT_ROULETTE_Y = 2.65;
+    private static final double LEGACY_AMBIENT_RADIUS = .9;
+    private static final double DEFAULT_AMBIENT_RADIUS = 1.35;
 
     private final Path file;
     private final Configuration config;
@@ -48,7 +52,7 @@ public final class CrateVisualSettingsStore {
         );
         defaultRoulette = new Roulette(
                 value("case-roulette.offset-x", 0.0, -16.0, 16.0),
-                value("case-roulette.height-above-block", 3.65, -4.0, 16.0),
+                value("case-roulette.height-above-block", DEFAULT_ROULETTE_Y, -4.0, 16.0),
                 value("case-roulette.offset-z", 0.0, -16.0, 16.0),
                 value("case-roulette.item-spacing", 0.82, 0.1, 5.0),
                 (float) value("case-roulette.item-scale", 0.95, 0.1, 10.0),
@@ -61,7 +65,7 @@ public final class CrateVisualSettingsStore {
         defaultAmbient = new Ambient(
                 preset(config.getString("case-ambient.preset")),
                 (int) value("case-ambient.item-count", 5, 1, 8),
-                value("case-ambient.radius", 0.9, 0.1, 3.0),
+                value("case-ambient.radius", DEFAULT_AMBIENT_RADIUS, 0.1, 3.0),
                 value("case-ambient.height", 1.05, 0.1, 4.0),
                 (float) value("case-ambient.item-scale", 0.7, 0.1, 3.0),
                 value("case-ambient.speed", 1.0, 0.2, 3.0),
@@ -72,6 +76,7 @@ public final class CrateVisualSettingsStore {
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file.toFile());
         var anchors = yaml.getConfigurationSection("anchors");
         if (anchors == null) return;
+        boolean migratedLegacyDefaults = false;
         for (String key : anchors.getKeys(false)) {
             String path = "anchors." + key;
             String world = yaml.getString(path + ".world");
@@ -87,9 +92,21 @@ public final class CrateVisualSettingsStore {
                     (float) bounded(yaml.getDouble(path + ".hologram.scale", defaultHologram.scale()), .1, 10, defaultHologram.scale()),
                     (float) bounded(yaml.getDouble(path + ".hologram.view-range", defaultHologram.viewRange()), .1, 64, defaultHologram.viewRange())
             );
+            String rouletteYPath = path + ".roulette.offset-y";
+            double rouletteY = yaml.getDouble(rouletteYPath, defaultRoulette.offsetY());
+            if (yaml.contains(rouletteYPath) && same(rouletteY, LEGACY_ROULETTE_Y)) {
+                rouletteY = DEFAULT_ROULETTE_Y;
+                migratedLegacyDefaults = true;
+            }
+            String ambientRadiusPath = path + ".ambient.radius";
+            double ambientRadius = yaml.getDouble(ambientRadiusPath, defaultAmbient.radius());
+            if (yaml.contains(ambientRadiusPath) && same(ambientRadius, LEGACY_AMBIENT_RADIUS)) {
+                ambientRadius = DEFAULT_AMBIENT_RADIUS;
+                migratedLegacyDefaults = true;
+            }
             Roulette roulette = new Roulette(
                     bounded(yaml.getDouble(path + ".roulette.offset-x", defaultRoulette.offsetX()), -16, 16, defaultRoulette.offsetX()),
-                    bounded(yaml.getDouble(path + ".roulette.offset-y", defaultRoulette.offsetY()), -4, 16, defaultRoulette.offsetY()),
+                    bounded(rouletteY, -4, 16, defaultRoulette.offsetY()),
                     bounded(yaml.getDouble(path + ".roulette.offset-z", defaultRoulette.offsetZ()), -16, 16, defaultRoulette.offsetZ()),
                     bounded(yaml.getDouble(path + ".roulette.item-spacing", defaultRoulette.itemSpacing()), .1, 5, defaultRoulette.itemSpacing()),
                     (float) bounded(yaml.getDouble(path + ".roulette.item-scale", defaultRoulette.itemScale()), .1, 10, defaultRoulette.itemScale()),
@@ -102,7 +119,7 @@ public final class CrateVisualSettingsStore {
             Ambient ambient = new Ambient(
                     preset(yaml.getString(path + ".ambient.preset", defaultAmbient.preset())),
                     (int) bounded(yaml.getDouble(path + ".ambient.item-count", defaultAmbient.itemCount()), 1, 8, defaultAmbient.itemCount()),
-                    bounded(yaml.getDouble(path + ".ambient.radius", defaultAmbient.radius()), .1, 3, defaultAmbient.radius()),
+                    bounded(ambientRadius, .1, 3, defaultAmbient.radius()),
                     bounded(yaml.getDouble(path + ".ambient.height", defaultAmbient.height()), .1, 4, defaultAmbient.height()),
                     (float) bounded(yaml.getDouble(path + ".ambient.item-scale", defaultAmbient.itemScale()), .1, 3, defaultAmbient.itemScale()),
                     bounded(yaml.getDouble(path + ".ambient.speed", defaultAmbient.speed()), .2, 3, defaultAmbient.speed()),
@@ -110,6 +127,7 @@ public final class CrateVisualSettingsStore {
             );
             overrides.put(anchor, new Visuals(hologram, roulette, ambient));
         }
+        if (migratedLegacyDefaults) persist();
     }
 
     public Visuals get(Anchor anchor) {
@@ -196,6 +214,10 @@ public final class CrateVisualSettingsStore {
 
     private static double bounded(double value, double minimum, double maximum, double fallback) {
         return Double.isFinite(value) && value >= minimum && value <= maximum ? value : fallback;
+    }
+
+    private static boolean same(double left, double right) {
+        return Math.abs(left - right) < 1.0E-9;
     }
 
     public record Anchor(String world, int x, int y, int z) implements Comparable<Anchor> {

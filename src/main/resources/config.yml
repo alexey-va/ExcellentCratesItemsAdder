@@ -19,7 +19,7 @@ case-holograms:
   view-range: 1.0
 case-roulette:
   offset-x: 0.0
-  height-above-block: 3.65
+  height-above-block: 2.65
   offset-z: 0.0
   item-spacing: 0.82
   item-scale: 0.95
@@ -34,7 +34,7 @@ case-ambient:
   # FOUNTAIN, HALO, CROWN, SPIRAL or PULSE. Each placed crate can override it.
   preset: FOUNTAIN
   item-count: 5
-  radius: 0.9
+  radius: 1.35
   height: 1.05
   item-scale: 0.7
   speed: 1.0

@@ -196,27 +196,27 @@ public final class CrateAmbientEffectService implements AutoCloseable {
             case "HALO" -> {
                 double reveal = Math.min(1.0, Math.min(progress, 1.0 - progress) * 7.0);
                 envelope = smooth(reveal);
-                radius = visual.radius() * (.82 + .18 * Math.sin(progress * Math.PI));
+                radius = visual.radius() * (.92 + .08 * Math.sin(progress * Math.PI));
                 height = visual.height() * .62 + Math.sin(angle * 1.5) * .12;
             }
             case "CROWN" -> {
                 envelope = Math.pow(envelope, .55);
-                radius = visual.radius() * envelope;
+                radius = visual.radius() * (.88 + .12 * envelope);
                 height = visual.height() * envelope + Math.sin(angle * 2.0) * .08 * envelope;
             }
             case "SPIRAL" -> {
                 angle += progress * Math.PI * 3.0;
-                radius = visual.radius() * (.15 + .85 * progress) * envelope;
+                radius = visual.radius() * (.82 + .18 * progress);
                 height = visual.height() * progress;
             }
             case "PULSE" -> {
                 angle = Math.PI * 2.0 * slot / count + cycle * .45;
-                radius = visual.radius() * envelope;
+                radius = visual.radius() * (.86 + .14 * envelope);
                 height = visual.height() * .55 * envelope;
             }
             default -> {
                 angle += progress * 1.1;
-                radius = visual.radius() * envelope;
+                radius = visual.radius() * (.90 + .10 * envelope);
                 height = visual.height() * 4.0 * progress * (1.0 - progress);
             }
         }

@@ -4,7 +4,7 @@ no-permission: "<red>You do not have permission."
 command:
   player-only: "<#ffb56b>This part of <white>/arc-crate</white> is player-only."
   source-only: "<#ffb56b>Crate management is available on Spawn. Cross-server key deliveries are received here automatically."
-  usage: "<#ffd567>Usage: <white>/arc-crate</white>, <white>/arc-crate place</white>, or <white>/arc-crate key &lt;player&gt; &lt;key&gt; &lt;1-64&gt; &lt;server&gt;</white>."
+  usage: "<#ffd567>Usage: <white>/arc-crate</white>, <white>/arc-crate place</white>, or <white>/arc-crate key player key [amount] [server]</white>."
 key:
   no-keys: "<#ffb56b>ExcellentCrates did not load any physical keys."
   unavailable: "<#ffb56b>The key catalog is unavailable. Check the managed case configuration."
@@ -12,6 +12,7 @@ key:
   invalid-player: "<#ffb56b>Enter a valid Minecraft player name."
   invalid-amount: "<#ffb56b>Key amount must be between 1 and 64."
   invalid-server: "<#ffb56b>Server <white><server></white> is not allowed for key delivery."
+  player-not-here: "<#ffb56b>Player <white><player></white> is not on this server. Add the server as the final argument."
   unknown: "<#ffb56b>Physical key <white><key></white> was not found."
   dispatch-failed: "<#ffb56b>ARC could not send the request. Nothing was issued."
   sent: "<#a6efcf>Request sent: <white><amount> × <key></white> for <white><player></white> on <white><server></white>."

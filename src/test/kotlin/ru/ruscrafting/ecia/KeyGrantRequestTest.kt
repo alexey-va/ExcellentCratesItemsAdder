@@ -8,6 +8,15 @@ import ru.arc.paper.testing.MockBukkitTestRuntime
 import java.util.UUID
 
 class KeyGrantRequestTest : FunSpec({
+    test("command arguments default to one key on the current backend") {
+        KeyGrantArguments.parse(listOf("Steve_23", "simple-key")) shouldBe
+            KeyGrantArguments("Steve_23", "simple-key", 1, null)
+        KeyGrantArguments.parse(listOf("Steve_23", "simple-key", "5")) shouldBe
+            KeyGrantArguments("Steve_23", "simple-key", 5, null)
+        KeyGrantArguments.parse(listOf("Steve_23", "simple-key", "survival")) shouldBe
+            KeyGrantArguments("Steve_23", "simple-key", 1, "survival")
+    }
+
     test("accepts one exact-backend key grant request") {
         val requestId = UUID.fromString("d83c2c25-c728-49ab-8a80-caf247f4b0d2")
         val request = KeyGrantRequest.parse("Steve_23", "simple-key", 5, "survival", "default", requestId)
@@ -22,6 +31,13 @@ class KeyGrantRequestTest : FunSpec({
 
         request?.player?.value shouldBe ".Bedrock_1"
         request?.season shouldBe null
+    }
+
+    test("accepts a local grant without an explicit backend") {
+        val request = KeyGrantRequest.parse("Steve_23", "simple-key", 1, null, null)
+
+        request?.amount shouldBe 1
+        request?.server shouldBe null
     }
 
     test("rejects unsafe or unbounded grant inputs") {

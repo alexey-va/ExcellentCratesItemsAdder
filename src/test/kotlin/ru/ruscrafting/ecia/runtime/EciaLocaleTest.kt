@@ -2,6 +2,7 @@ package ru.ruscrafting.ecia.runtime
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.assertions.throwables.shouldThrow
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import java.nio.file.Files
 
@@ -65,6 +66,45 @@ class EciaLocaleTest : FunSpec({
             PlainTextComponentSerializer.plainText().serialize(locale.render("protected")) shouldBe
                 "Этот кейс защищён."
             Files.readString(root.resolve("lang/ru.yml")).contains("/ecia") shouldBe false
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("migrates html-escaped command usage to player-readable notation") {
+        val root = Files.createTempDirectory("ecia-locale-usage-migration-")
+        try {
+            EciaLocale(root, emptyMap())
+            val file = root.resolve("lang/ru.yml")
+            val broken = Files.readString(file).replace(
+                "key [игрок] [ключ] [количество] [сервер]",
+                "key &lt;игрок&gt; &lt;ключ&gt; &lt;1-64&gt; &lt;сервер&gt;",
+            )
+            Files.writeString(file, broken)
+
+            val locale = EciaLocale(root, emptyMap())
+            val usage = PlainTextComponentSerializer.plainText().serialize(locale.render("command.usage"))
+            usage.contains("&lt;") shouldBe false
+            usage.contains("[количество]") shouldBe true
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("rejects html entities in validated player-facing messages") {
+        val root = Files.createTempDirectory("ecia-locale-html-validation-")
+        try {
+            EciaLocale(root, emptyMap())
+            val file = root.resolve("lang/ru.yml")
+            Files.writeString(
+                file,
+                Files.readString(file).replace(
+                    "Укажите корректный ник Minecraft.",
+                    "Ник &lt;игрок&gt; недопустим.",
+                ),
+            )
+
+            shouldThrow<IllegalArgumentException> { EciaLocale(root, emptyMap()) }
         } finally {
             root.toFile().deleteRecursively()
         }

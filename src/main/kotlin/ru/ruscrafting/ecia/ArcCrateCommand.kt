@@ -90,7 +90,7 @@ internal class ArcCrateCommand(
                 runCatching(::keyChoices).getOrDefault(emptyList()).map(KeyChoice::id)
             } else emptyList()
             4 -> if (args[0].equals("key", true) || args[0].equals("give", true)) {
-                listOf("1", "2", "5", "10", "16", "32", "64")
+                listOf("1", "2", "5", "10", "16", "32", "64") + backends().map(BackendServerId::value)
             } else emptyList()
             5 -> if (args[0].equals("key", true) || args[0].equals("give", true)) backends().map(BackendServerId::value) else emptyList()
             else -> emptyList()
@@ -364,7 +364,7 @@ internal class ArcCrateCommand(
                             if (english(player)) "Amount must be between 1 and 64." else "Количество должно быть от 1 до 64."
                         }
                         openGrant(context.player, keyId, season, rawPlayer, amount, failure)
-                    } else if (dispatch(request)) {
+                    } else if (dispatch(request) == KeyDispatchResult.SENT) {
                         openGrantComplete(context.player, request)
                     } else {
                         openGrant(context.player, keyId, season, rawPlayer, amount,
@@ -379,14 +379,15 @@ internal class ArcCrateCommand(
     }
 
     private fun openGrantComplete(player: Player, request: KeyGrantRequest) {
+        val server = checkNotNull(request.server) { "Dialog grants always select an explicit backend" }
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.admin.key.sent",
             title = text(if (english(player)) "Request sent" else "Заявка отправлена", NamedTextColor.GREEN, true),
             body = listOf(PaperDialogBody(text(
                 if (english(player)) {
-                    "${request.amount} × ${request.keyId} → ${request.player.value} · ${request.server.value}\nThe target server will issue the key when it sees the player. The request is not broadcast or retried automatically."
+                    "${request.amount} × ${request.keyId} → ${request.player.value} · ${server.value}\nThe target server will issue the key when it sees the player. The request is not broadcast or retried automatically."
                 } else {
-                    "${request.amount} × ${request.keyId} → ${request.player.value} · ${request.server.value}\nЦелевой сервер выдаст ключ, когда увидит игрока. Заявка не рассылается по всей сети и автоматически не повторяется."
+                    "${request.amount} × ${request.keyId} → ${request.player.value} · ${server.value}\nЦелевой сервер выдаст ключ, когда увидит игрока. Заявка не рассылается по всей сети и автоматически не повторяется."
                 },
                 NamedTextColor.WHITE,
             ), 468)),
@@ -405,56 +406,73 @@ internal class ArcCrateCommand(
             "player" to request.player.value,
             "key" to request.keyId,
             "amount" to request.amount.toString(),
-            "server" to request.server.value,
+            "server" to server.value,
         ))
     }
 
     private fun grantFromCommand(sender: CommandSender, args: List<String>): Boolean {
         if (!ready(sender)) return true
-        if (args.size != 4) {
+        val parsed = KeyGrantArguments.parse(args)
+        if (parsed == null) {
+            if (args.size == 4 && args.getOrNull(2)?.toIntOrNull() == null) {
+                message(sender, "key.invalid-amount")
+                return true
+            }
             message(sender, "command.usage")
             return true
         }
-        val amount = args[2].toIntOrNull()
-        val server = BackendServerId.parseOrNull(args[3])
-        if (server == null || server !in backends()) {
-            message(sender, "key.invalid-server", mapOf("server" to args[3]))
+        val server = parsed.server?.let(BackendServerId::parseOrNull)
+        if (parsed.server != null && (server == null || server !in backends())) {
+            message(sender, "key.invalid-server", mapOf("server" to parsed.server))
             return true
         }
-        if (!knownPhysicalKey(args[1])) {
-            message(sender, "key.unknown", mapOf("key" to args[1]))
+        if (!knownPhysicalKey(parsed.keyId)) {
+            message(sender, "key.unknown", mapOf("key" to parsed.keyId))
             return true
         }
-        val season = runCatching { seasonForKey(args[1]) }.onFailure {
-            plugin.runtime().warn("Could not resolve current season for key {}: {}", args[1], it.toString())
+        val season = runCatching { seasonForKey(parsed.keyId) }.onFailure {
+            plugin.runtime().warn("Could not resolve current season for key {}: {}", parsed.keyId, it.toString())
         }.getOrElse {
             message(sender, "key.unavailable")
             return true
         }
-        val request = amount?.let { KeyGrantRequest.parse(args[0], args[1], it, server.value, season) }
+        val request = KeyGrantRequest.parse(parsed.player, parsed.keyId, parsed.amount, server?.value, season)
         if (request == null) {
-            val key = if (NetworkPlayerName.parseOrNull(args[0]) == null) "key.invalid-player" else "key.invalid-amount"
+            val key = if (NetworkPlayerName.parseOrNull(parsed.player) == null) "key.invalid-player" else "key.invalid-amount"
             message(sender, key)
             return true
         }
-        if (dispatch(request)) {
-            message(sender, "key.sent", mapOf(
-                "player" to request.player.value,
-                "key" to request.keyId,
-                "amount" to request.amount.toString(),
-                "server" to request.server.value,
-            ))
-        } else message(sender, "key.dispatch-failed")
+        when (dispatch(request)) {
+            KeyDispatchResult.SENT -> message(sender, "key.sent", mapOf(
+                    "player" to request.player.value,
+                    "key" to request.keyId,
+                    "amount" to request.amount.toString(),
+                    "server" to (request.server?.value ?: if (sender is Player && english(sender)) "this server" else "этом сервере"),
+                ))
+            KeyDispatchResult.PLAYER_NOT_HERE -> message(sender, "key.player-not-here", mapOf("player" to request.player.value))
+            KeyDispatchResult.FAILED -> message(sender, "key.dispatch-failed")
+        }
         return true
     }
 
-    private fun dispatch(request: KeyGrantRequest): Boolean {
-        if (!plugin.server.pluginManager.isPluginEnabled("ARC") || plugin.server.getPluginCommand("x") == null) return false
+    private fun dispatch(request: KeyGrantRequest): KeyDispatchResult {
         val item = runCatching { physicalKey(request) }.onFailure {
             plugin.runtime().warn("Could not create key delivery id={}: {}", request.requestId, it.toString())
-        }.getOrNull() ?: return false
-        val delivery = SerializedKeyDelivery.create(request, item) ?: return false
-        return plugin.server.dispatchCommand(plugin.server.consoleSender, delivery.xCommand(deliveryTimeoutTicks()))
+        }.getOrNull() ?: return KeyDispatchResult.FAILED
+        if (request.server == null) {
+            return when (receiver.deliverLocal(request.requestId, request.player, request.keyId, request.amount, item)) {
+                LocalKeyDeliveryResult.DELIVERED -> KeyDispatchResult.SENT
+                LocalKeyDeliveryResult.PLAYER_NOT_HERE -> KeyDispatchResult.PLAYER_NOT_HERE
+                LocalKeyDeliveryResult.FAILED -> KeyDispatchResult.FAILED
+            }
+        }
+        if (!plugin.server.pluginManager.isPluginEnabled("ARC") || plugin.server.getPluginCommand("x") == null) {
+            return KeyDispatchResult.FAILED
+        }
+        val delivery = SerializedKeyDelivery.create(request, item) ?: return KeyDispatchResult.FAILED
+        return if (plugin.server.dispatchCommand(plugin.server.consoleSender, delivery.xCommand(deliveryTimeoutTicks()))) {
+            KeyDispatchResult.SENT
+        } else KeyDispatchResult.FAILED
     }
 
     private fun physicalKey(request: KeyGrantRequest): ItemStack = request.season?.let {
@@ -604,6 +622,8 @@ internal class ArcCrateCommand(
         }
     }
 
+    private enum class KeyDispatchResult { SENT, PLAYER_NOT_HERE, FAILED }
+
     private sealed interface Model {
         val id: String
 
@@ -630,7 +650,7 @@ internal data class KeyGrantRequest(
     val player: NetworkPlayerName,
     val keyId: String,
     val amount: Int,
-    val server: BackendServerId,
+    val server: BackendServerId?,
     val season: String?,
 ) {
     companion object {
@@ -648,12 +668,30 @@ internal data class KeyGrantRequest(
             requestId: UUID = UUID.randomUUID(),
         ): KeyGrantRequest? {
             val safePlayer = NetworkPlayerName.parseOrNull(player) ?: return null
-            val safeServer = BackendServerId.parseOrNull(server) ?: return null
+            val safeServer = server?.let(BackendServerId::parseOrNull)
+            if (server != null && safeServer == null) return null
             val safeKey = keyId?.takeIf(::safeKeyId) ?: return null
             val safeSeason = season?.takeIf(SEASON_ID::matches)
             if (season != null && safeSeason == null) return null
             if (amount !in 1..64) return null
             return KeyGrantRequest(requestId, safePlayer, safeKey, amount, safeServer, safeSeason)
+        }
+    }
+}
+
+internal data class KeyGrantArguments(
+    val player: String,
+    val keyId: String,
+    val amount: Int,
+    val server: String?,
+) {
+    companion object {
+        fun parse(args: List<String>): KeyGrantArguments? = when (args.size) {
+            2 -> KeyGrantArguments(args[0], args[1], 1, null)
+            3 -> args[2].toIntOrNull()?.let { KeyGrantArguments(args[0], args[1], it, null) }
+                ?: KeyGrantArguments(args[0], args[1], 1, args[2])
+            4 -> args[2].toIntOrNull()?.let { KeyGrantArguments(args[0], args[1], it, args[3]) }
+            else -> null
         }
     }
 }

@@ -64,6 +64,48 @@ class CrateVisualSettingsStoreTest {
     }
 
     @Test
+    void defaultsAreLowerAndUseAWiderOrbit() {
+        var defaults = new CrateVisualSettingsStore(directory, new MemoryConfiguration()).defaults();
+
+        assertEquals(2.65, defaults.roulette().offsetY());
+        assertEquals(1.35, defaults.ambient().radius());
+    }
+
+    @Test
+    void frozenLegacyDefaultsMigrateWithoutChangingCustomGeometry() throws Exception {
+        Files.writeString(directory.resolve("visuals.yml"), """
+                anchors:
+                  a0:
+                    world: survival
+                    x: 10
+                    y: 64
+                    z: -3
+                    roulette:
+                      offset-y: 3.65
+                    ambient:
+                      radius: 0.9
+                  a1:
+                    world: survival
+                    x: 11
+                    y: 64
+                    z: -3
+                    roulette:
+                      offset-y: 2.0
+                    ambient:
+                      radius: 2.0
+                """);
+
+        var store = new CrateVisualSettingsStore(directory, new MemoryConfiguration());
+        var migrated = store.get(new CrateVisualSettingsStore.Anchor("survival", 10, 64, -3));
+        var custom = store.get(new CrateVisualSettingsStore.Anchor("survival", 11, 64, -3));
+
+        assertEquals(2.65, migrated.roulette().offsetY());
+        assertEquals(1.35, migrated.ambient().radius());
+        assertEquals(2.0, custom.roulette().offsetY());
+        assertEquals(2.0, custom.ambient().radius());
+    }
+
+    @Test
     void fixedHologramSelectsOneReadableFaceForEachSide() {
         Location display = new Location(null, 0, 0, 0, 0f, 0f);
 

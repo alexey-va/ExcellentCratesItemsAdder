@@ -59,33 +59,49 @@ internal class NetworkKeyReceiver(private val plugin: ArcExcellentCratesPlugin) 
             plugin.runtime().info("Skipped duplicate key delivery id={}", delivery.requestId)
             return true
         }
-        val player = plugin.server.getPlayerExact(delivery.player.value)
-        if (player == null || !player.isOnline) {
-            plugin.runtime().warn(
-                "Key delivery reached the server without its player id={} player={}",
-                delivery.requestId,
-                delivery.player.value,
-            )
-            return true
-        }
         val item = runCatching(delivery::item).onFailure {
             plugin.runtime().warn("Could not decode key delivery id={}: {}", delivery.requestId, it.toString())
         }.getOrNull() ?: return true
-        val leftovers = player.inventory.addItem(item)
-        leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
-        remember(delivery.requestId)
-        message(player, "key.received", mapOf(
-            "key" to delivery.keyId,
-            "amount" to delivery.amount.toString(),
-        ))
-        plugin.runtime().info(
-            "Applied network key delivery id={} player={} key={} amount={}",
-            delivery.requestId,
-            delivery.player.value,
-            delivery.keyId,
-            delivery.amount,
-        )
+        deliverLocal(delivery.requestId, delivery.player, delivery.keyId, delivery.amount, item)
         return true
+    }
+
+    fun deliverLocal(
+        requestId: UUID,
+        playerName: NetworkPlayerName,
+        keyId: String,
+        amount: Int,
+        item: ItemStack,
+    ): LocalKeyDeliveryResult {
+        if (requestId in receivedGrantIds) return LocalKeyDeliveryResult.DELIVERED
+        val player = plugin.server.getPlayerExact(playerName.value)
+        if (player == null || !player.isOnline) {
+            plugin.runtime().warn(
+                "Key delivery reached the server without its player id={} player={}",
+                requestId,
+                playerName.value,
+            )
+            return LocalKeyDeliveryResult.PLAYER_NOT_HERE
+        }
+        return runCatching {
+            val leftovers = player.inventory.addItem(item)
+            leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
+            remember(requestId)
+            message(player, "key.received", mapOf(
+                "key" to keyId,
+                "amount" to amount.toString(),
+            ))
+            plugin.runtime().info(
+                "Applied key delivery id={} player={} key={} amount={}",
+                requestId,
+                playerName.value,
+                keyId,
+                amount,
+            )
+            LocalKeyDeliveryResult.DELIVERED
+        }.onFailure {
+            plugin.runtime().warn("Could not apply key delivery id={}: {}", requestId, it.toString())
+        }.getOrDefault(LocalKeyDeliveryResult.FAILED)
     }
 
     private fun remember(requestId: UUID) {
@@ -111,6 +127,8 @@ internal class NetworkKeyReceiver(private val plugin: ArcExcellentCratesPlugin) 
         const val MAX_RECEIVED_GRANTS = 2048
     }
 }
+
+internal enum class LocalKeyDeliveryResult { DELIVERED, PLAYER_NOT_HERE, FAILED }
 
 /** Command-safe envelope containing the exact key item minted on the source backend. */
 internal data class SerializedKeyDelivery(
@@ -142,6 +160,7 @@ internal data class SerializedKeyDelivery(
         private const val MAX_ITEM_BYTES = 12_288
 
         fun create(request: KeyGrantRequest, item: ItemStack): SerializedKeyDelivery? {
+            val server = request.server ?: return null
             if (item.isEmpty || item.amount != request.amount) return null
             val bytes = item.serializeAsBytes()
             if (bytes.size > MAX_ITEM_BYTES) return null
@@ -152,7 +171,7 @@ internal data class SerializedKeyDelivery(
                 request.player,
                 request.keyId,
                 request.amount,
-                request.server,
+                server,
                 payload,
             )
         }

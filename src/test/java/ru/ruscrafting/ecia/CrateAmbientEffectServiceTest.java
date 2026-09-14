@@ -10,17 +10,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CrateAmbientEffectServiceTest {
     @Test
-    void everyPresetGrowsActualPreviewAwayFromTheChest() {
+    void everyPresetKeepsActualPreviewOutsideTheChest() {
         for (String preset : Set.of("FOUNTAIN", "HALO", "CROWN", "SPIRAL", "PULSE")) {
-            var visual = new CrateVisualSettingsStore.Ambient(preset, 5, .9, 1.05, .7f, 1, 20f);
+            var visual = new CrateVisualSettingsStore.Ambient(preset, 5, 1.35, 1.05, .7f, 1, 20f);
             var frames = IntStream.range(0, 50)
                     .mapToObj(frame -> CrateAmbientEffectService.frame(frame, 0, visual, 7))
                     .toList();
 
             assertTrue(frames.stream().mapToDouble(CrateAmbientEffectService.Frame::scale).max().orElseThrow() > .5,
                     preset + " should visibly grow");
-            assertTrue(frames.stream().mapToDouble(frame -> Math.hypot(frame.x(), frame.z())).max().orElseThrow() > .5,
-                    preset + " should leave the chest center");
+            assertTrue(frames.stream().mapToDouble(frame -> Math.hypot(frame.x(), frame.z())).min().orElseThrow()
+                            >= visual.radius() * .8,
+                    preset + " should never collapse into the chest");
         }
     }
 

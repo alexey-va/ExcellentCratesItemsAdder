@@ -104,7 +104,8 @@ briefly for that player on the selected backend. The source serializes the exact
 physical key item, including its current managed season, so the lightweight
 receiver can deliver it on a backend that does not run ExcellentCrates. Requests
 are never broadcast or retried automatically. The direct form is also available
-as `/arc-crate key <player> <key> <amount> <server>`.
+as `/arc-crate key player key [amount] [server]`. Amount defaults to `1`, and
+omitting the server grants the key on the backend where the command is run.
 
 Shift + right-click changes the stationary animation, roulette audience and
 geometry, hologram, or physical vanilla/ItemsAdder shell without moving the
@@ -126,7 +127,7 @@ managed opening until repaired; protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ArcExcellentCrates-0.12.0.jar`.
+Output: `build/libs/ArcExcellentCrates-0.12.1.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash
