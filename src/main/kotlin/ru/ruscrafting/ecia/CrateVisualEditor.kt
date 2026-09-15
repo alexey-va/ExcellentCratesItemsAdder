@@ -20,7 +20,7 @@ import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess
 import java.util.function.Consumer
 import kotlin.math.roundToInt
 
-/** Native per-anchor editor entered from Shift + right-click. */
+/** Native per-anchor editor entered from Shift + left-click. */
 class CrateVisualEditor(
     plugin: ArcExcellentCratesPlugin,
     private val store: CrateVisualSettingsStore,
@@ -207,7 +207,7 @@ class CrateVisualEditor(
             title = text("Анимация покоя · ${target.crateId()}", VIOLET, bold = true),
             body = listOf(body(
                 if (saved) "Выбрано: $selectedLabel. Анимация сразу обновлена в мире."
-                else "Выберите одно из 15 движений. Только реальные награды пула; вариант применяется сразу.",
+                else "Выберите одно из 23 движений. Только реальные награды пула; вариант применяется сразу.",
                 if (saved) SUCCESS else BODY,
             )),
             buttons = buttons,
@@ -453,6 +453,14 @@ class CrateVisualEditor(
         HELIX("Двойная спираль"),
         TIDE("Волна"),
         CLOCKWORK("Часовой механизм"),
+        SHOWCASE("Одиночная витрина"),
+        REELS("Игровые барабаны"),
+        WALL("Стена наград"),
+        CONVEYOR("Конвейер"),
+        RAIN("Дождь наград"),
+        TOWER("Башня трофеев"),
+        FAN("Веер наград"),
+        SCALES("Весы удачи"),
     }
 
     private sealed interface Shell {

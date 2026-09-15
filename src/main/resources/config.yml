@@ -7,7 +7,7 @@ key-delivery:
   timeout-ticks: 200
 case-holograms:
   enabled: true
-  # Defaults. Shift + right-click a case to edit one placed chest.
+  # Defaults. Shift + left-click a case to edit one placed chest.
   # MiniMessage is supported. %crate_name% inserts the configured case name.
   text: "%crate_name%"
   offset-x: 0.0
@@ -29,10 +29,11 @@ case-roulette:
   view-range: 24.0
   visible-to-nearby: true
 case-ambient:
-  # Real reward previews animate around every stationary managed crate.
+  # Real reward previews animate beside every stationary managed crate.
   enabled: true
   # FOUNTAIN, HALO, CROWN, SPIRAL, PULSE, WHEEL, SWING, INFINITY, SATURN,
-  # CAROUSEL, COMET, BLOOM, HELIX, TIDE or CLOCKWORK. Each crate can override it.
+  # CAROUSEL, COMET, BLOOM, HELIX, TIDE, CLOCKWORK, SHOWCASE, REELS, WALL,
+  # CONVEYOR, RAIN, TOWER, FAN or SCALES. Each crate can override it.
   preset: FOUNTAIN
   item-count: 5
   radius: 1.35

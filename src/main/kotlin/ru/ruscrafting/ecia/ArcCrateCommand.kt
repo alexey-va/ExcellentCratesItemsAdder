@@ -116,9 +116,9 @@ internal class ArcCrateCommand(
             title = text(if (english(player)) "Crate control" else "Управление кейсами", NamedTextColor.GOLD, true),
             body = listOf(PaperDialogBody(text(
                 if (english(player)) {
-                    "Place a new crate where you are looking, or grant a physical key on a selected server.\nShift + right-click an existing crate for detailed visual settings."
+                    "Place a new crate where you are looking, or grant a physical key on a selected server.\nShift + left-click an existing crate for detailed visual settings."
                 } else {
-                    "Установите новый кейс в точку прицела или выдайте физический ключ на выбранном сервере.\nShift + ПКМ по установленному кейсу — тонкая настройка визуала."
+                    "Установите новый кейс в точку прицела или выдайте физический ключ на выбранном сервере.\nShift + ЛКМ по установленному кейсу — тонкая настройка визуала."
                 },
                 NamedTextColor.WHITE,
             ), 468)),

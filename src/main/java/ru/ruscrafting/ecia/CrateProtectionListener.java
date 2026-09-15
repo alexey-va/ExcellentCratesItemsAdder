@@ -94,10 +94,18 @@ final class CrateProtectionListener implements Listener {
         if (!(event.getDamager() instanceof Player player)) {
             return;
         }
-        Entity target = event.getEntity();
+        handleFurnitureDamage(player, event.getEntity(), event);
+    }
+
+    void handleFurnitureDamage(Player player, Entity target, Cancellable event) {
         boolean furniture = isFurnitureCarrier(target);
         CratePosition position = CratePosition.from(target.getLocation());
         boolean registered = target.getWorld() != null && registry.contains(position);
+        if (!editors.contains(player.getUniqueId()) && furniture && registered && player.isSneaking()
+                && openVisualEditor(player, position, target.getLocation())) {
+            event.setCancelled(true);
+            return;
+        }
         if (!ProtectionPolicy.shouldProtect(player.getGameMode(), editors.contains(player.getUniqueId()), furniture, registered)) {
             return;
         }
@@ -172,10 +180,6 @@ final class CrateProtectionListener implements Listener {
         CratePosition position = CratePosition.from(target.getLocation());
         String crateId = registry.crateId(position).orElse(null);
         if (crateId == null) {
-            return;
-        }
-        if (player.isSneaking() && openVisualEditor(player, position, target.getLocation())) {
-            event.setCancelled(true);
             return;
         }
         BiFunction<Player, String, Boolean> handler = managedOpenHandler;

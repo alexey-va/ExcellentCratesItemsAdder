@@ -107,7 +107,7 @@ class NativeCrateInteractionRouterTest {
     }
 
     @Test
-    fun sneakingRightClickOpensVisualEditorInsteadOfPreviewOrOpening() {
+    fun sneakingLeftClickOpensVisualEditorInsteadOfPreviewOrOpening() {
         MockBukkitTestRuntime.open().use { paper ->
             val fixture = fixture(paper)
             fixture.player.isSneaking = true
@@ -124,7 +124,7 @@ class NativeCrateInteractionRouterTest {
             ) { _, _, _ ->
                 val event = PlayerInteractEvent(
                     fixture.player,
-                    Action.RIGHT_CLICK_BLOCK,
+                    Action.LEFT_CLICK_BLOCK,
                     ItemStack(Material.TRIPWIRE_HOOK),
                     fixture.block,
                     BlockFace.SELF,
@@ -134,6 +134,26 @@ class NativeCrateInteractionRouterTest {
 
                 assertEquals(1, edits.get())
                 assertEquals(0, opens.get())
+            }
+        }
+    }
+
+    @Test
+    fun sneakingRightClickKeepsTheNormalOpeningRoute() {
+        MockBukkitTestRuntime.open().use { paper ->
+            val fixture = fixture(paper)
+            fixture.player.isSneaking = true
+            val edits = AtomicInteger()
+            val opens = AtomicInteger()
+            withRouter(
+                fixture,
+                open = { _, _ -> opens.incrementAndGet() },
+                visualEditor = { _, _ -> edits.incrementAndGet(); true },
+            ) { _, _, _ ->
+                paper.server.pluginManager.callEvent(interaction(fixture.player, fixture.block))
+
+                assertEquals(0, edits.get())
+                assertEquals(1, opens.get())
             }
         }
     }

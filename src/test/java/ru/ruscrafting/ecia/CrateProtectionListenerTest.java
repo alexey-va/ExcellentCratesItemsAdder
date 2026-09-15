@@ -7,6 +7,7 @@ import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Cancellable;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -50,6 +51,40 @@ class CrateProtectionListenerTest {
 
         assertTrue(event.isCancelled());
         assertEquals(List.of("case_daily"), calls);
+    }
+
+    @Test
+    void sneakingFurnitureDamageOpensVisualEditor() throws Exception {
+        Fixture fixture = fixture(GameMode.CREATIVE, true);
+        List<String> edits = new ArrayList<>();
+        fixture.listener().setVisualEditorHandler((player, target) -> {
+            edits.add(target.crateId());
+            assertEquals(fixture.location(), target.anchor());
+            return true;
+        });
+        TestCancellable event = new TestCancellable();
+
+        fixture.listener().handleFurnitureDamage(fixture.player(), fixture.entity(), event);
+
+        assertTrue(event.isCancelled());
+        assertEquals(List.of("case_daily"), edits);
+    }
+
+    @Test
+    void sneakingFurnitureRightClickKeepsTheNormalOpeningRoute() throws Exception {
+        Fixture fixture = fixture(GameMode.CREATIVE, true);
+        List<String> edits = new ArrayList<>();
+        List<String> opens = new ArrayList<>();
+        fixture.listener().setVisualEditorHandler((player, target) -> { edits.add(target.crateId()); return true; });
+        fixture.listener().setManagedOpenHandler((player, crate) -> { opens.add(crate); return true; });
+        PlayerInteractEntityEvent event = new PlayerInteractEntityEvent(
+                fixture.player(), fixture.entity(), EquipmentSlot.HAND);
+
+        fixture.listener().onFurnitureInteract(event);
+
+        assertTrue(event.isCancelled());
+        assertTrue(edits.isEmpty());
+        assertEquals(List.of("case_daily"), opens);
     }
 
     @Test
@@ -165,6 +200,10 @@ class CrateProtectionListenerTest {
     }
 
     private Fixture fixture(GameMode gameMode) throws Exception {
+        return fixture(gameMode, false);
+    }
+
+    private Fixture fixture(GameMode gameMode, boolean sneaking) throws Exception {
         World world = proxy(World.class, (proxy, method, args) -> switch (method.getName()) {
             case "getName" -> "world";
             default -> defaultValue(method.getReturnType());
@@ -176,6 +215,7 @@ class CrateProtectionListenerTest {
         Player player = proxy(Player.class, (proxy, method, args) -> switch (method.getName()) {
             case "getUniqueId" -> PLAYER_ID;
             case "getGameMode" -> gameMode;
+            case "isSneaking" -> sneaking;
             default -> defaultValue(method.getReturnType());
         });
         Files.writeString(directory.resolve("case_daily.yml"), """
@@ -203,6 +243,12 @@ class CrateProtectionListenerTest {
 
     private record Fixture(World world, Location location, PersistentDataContainer persistentDataContainer,
                            Entity entity, Player player, CrateProtectionListener listener) {
+    }
+
+    private static final class TestCancellable implements Cancellable {
+        private boolean cancelled;
+        @Override public boolean isCancelled() { return cancelled; }
+        @Override public void setCancelled(boolean cancelled) { this.cancelled = cancelled; }
     }
 
     @SuppressWarnings("unchecked")

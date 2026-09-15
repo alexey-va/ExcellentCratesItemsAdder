@@ -13,7 +13,8 @@ class CrateAmbientEffectServiceTest {
     private static final Set<String> PRESETS = Set.of(
             "FOUNTAIN", "HALO", "CROWN", "SPIRAL", "PULSE",
             "WHEEL", "SWING", "INFINITY", "SATURN", "CAROUSEL",
-            "COMET", "BLOOM", "HELIX", "TIDE", "CLOCKWORK"
+            "COMET", "BLOOM", "HELIX", "TIDE", "CLOCKWORK",
+            "SHOWCASE", "REELS", "WALL", "CONVEYOR", "RAIN", "TOWER", "FAN", "SCALES"
     );
 
     @Test
@@ -75,5 +76,45 @@ class CrateAmbientEffectServiceTest {
                 .boxed().collect(java.util.stream.Collectors.toSet());
 
         assertEquals(Set.of(0, 1, 2, 3, 4, 5, 6), shown);
+    }
+
+    @Test
+    void showcasePresentsOneLargeRewardAtATime() {
+        var visual = new CrateVisualSettingsStore.Ambient("SHOWCASE", 8, 1.35, 1.05, .7f, 1, 20f);
+        long visible = IntStream.range(0, visual.itemCount())
+                .mapToObj(slot -> CrateAmbientEffectService.frame(12, slot, visual, 8))
+                .filter(point -> point.scale() > .2f)
+                .count();
+
+        assertEquals(1, visible);
+    }
+
+    @Test
+    void reelsFormThreeVerticalColumnsInsteadOfAnOrbit() {
+        var visual = new CrateVisualSettingsStore.Ambient("REELS", 8, 1.35, 1.05, .7f, 1, 20f);
+        var points = IntStream.range(0, visual.itemCount())
+                .mapToObj(slot -> CrateAmbientEffectService.frame(17, slot, visual, 8))
+                .toList();
+
+        assertEquals(3, points.stream().map(point -> Math.round(point.x() * 100)).collect(Collectors.toSet()).size());
+        assertEquals(1, points.stream().map(point -> Math.round(point.z() * 100)).collect(Collectors.toSet()).size());
+        double yRange = points.stream().mapToDouble(CrateAmbientEffectService.Frame::y).max().orElseThrow()
+                - points.stream().mapToDouble(CrateAmbientEffectService.Frame::y).min().orElseThrow();
+        assertTrue(yRange > .5, "reels should visibly travel vertically");
+    }
+
+    @Test
+    void towerIsAStackAboveTheCrateInsteadOfAHorizontalLoop() {
+        var visual = new CrateVisualSettingsStore.Ambient("TOWER", 8, 1.35, 1.05, .7f, 1, 20f);
+        var points = IntStream.range(0, visual.itemCount())
+                .mapToObj(slot -> CrateAmbientEffectService.frame(17, slot, visual, 8))
+                .toList();
+
+        double xRange = points.stream().mapToDouble(CrateAmbientEffectService.Frame::x).max().orElseThrow()
+                - points.stream().mapToDouble(CrateAmbientEffectService.Frame::x).min().orElseThrow();
+        double yRange = points.stream().mapToDouble(CrateAmbientEffectService.Frame::y).max().orElseThrow()
+                - points.stream().mapToDouble(CrateAmbientEffectService.Frame::y).min().orElseThrow();
+        assertTrue(xRange < .4, "tower should remain narrow");
+        assertTrue(yRange > 1.0, "tower should read as a vertical stack");
     }
 }

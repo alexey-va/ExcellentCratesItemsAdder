@@ -20,7 +20,7 @@ unexpected listener layout. The build verifies the official EC binary SHA-256.
 Place the plugin JAR in `plugins/` and restart. All ExcellentCrates
 `Block.Positions` entries are reread every five seconds. Matching furniture
 entities are protected; ordinary furniture is unaffected. Left click opens the
-crate preview. Shift + right-click opens the per-anchor visual editor for an
+crate preview. Shift + left-click opens the per-anchor visual editor for an
 administrator. The old `/ecia` command is not registered.
 
 The addon does not intercept or alias ExcellentCrates `/case`. Its standalone
@@ -42,9 +42,11 @@ beneath its pointer before delivery. A paired ItemsAdder model such as
 chests use their native lid. World-visible sound and particle bursts accompany
 the transition. The roulette can be private or visible to nearby players; every
 viewer receives a personal display plane that continuously turns toward them.
-While the crate is idle, real items from its reward pool emerge in one of five
-presets: fountain, orbit, crown, spiral, or pulse. Count, radius, height, scale,
-speed, and range are adjustable per placed crate.
+While the crate is idle, real items from its reward pool use one of 23 presets.
+Alongside the original circular scenes, non-orbit layouts include a single-item
+showcase, three slot-machine reels, a reward wall, conveyor, falling reward rain,
+vertical trophy tower, opening card fan, and two-sided balance. Count, radius,
+height, scale, speed, and range are adjustable per placed crate.
 Pool previews use five full reward rows and
 a fixed bottom navigation row, without an item frame around the pool.
 
@@ -96,7 +98,7 @@ cost semantics are outside the journal contract.
 
 ## Administration
 
-`/arc-crate` and Shift + right-click settings require `ecia.admin` (operator by
+`/arc-crate` and Shift + left-click settings require `ecia.admin` (operator by
 default). The command opens a native administrator center for placing a case or
 granting a physical key. The key flow selects a loaded key, player, amount from
 1 to 64, and exactly one backend from `key-delivery.backends`. ARC `/x` waits
@@ -107,12 +109,13 @@ are never broadcast or retried automatically. The direct form is also available
 as `/arc-crate key player key [amount] [server]`. Amount defaults to `1`, and
 omitting the server grants the key on the backend where the command is run.
 
-Shift + right-click changes the stationary animation, roulette audience and
+Shift + left-click changes the stationary animation, roulette audience and
 geometry, hologram, or physical vanilla/ItemsAdder shell without moving the
-crate anchor. Fifteen idle presets range from horizontal orbits and fountains
+crate anchor. Twenty-three idle presets range from horizontal orbits and fountains
 to a continuously spinning fortune wheel, rocking wheel, figure eight, tilted
 rings, carousel, comet trail, flower, double helix, wave, and counter-rotating
-clockwork rings. Using a key stops the idle scene before the opening animation.
+clockwork rings, plus a showcase, reels, wall, conveyor, rain, tower, fan, and
+balance scene. Using a key stops the idle scene before the opening animation.
 
 Repair requires retained reports under `grounding/<namespace>/<item>.json`
 with exact config/model hashes, the native spawn transform and collision-surface

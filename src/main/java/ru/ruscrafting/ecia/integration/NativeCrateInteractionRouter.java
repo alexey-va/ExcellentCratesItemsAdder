@@ -134,7 +134,7 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
         event.setUseItemInHand(Event.Result.DENY);
         event.setUseInteractedBlock(Event.Result.DENY);
         if (previouslyCancelled) return true;
-        if (rightClick && !portable && event.getPlayer().isSneaking()
+        if (leftClick && !portable && event.getPlayer().isSneaking()
                 && visualEditor.test(event.getPlayer(), new ManagedOpenTarget(crate, event.getClickedBlock().getLocation()))) {
             return true;
         }

@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Cycles real reward previews around every idle placed crate. */
+/** Animates real reward previews beside every idle placed crate. */
 public final class CrateAmbientEffectService implements AutoCloseable {
     private static final long RECONCILE_TICKS = 40L;
     private static final long ANIMATION_TICKS = 2L;
@@ -194,6 +194,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         double height;
         double x = Double.NaN;
         double z = Double.NaN;
+        double rotation = Double.NaN;
         switch (visual.preset()) {
             case "HALO" -> {
                 double reveal = Math.min(1.0, Math.min(progress, 1.0 - progress) * 7.0);
@@ -293,6 +294,96 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                 radius = visual.radius() * (inner ? .82 : 1.08);
                 height = visual.height() * (inner ? .48 : .76);
             }
+            case "SHOWCASE" -> {
+                int hold = Math.max(8, period / 2);
+                int active = Math.floorMod((int) Math.floorDiv(globalFrame, hold), count);
+                double local = Math.floorMod(globalFrame, hold) / (double) hold;
+                envelope = slot == active ? .82 + .18 * Math.sin(Math.PI * local) : 0.0;
+                radius = 0.0;
+                height = .95 + visual.height() * .55 + Math.sin(local * Math.PI * 2.0) * .08;
+                x = 0.0;
+                z = 0.0;
+                rotation = globalFrame * .025 * visual.speed();
+            }
+            case "REELS" -> {
+                int columns = Math.min(3, count);
+                int column = slot % columns;
+                int row = slot / columns;
+                double roll = (globalFrame * .035 * visual.speed() + row * .36) % 1.0;
+                envelope = smooth(Math.min(1.0, Math.min(roll, 1.0 - roll) * 7.0));
+                radius = visual.radius();
+                height = .55 + roll * visual.height() * 1.65;
+                x = (column - (columns - 1) / 2.0) * radius * .55;
+                z = Math.max(1.05, radius * .9);
+                rotation = 0.0;
+            }
+            case "WALL" -> {
+                int columns = Math.min(4, count);
+                int column = slot % columns;
+                int row = slot / columns;
+                double pulse = globalFrame * .045 * visual.speed() + slot * .8;
+                envelope = .78 + .22 * (.5 + .5 * Math.sin(pulse));
+                radius = visual.radius();
+                height = .65 + row * visual.height() * .8;
+                x = (column - (columns - 1) / 2.0) * radius * .55;
+                z = Math.max(1.05, radius * .9);
+                rotation = Math.sin(pulse) * .08;
+            }
+            case "CONVEYOR" -> {
+                double lane = count == 1 ? 0.0 : slot * 2.0 / (count - 1) - 1.0;
+                double travel = Math.sin(globalFrame * .03 * visual.speed()) * .35;
+                envelope = 1.0;
+                radius = visual.radius();
+                height = .65 + Math.abs(lane) * .08;
+                x = (lane * 1.3 + travel) * radius;
+                z = Math.max(1.05, radius * .9);
+                rotation = 0.0;
+            }
+            case "RAIN" -> {
+                double fall = (globalFrame * .025 * visual.speed() + slot * .17) % 1.0;
+                int lanes = Math.min(4, count);
+                double lane = slot % lanes - (lanes - 1) / 2.0;
+                envelope = smooth(Math.min(1.0, Math.min(fall, 1.0 - fall) * 9.0));
+                radius = visual.radius();
+                height = .55 + (1.0 - fall) * visual.height() * 2.0;
+                x = lane * radius * .45;
+                z = Math.max(1.05, radius * .9);
+                rotation = fall * 1.3;
+            }
+            case "TOWER" -> {
+                double level = count == 1 ? 0.0 : slot / (double) (count - 1);
+                double sway = Math.sin(globalFrame * .035 * visual.speed() + level * Math.PI) * .12;
+                envelope = .92 + .08 * Math.sin(globalFrame * .05 * visual.speed() + slot);
+                radius = 0.0;
+                height = .95 + level * visual.height() * 2.0;
+                x = sway;
+                z = 0.0;
+                rotation = sway * 1.5;
+            }
+            case "FAN" -> {
+                double lane = count == 1 ? 0.0 : slot * 2.0 / (count - 1) - 1.0;
+                double spread = .65 + .35 * (.5 + .5 * Math.sin(globalFrame * .035 * visual.speed()));
+                envelope = .9 + .1 * Math.cos(globalFrame * .04 * visual.speed() + slot * .7);
+                radius = visual.radius();
+                height = .6 + (1.0 - lane * lane) * visual.height() * .55;
+                x = lane * radius * 1.3 * spread;
+                z = Math.max(1.05, radius * .9);
+                rotation = lane * .65 * spread;
+            }
+            case "SCALES" -> {
+                int leftSize = (count + 1) / 2;
+                boolean left = slot < leftSize;
+                int groupSlot = left ? slot : slot - leftSize;
+                int groupSize = left ? leftSize : count - leftSize;
+                double local = groupSize <= 1 ? 0.0 : groupSlot / (double) (groupSize - 1) - .5;
+                double balance = Math.sin(globalFrame * .04 * visual.speed());
+                envelope = 1.0;
+                radius = visual.radius();
+                height = .72 + (left ? balance : -balance) * visual.height() * .3 + Math.abs(local) * .12;
+                x = count == 1 ? 0.0 : (left ? -.82 : .82) * radius + local * .65;
+                z = Math.max(1.05, radius * .86);
+                rotation = (left ? -.16 : .16) * balance;
+            }
             default -> {
                 angle += progress * 1.1;
                 radius = visual.radius() * (.90 + .10 * envelope);
@@ -303,8 +394,9 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         int rewardIndex = Math.floorMod((int) (cycle * count + slot), Math.max(1, rewardCount));
         if (!Double.isFinite(x)) x = Math.cos(angle) * radius;
         if (!Double.isFinite(z)) z = Math.sin(angle) * radius;
+        if (!Double.isFinite(rotation)) rotation = angle + progress * Math.PI;
         return new Frame(x, height, z,
-                scale, (float) (angle + progress * Math.PI), rewardIndex);
+                scale, (float) rotation, rewardIndex);
     }
 
     private static double smooth(double value) {

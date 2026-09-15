@@ -76,7 +76,8 @@ class CrateVisualSettingsStoreTest {
         for (String preset : java.util.Set.of(
                 "FOUNTAIN", "HALO", "CROWN", "SPIRAL", "PULSE",
                 "WHEEL", "SWING", "INFINITY", "SATURN", "CAROUSEL",
-                "COMET", "BLOOM", "HELIX", "TIDE", "CLOCKWORK")) {
+                "COMET", "BLOOM", "HELIX", "TIDE", "CLOCKWORK",
+                "SHOWCASE", "REELS", "WALL", "CONVEYOR", "RAIN", "TOWER", "FAN", "SCALES")) {
             MemoryConfiguration config = new MemoryConfiguration();
             config.set("case-ambient.preset", preset);
 
