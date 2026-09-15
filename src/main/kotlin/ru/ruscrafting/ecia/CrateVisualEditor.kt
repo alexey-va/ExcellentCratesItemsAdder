@@ -6,6 +6,7 @@ import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Material
 import org.bukkit.block.data.Directional
 import org.bukkit.entity.Player
+import org.bukkit.plugin.java.JavaPlugin
 import ru.arc.paper.menu.PaperDialogActionId
 import ru.arc.paper.menu.PaperDialogBody
 import ru.arc.paper.menu.PaperDialogButton
@@ -17,15 +18,18 @@ import ru.arc.paper.menu.PaperDialogScreen
 import ru.arc.paper.menu.PaperDialogTextInput
 import ru.ruscrafting.ecia.integration.CrateModelPairing
 import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess
+import su.nightexpress.excellentcrates.CratesAPI
 import java.util.function.Consumer
+import java.util.logging.Level
 import kotlin.math.roundToInt
 
 /** Native per-anchor editor entered from Shift + left-click. */
 class CrateVisualEditor(
-    plugin: ArcExcellentCratesPlugin,
+    private val plugin: JavaPlugin,
     private val store: CrateVisualSettingsStore,
     private val furniture: ItemsAdderFurnitureAccess,
     private val changed: Consumer<CrateVisualSettingsStore.Anchor>,
+    private val refreshed: Runnable,
 ) : AutoCloseable {
     private val dialogs = PaperDialogRuntime(plugin)
 
@@ -52,6 +56,7 @@ class CrateVisualEditor(
                 button("edit_ambient", "Анимация покоя ›", VIOLET) { openAmbient(it.player, target) },
                 button("edit_roulette", "Рулетка ›", VIOLET) { openRoulette(it.player, target) },
                 button("edit_shell", "Корпус сундука ›", GOLD) { openShells(it.player, target, 0) },
+                button("delete_crate", "Удалить этот сундук ›", DANGER) { openDeleteConfirmation(it.player, target) },
                 button("reset_visuals", "Сбросить настройки", DANGER) {
                     store.reset(anchor)
                     changed.accept(anchor)
@@ -257,11 +262,12 @@ class CrateVisualEditor(
     }
 
     private fun openShells(player: Player, target: CrateVisualTarget, requestedPage: Int) {
-        val registered = furniture.models().filterNot { CrateModelPairing.isOpenVariant(it.namespacedId()) }
+        val registered = furniture.models().filter { CrateModelPairing.isShellCandidate(it.namespacedId()) }
         val models = buildList {
             add(Shell.Vanilla(Material.CHEST))
             add(Shell.Vanilla(Material.TRAPPED_CHEST))
             add(Shell.Vanilla(Material.BARREL))
+            add(Shell.Vanilla(Material.ENDER_CHEST))
             addAll(registered.map { Shell.ItemsAdder(it.namespacedId()) })
         }
         val pages = maxOf(1, (models.size + SHELL_PAGE_SIZE - 1) / SHELL_PAGE_SIZE)
@@ -321,6 +327,91 @@ class CrateVisualEditor(
         changed.accept(CrateVisualSettingsStore.Anchor.of(target.anchor()))
         player.sendMessage(text("Корпус заменён на ${shell.id}.", SUCCESS))
         openShells(player, target, 0)
+    }
+
+    private fun openDeleteConfirmation(player: Player, target: CrateVisualTarget) {
+        val anchor = CrateVisualSettingsStore.Anchor.of(target.anchor())
+        dialogs.open(player, PaperDialogScreen(
+            id = "arc-excellent-crates.visuals.delete",
+            title = text("Удалить сундук?", DANGER, bold = true),
+            body = listOf(
+                body("${target.crateId()} · ${anchor.world()} · ${anchor.x()}, ${anchor.y()}, ${anchor.z()}"),
+                body("Будут удалены корпус и эта точка установки. Пул наград и ключи останутся."),
+            ),
+            buttons = listOf(button("confirm_delete_crate", "Да, удалить сундук", DANGER) {
+                deleteCrate(it.player, target)
+            }),
+            exitButton = backButton(),
+            columns = 1,
+        ))
+    }
+
+    internal fun deleteCrate(player: Player, target: CrateVisualTarget): Boolean {
+        val block = target.anchor().block
+        val manager = CratesAPI.getCrateManager()
+        val crate = manager.getCrateById(target.crateId())
+        val position = crate?.blockPositions?.firstOrNull {
+            it.worldName == block.world.name && it.x == block.x && it.y == block.y && it.z == block.z
+        }
+        if (crate == null || position == null) {
+            player.sendMessage(text("Этот сундук уже не привязан к кейсу.", DANGER))
+            dialogs.close(player)
+            return false
+        }
+
+        val previousPositions = crate.blockPositions.map { it.copy() }
+        val oldFurniture = furniture.at(block).orElse(null)?.namespacedId()
+        val oldData = block.blockData.clone()
+        val shellRemoved = if (oldFurniture != null) furniture.remove(block) else runCatching {
+            block.type = Material.AIR
+            true
+        }.getOrDefault(false)
+        if (!shellRemoved) {
+            player.sendMessage(text("Не удалось удалить корпус сундука.", DANGER))
+            return false
+        }
+
+        return runCatching {
+            manager.removeCratePositions(crate)
+            check(crate.blockPositions.remove(position)) { "Crate anchor disappeared during deletion" }
+            crate.saveForce()
+            manager.addCratePositions(crate)
+            crate.recreateHologram()
+        }.onSuccess {
+            val anchor = CrateVisualSettingsStore.Anchor.of(block.location)
+            runCatching { store.reset(anchor) }.onFailure {
+                plugin.logger.log(Level.WARNING, "Could not clear visual settings for deleted crate ${target.crateId()}", it)
+            }
+            runCatching {
+                refreshed.run()
+                changed.accept(anchor)
+            }.onFailure {
+                plugin.logger.log(Level.WARNING, "Could not refresh visuals after deleting crate ${target.crateId()}", it)
+            }
+            dialogs.close(player)
+            player.sendMessage(text("Сундук ${target.crateId()} удалён. Пул наград сохранён.", SUCCESS))
+        }.onFailure { failure ->
+            plugin.logger.log(Level.SEVERE,
+                "Crate deletion failed for ${target.crateId()} at ${block.world.name} ${block.x} ${block.y} ${block.z}", failure)
+            runCatching {
+                manager.removeCratePositions(crate)
+                crate.blockPositions.clear()
+                crate.blockPositions.addAll(previousPositions)
+                crate.saveForce()
+                manager.addCratePositions(crate)
+                crate.recreateHologram()
+                block.type = Material.AIR
+                if (oldFurniture != null) {
+                    check(furniture.spawn(oldFurniture, block).isPresent) { "Could not restore ItemsAdder shell" }
+                } else {
+                    block.blockData = oldData
+                }
+            }.onFailure { rollback ->
+                plugin.logger.log(Level.SEVERE,
+                    "Crate deletion rollback failed for ${target.crateId()} at ${block.world.name} ${block.x} ${block.y} ${block.z}", rollback)
+            }
+            player.sendMessage(text("Не удалось удалить сундук; прежнее состояние восстановлено.", DANGER))
+        }.isSuccess
     }
 
     private fun placeVanilla(player: Player, block: org.bukkit.block.Block, material: Material): Boolean = runCatching {
@@ -472,6 +563,7 @@ class CrateVisualEditor(
                 Material.CHEST -> "Ванильный сундук"
                 Material.TRAPPED_CHEST -> "Сундук-ловушка"
                 Material.BARREL -> "Ванильная бочка"
+                Material.ENDER_CHEST -> "Эндер-сундук"
                 else -> material.name
             }
         }

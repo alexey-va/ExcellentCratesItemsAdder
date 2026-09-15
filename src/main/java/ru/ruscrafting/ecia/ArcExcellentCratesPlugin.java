@@ -69,6 +69,9 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
                 visualEditor = registerService(new CrateVisualEditor(this, visualSettings, furniture, anchor -> {
                     if (crateHolograms != null) crateHolograms.refresh(anchor);
                     if (ambientEffects != null) ambientEffects.refresh();
+                }, () -> {
+                    int registrySize = registry.reload();
+                    runtime.updateRegistrySize(registrySize);
                 }));
                 protectionListener.setVisualEditorHandler(visualEditor::open);
                 CrateOpeningEffects openingEffects = registerService(new CrateOpeningEffects(furniture, ambientEffects));

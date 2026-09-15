@@ -26,9 +26,11 @@ administrator. The old `/ecia` command is not registered.
 The addon does not intercept or alias ExcellentCrates `/case`. Its standalone
 `/arc-crate` administrator center opens placement and key-delivery flows. New
 placement chooses any loaded reward pool, then a vanilla chest, trapped chest,
-barrel, or registered ItemsAdder furniture model. The target is the empty block
-adjacent to the face under the crosshair. The native namespaced ExcellentCrates
-command remains available without forking ExcellentCrates.
+barrel, Ender Chest, or an ItemsAdder furniture model whose id identifies an
+actual chest. The per-anchor editor can remove one installed chest after an
+explicit confirmation without deleting its reward pool or keys. The target is
+the empty block adjacent to the face under the crosshair. The native namespaced
+ExcellentCrates command remains available without forking ExcellentCrates.
 
 `features.yml` ships disabled. Enable managed openings only after configuring
 each case and its frozen reward pool. `menus.yml` contains six-row history and

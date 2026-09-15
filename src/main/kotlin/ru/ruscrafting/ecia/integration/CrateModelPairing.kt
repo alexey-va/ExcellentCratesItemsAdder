@@ -9,6 +9,14 @@ object CrateModelPairing {
         val local = id.substringAfter(':').lowercase()
         return local.endsWith("_opening") || local.endsWith("_opened") || local.endsWith("_open")
             || local.startsWith("open_") || local.startsWith("opened_")
+            || "_open_" in local || "_opened_" in local
+    }
+
+    /** ItemsAdder case bodies are chest models, not every registered furniture item. */
+    fun isShellCandidate(id: String): Boolean {
+        if (isOpenVariant(id)) return false
+        val local = id.substringAfter(':').lowercase()
+        return local == "chest" || local.endsWith("_chest") || local.endsWith("-chest")
     }
 
     private fun candidates(id: String): List<String> {

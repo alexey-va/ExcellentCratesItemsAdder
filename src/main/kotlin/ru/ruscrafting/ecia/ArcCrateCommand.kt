@@ -180,11 +180,12 @@ internal class ArcCrateCommand(
     }
 
     private fun openModels(player: Player, target: Block, crate: Crate, requestedPage: Int) {
-        val registered = furniture.models().filterNot { CrateModelPairing.isOpenVariant(it.namespacedId()) }
+        val registered = furniture.models().filter { CrateModelPairing.isShellCandidate(it.namespacedId()) }
         val models = buildList {
             add(Model.Vanilla(Material.CHEST))
             add(Model.Vanilla(Material.TRAPPED_CHEST))
             add(Model.Vanilla(Material.BARREL))
+            add(Model.Vanilla(Material.ENDER_CHEST))
             addAll(registered.map { Model.ItemsAdder(it.namespacedId()) })
         }
         val pages = maxOf(1, (models.size + PAGE_SIZE - 1) / PAGE_SIZE)
@@ -599,6 +600,7 @@ internal class ArcCrateCommand(
         Material.CHEST -> if (english(player)) "Vanilla chest" else "Ванильный сундук"
         Material.TRAPPED_CHEST -> if (english(player)) "Trapped chest" else "Сундук-ловушка"
         Material.BARREL -> if (english(player)) "Vanilla barrel" else "Ванильная бочка"
+        Material.ENDER_CHEST -> if (english(player)) "Ender chest" else "Эндер-сундук"
         else -> material.name
     }
 
