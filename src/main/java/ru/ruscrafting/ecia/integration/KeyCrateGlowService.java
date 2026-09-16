@@ -33,6 +33,7 @@ final class KeyCrateGlowService implements AutoCloseable {
     private static final long DEFAULT_REFRESH_TICKS = 5L;
     private static final double DEFAULT_RANGE = 48.0D;
     private static final float GLOW_SHELL_SCALE = 1.01F;
+    private static final Display.Brightness GLOW_BRIGHTNESS = new Display.Brightness(15, 15);
     private static final Color OUTLINE_COLOR = Color.fromRGB(255, 213, 103);
 
     private final ArcExcellentCratesPlugin plugin;
@@ -135,7 +136,6 @@ final class KeyCrateGlowService implements AutoCloseable {
             display.setTransformation(inflateCentered(source.getTransformation()));
             display.setDisplayWidth(source.getDisplayWidth());
             display.setDisplayHeight(source.getDisplayHeight());
-            display.setBrightness(source.getBrightness());
         });
     }
 
@@ -159,6 +159,7 @@ final class KeyCrateGlowService implements AutoCloseable {
         display.setGravity(false);
         display.setGlowing(true);
         display.setGlowColorOverride(OUTLINE_COLOR);
+        display.setBrightness(glowBrightness());
         display.setViewRange(range);
         display.setInterpolationDuration(0);
         display.setTeleportDuration(0);
@@ -182,6 +183,10 @@ final class KeyCrateGlowService implements AutoCloseable {
                 new Quaternionf(),
                 new Vector3f(GLOW_SHELL_SCALE, GLOW_SHELL_SCALE, GLOW_SHELL_SCALE),
                 new Quaternionf());
+    }
+
+    static Display.Brightness glowBrightness() {
+        return GLOW_BRIGHTNESS;
     }
 
     private void remove(MarkerKey key) {

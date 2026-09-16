@@ -1,6 +1,7 @@
 package ru.ruscrafting.ecia.integration;
 
 import org.junit.jupiter.api.Test;
+import org.bukkit.entity.Display;
 import org.bukkit.util.Transformation;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -76,5 +77,13 @@ class KeyCrateGlowPlanTest {
         assertEquals(1.005F, glow.getTranslation().x + glow.getScale().x, 1.0E-6F);
         assertEquals(1.005F, glow.getTranslation().y + glow.getScale().y, 1.0E-6F);
         assertEquals(1.005F, glow.getTranslation().z + glow.getScale().z, 1.0E-6F);
+    }
+
+    @Test
+    void glowShellUsesFullBrightnessInsteadOfAmbientBlockLight() {
+        Display.Brightness brightness = KeyCrateGlowService.glowBrightness();
+
+        assertEquals(15, brightness.getBlockLight());
+        assertEquals(15, brightness.getSkyLight());
     }
 }
