@@ -37,12 +37,14 @@ class ManagedCratesService(
     visualSettings: CrateVisualSettingsStore,
     openingEffects: CrateOpeningEffects,
     private val ambientEffects: CrateAmbientEffectService,
+    furniture: ItemsAdderFurnitureAccess,
 ) : AutoCloseable, Listener {
     private val runtime = plugin.runtime()
     private val root = plugin.dataFolder.toPath()
     private val payload = NativeItemPayload()
     private val inventory = OpeningInventoryTransactions(payload)
     private val keys = NativeSeasonKeys()
+    private val keyGlow = KeyCrateGlowService(plugin, keys, furniture)
     private val rewards = CatalogRewardBridge(payload)
     private var settings = ManagedCratesSettings(false, emptyMap())
     private var configurationFailed = true
@@ -77,6 +79,7 @@ class ManagedCratesService(
     fun reload() {
         roulette.close()
         ambientEffects.setRewards(emptyMap())
+        keyGlow.configure(emptyMap())
         ready = false
         configurationFailed = true
         runCatching {
@@ -103,6 +106,7 @@ class ManagedCratesService(
                 }
             })
             if (candidate.cases.isNotEmpty()) keys.stampTemplates(candidate.cases.mapValues { it.value.seasonId() })
+            keyGlow.configure(if (candidate.enabled) candidate.cases else emptyMap())
             ready = candidate.enabled
             configurationFailed = false
             updateHealth()
@@ -238,6 +242,7 @@ class ManagedCratesService(
         plugin.clearManagedPreviewHandler()
         plugin.clearManagedOpenHandler()
         router?.close()
+        keyGlow.close()
         keys.close()
         HandlerList.unregisterAll(this)
     }

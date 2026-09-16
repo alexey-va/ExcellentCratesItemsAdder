@@ -24,6 +24,7 @@ public final class NativeSeasonKeys implements AutoCloseable {
     private final Map<CrateKey, AdaptedItem> originals = new HashMap<>();
 
     public record KeyCost(String keyId, int amount) { }
+    public record KeyIdentity(String keyId, String season) { }
 
     public KeyCost cost(Crate crate) {
         var costs = crate.getCosts();
@@ -64,6 +65,15 @@ public final class NativeSeasonKeys implements AutoCloseable {
             CrateKey nativeKey = CratesAPI.getKeyManager().getKeyByItem(item);
             return nativeKey != null && nativeKey.getId().equals(keyId) && season(item).equals(season);
         };
+    }
+
+    /** Identifies one physical native key without scanning the rest of the inventory. */
+    public Optional<KeyIdentity> identify(ItemStack item) {
+        if (item == null || item.isEmpty()) return Optional.empty();
+        CrateKey nativeKey = CratesAPI.getKeyManager().getKeyByItem(item);
+        return nativeKey == null || nativeKey.isVirtual()
+                ? Optional.empty()
+                : Optional.of(new KeyIdentity(nativeKey.getId(), season(item)));
     }
 
     /** Prefer the held key, then the first matching inventory key; never combine seasons. */

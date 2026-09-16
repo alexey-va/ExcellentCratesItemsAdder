@@ -28,6 +28,11 @@ case-roulette:
   pointer-scale: 1.55
   view-range: 24.0
   visible-to-nearby: true
+case-key-glow:
+  # Hold the matching current-season key in the main hand to reveal nearby cases.
+  enabled: true
+  range: 48.0
+  refresh-ticks: 5
 case-ambient:
   # Real reward previews animate beside every stationary managed crate.
   enabled: true

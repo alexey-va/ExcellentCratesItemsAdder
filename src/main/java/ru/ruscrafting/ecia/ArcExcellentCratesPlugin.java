@@ -1,6 +1,7 @@
 package ru.ruscrafting.ecia;
 
 import org.bukkit.entity.Player;
+import org.bukkit.Location;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.ruscrafting.ecia.runtime.EciaLocale;
 import ru.ruscrafting.ecia.runtime.EciaRuntime;
@@ -80,7 +81,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
                     if (ambientEffects != null) ambientEffects.refresh();
                     return kotlin.Unit.INSTANCE;
                 }));
-                managedCrates = registerService(new ManagedCratesService(this, visualSettings, openingEffects, ambientEffects));
+                managedCrates = registerService(new ManagedCratesService(this, visualSettings, openingEffects, ambientEffects, furniture));
             } catch (RuntimeException | LinkageError failure) {
                 runtime.error("Managed crate service is unavailable; furniture protection remains active: {}", failure.toString());
             }
@@ -111,6 +112,12 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
 
     public boolean openCrateVisualEditor(Player player, CrateVisualTarget target) {
         return visualEditor != null && visualEditor.open(player, target);
+    }
+
+    /** Stable read-only boundary used by optional player-facing integrations. */
+    public boolean isCrateLocation(Location location) {
+        return registry != null && location != null && location.getWorld() != null
+                && registry.contains(CratePosition.from(location));
     }
 
     /** Register a managed preview route without coupling protection to domain services. */
