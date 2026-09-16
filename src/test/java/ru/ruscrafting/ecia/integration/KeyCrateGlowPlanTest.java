@@ -1,6 +1,9 @@
 package ru.ruscrafting.ecia.integration;
 
 import org.junit.jupiter.api.Test;
+import org.bukkit.util.Transformation;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import java.util.List;
 
@@ -40,5 +43,38 @@ class KeyCrateGlowPlanTest {
         assertEquals(List.of(DAILY, near), KeyCrateGlowPlan.select(
                 new KeyCrateGlowPlan.HeldKey("daily_key", "autumn"),
                 "rc_origin_spawn", -49.0, 71.0, 28.0, 48.0, List.of(DAILY, WEEKLY, near)));
+    }
+
+    @Test
+    void furnitureGlowInflatesEveryScaleAxisAroundTheExistingCenter() {
+        var source = new Transformation(
+                new Vector3f(.25F, -.5F, .75F),
+                new Quaternionf().rotateY(.4F),
+                new Vector3f(.8F, 1.2F, 1.6F),
+                new Quaternionf().rotateX(-.2F));
+
+        Transformation glow = KeyCrateGlowService.inflateCentered(source);
+
+        assertEquals(source.getTranslation(), glow.getTranslation());
+        assertEquals(.808F, glow.getScale().x, 1.0E-6F);
+        assertEquals(1.212F, glow.getScale().y, 1.0E-6F);
+        assertEquals(1.616F, glow.getScale().z, 1.0E-6F);
+        assertEquals(source.getLeftRotation(), glow.getLeftRotation());
+        assertEquals(source.getRightRotation(), glow.getRightRotation());
+    }
+
+    @Test
+    void blockGlowExtendsEquallyPastAllSixFaces() {
+        Transformation glow = KeyCrateGlowService.blockShellTransformation();
+
+        assertEquals(-.005F, glow.getTranslation().x, 1.0E-6F);
+        assertEquals(-.005F, glow.getTranslation().y, 1.0E-6F);
+        assertEquals(-.005F, glow.getTranslation().z, 1.0E-6F);
+        assertEquals(1.01F, glow.getScale().x, 1.0E-6F);
+        assertEquals(1.01F, glow.getScale().y, 1.0E-6F);
+        assertEquals(1.01F, glow.getScale().z, 1.0E-6F);
+        assertEquals(1.005F, glow.getTranslation().x + glow.getScale().x, 1.0E-6F);
+        assertEquals(1.005F, glow.getTranslation().y + glow.getScale().y, 1.0E-6F);
+        assertEquals(1.005F, glow.getTranslation().z + glow.getScale().z, 1.0E-6F);
     }
 }

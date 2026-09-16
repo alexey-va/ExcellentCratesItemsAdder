@@ -32,6 +32,7 @@ import java.util.UUID;
 final class KeyCrateGlowService implements AutoCloseable {
     private static final long DEFAULT_REFRESH_TICKS = 5L;
     private static final double DEFAULT_RANGE = 48.0D;
+    private static final float GLOW_SHELL_SCALE = 1.01F;
     private static final Color OUTLINE_COLOR = Color.fromRGB(255, 213, 103);
 
     private final ArcExcellentCratesPlugin plugin;
@@ -131,7 +132,7 @@ final class KeyCrateGlowService implements AutoCloseable {
             display.setItemStack(source.getItemStack().clone());
             display.setItemDisplayTransform(source.getItemDisplayTransform());
             display.setBillboard(source.getBillboard());
-            display.setTransformation(copy(source.getTransformation()));
+            display.setTransformation(inflateCentered(source.getTransformation()));
             display.setDisplayWidth(source.getDisplayWidth());
             display.setDisplayHeight(source.getDisplayHeight());
             display.setBrightness(source.getBrightness());
@@ -143,8 +144,7 @@ final class KeyCrateGlowService implements AutoCloseable {
         return block.getWorld().spawn(block.getLocation(), BlockDisplay.class, display -> {
             configure(display, range);
             display.setBlock(block.getBlockData().clone());
-            display.setTransformation(new Transformation(
-                    new Vector3f(), new Quaternionf(), new Vector3f(1.0F, 1.0F, 1.0F), new Quaternionf()));
+            display.setTransformation(blockShellTransformation());
             display.setDisplayWidth(1.0F);
             display.setDisplayHeight(1.0F);
         });
@@ -166,12 +166,22 @@ final class KeyCrateGlowService implements AutoCloseable {
         display.setShadowStrength(0.0F);
     }
 
-    private Transformation copy(Transformation source) {
+    static Transformation inflateCentered(Transformation source) {
+        Vector3f scale = new Vector3f(source.getScale()).mul(GLOW_SHELL_SCALE);
         return new Transformation(
                 new Vector3f(source.getTranslation()),
                 new Quaternionf(source.getLeftRotation()),
-                new Vector3f(source.getScale()),
+                scale,
                 new Quaternionf(source.getRightRotation()));
+    }
+
+    static Transformation blockShellTransformation() {
+        float outset = (GLOW_SHELL_SCALE - 1.0F) * 0.5F;
+        return new Transformation(
+                new Vector3f(-outset, -outset, -outset),
+                new Quaternionf(),
+                new Vector3f(GLOW_SHELL_SCALE, GLOW_SHELL_SCALE, GLOW_SHELL_SCALE),
+                new Quaternionf());
     }
 
     private void remove(MarkerKey key) {
