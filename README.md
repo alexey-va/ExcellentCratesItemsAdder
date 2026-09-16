@@ -44,6 +44,8 @@ beneath its pointer before delivery. A paired ItemsAdder model such as
 chests use their native lid. World-visible sound and particle bursts accompany
 the transition. The roulette can be private or visible to nearby players; every
 viewer receives a personal display plane that continuously turns toward them.
+Concurrent reels at the same crate reserve separate vertical rows, and every
+reward step plays a short mechanical click before the distinct winner sound.
 While the crate is idle, real items from its reward pool use one of 23 presets.
 Alongside the original circular scenes, non-orbit layouts include a single-item
 showcase, three slot-machine reels, a reward wall, conveyor, falling reward rain,
@@ -55,6 +57,8 @@ a fixed bottom navigation row, without an item frame around the pool.
 Placed cases use a native billboard `TextDisplay` above each anchor. It contains
 only the case name, sits close to the block, and turns toward each viewer;
 height, scale, yaw offset, and view range are configurable under `case-holograms`.
+The shipped hologram and idle-animation defaults match the tuned daily cache in
+the Origin world.
 
 With configured cases, `enabled: false` pauses their openings while retaining
 interception and current-season key stamps. It does not return old seasonal

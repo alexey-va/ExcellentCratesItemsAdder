@@ -64,11 +64,18 @@ class CrateVisualSettingsStoreTest {
     }
 
     @Test
-    void defaultsAreLowerAndUseAWiderOrbit() {
+    void defaultsMatchTheOriginDailyCrateVisuals() {
         var defaults = new CrateVisualSettingsStore(directory, new MemoryConfiguration()).defaults();
 
+        assertEquals(.18, defaults.hologram().offsetY());
+        assertEquals(1.3f, defaults.hologram().scale());
+        assertEquals(10.5f, defaults.hologram().viewRange());
         assertEquals(2.65, defaults.roulette().offsetY());
-        assertEquals(1.35, defaults.ambient().radius());
+        assertEquals("HALO", defaults.ambient().preset());
+        assertEquals(2.0, defaults.ambient().radius());
+        assertEquals(1.85, defaults.ambient().height());
+        assertEquals(1.45, defaults.ambient().speed());
+        assertEquals(33.5f, defaults.ambient().viewRange());
     }
 
     @Test
@@ -115,7 +122,7 @@ class CrateVisualSettingsStoreTest {
         var custom = store.get(new CrateVisualSettingsStore.Anchor("survival", 11, 64, -3));
 
         assertEquals(2.65, migrated.roulette().offsetY());
-        assertEquals(1.35, migrated.ambient().radius());
+        assertEquals(2.0, migrated.ambient().radius());
         assertEquals(2.0, custom.roulette().offsetY());
         assertEquals(2.0, custom.ambient().radius());
     }

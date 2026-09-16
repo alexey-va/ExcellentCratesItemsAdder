@@ -49,8 +49,18 @@ internal class WorldRouletteAnimator(
         }
         sequence[WorldRouletteTrack.SELECTED_INDEX] = selectedItem.clone()
 
-        val visual = visualSettings.get(CrateVisualSettingsStore.Anchor.of(anchor)).roulette()
-        val center = anchor.clone().add(0.5 + visual.offsetX(), visual.offsetY(), 0.5 + visual.offsetZ())
+        val anchorKey = CrateVisualSettingsStore.Anchor.of(anchor)
+        val visual = visualSettings.get(anchorKey).roulette()
+        val occupiedRows = sessions.values.asSequence()
+            .filter { it.anchorKey == anchorKey }
+            .map { it.row.index }
+            .toSet()
+        val row = WorldRouletteRows.allocate(occupiedRows)
+        val center = anchor.clone().add(
+            0.5 + visual.offsetX(),
+            visual.offsetY() + row.offsetY,
+            0.5 + visual.offsetZ(),
+        )
         val viewers = if (visual.visibleToNearby()) {
             plugin.server.onlinePlayers.filter {
                 it.world == center.world && it.location.distanceSquared(center) <= visual.viewRange() * visual.viewRange()
@@ -95,7 +105,7 @@ internal class WorldRouletteAnimator(
 
             val effect = openingEffects.open(anchor)
             val session = Session(player, views, entities, center, visual,
-                anchor.clone(), effect, onComplete)
+                anchorKey, row, anchor.clone(), effect, onComplete)
             sessions[player.uniqueId] = session
             render(session, WorldRouletteTrack.frame(0))
             session.reelTask = runtime.tasks().runTimer(FRAME_PERIOD_TICKS, FRAME_PERIOD_TICKS) {
@@ -134,11 +144,11 @@ internal class WorldRouletteAnimator(
         val before = WorldRouletteTrack.frame(session.frame - 1)
         val current = WorldRouletteTrack.frame(session.frame)
         render(session, current)
-        if (current.baseIndex != before.baseIndex) {
+        WorldRouletteAudio.slotSound(before, current)?.let { sound ->
             val pitch = (0.75f + current.progress.toFloat() * 0.65f).coerceAtMost(1.4f)
             session.views.forEach { view ->
                 if (view.viewer.isOnline) {
-                    view.viewer.playSound(session.center, Sound.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.MASTER, 0.18f, pitch)
+                    view.viewer.playSound(session.center, sound, SoundCategory.MASTER, 0.18f, pitch)
                 }
             }
         }
@@ -228,6 +238,8 @@ internal class WorldRouletteAnimator(
         val entities: List<Entity>,
         val center: Location,
         val visual: CrateVisualSettingsStore.Roulette,
+        val anchorKey: CrateVisualSettingsStore.Anchor,
+        val row: WorldRouletteRow,
         val anchor: Location,
         val effect: CrateOpeningEffects.Token,
         val onComplete: () -> Unit,
