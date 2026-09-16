@@ -117,4 +117,36 @@ class CrateAmbientEffectServiceTest {
         assertTrue(xRange < .4, "tower should remain narrow");
         assertTrue(yRange > 1.0, "tower should read as a vertical stack");
     }
+
+    @Test
+    void idleMotionSupportsHalfFrameSamplesForSmoothRotationAndHeight() {
+        var visual = new CrateVisualSettingsStore.Ambient("SATURN", 8, 1.6, .5, .5f, 2, 20f);
+        var start = CrateAmbientEffectService.frame(0.0, 0, visual, 8);
+        var middle = CrateAmbientEffectService.frame(0.5, 0, visual, 8);
+        var next = CrateAmbientEffectService.frame(1.0, 0, visual, 8);
+
+        assertTrue(Math.abs(middle.rotation() - start.rotation()) > 1.0E-4,
+                "rotation should advance between animation updates");
+        assertTrue(Math.abs(middle.rotation() - start.rotation())
+                        < Math.abs(next.rotation() - start.rotation()),
+                "half-frame rotation should stay between full-frame samples");
+        assertTrue(Math.abs(middle.y() - start.y()) > 1.0E-4,
+                "vertical motion should advance between animation updates");
+        assertTrue(Math.abs(middle.y() - start.y()) < Math.abs(next.y() - start.y()),
+                "half-frame height should stay between full-frame samples");
+    }
+
+    @Test
+    void saturnRotationRemainsContinuousAtPreviewCycleBoundary() {
+        var visual = new CrateVisualSettingsStore.Ambient("SATURN", 8, 1.6, .5, .5f, 2, 20f);
+        double cycle = Math.round(50.0 / visual.speed());
+        var before = CrateAmbientEffectService.frame(cycle - .5, 0, visual, 8);
+        var boundary = CrateAmbientEffectService.frame(cycle, 0, visual, 8);
+        var after = CrateAmbientEffectService.frame(cycle + .5, 0, visual, 8);
+
+        assertTrue(Math.abs(boundary.rotation() - before.rotation()) < .2,
+                "rotation must not jump when the preview item cycle restarts");
+        assertTrue(Math.abs(after.rotation() - boundary.rotation()) < .2,
+                "rotation must continue smoothly after the preview item cycle");
+    }
 }

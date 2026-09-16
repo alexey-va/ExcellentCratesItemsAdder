@@ -28,8 +28,11 @@ import java.util.UUID;
 /** Animates real reward previews beside every idle placed crate. */
 public final class CrateAmbientEffectService implements AutoCloseable {
     private static final long RECONCILE_TICKS = 40L;
-    private static final long ANIMATION_TICKS = 2L;
+    private static final long ANIMATION_TICKS = 1L;
+    private static final int INTERPOLATION_TICKS = 2;
     private static final int BASE_PERIOD_FRAMES = 50;
+    /** One logical frame used to take two ticks; retain that phase speed at one-tick sampling. */
+    private static final double FRAME_STEP = .5;
 
     private final ArcExcellentCratesPlugin plugin;
     private final CrateVisualSettingsStore settings;
@@ -39,7 +42,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     private final BukkitTask reconcileTask;
     private final BukkitTask animationTask;
     private Map<String, List<ItemStack>> rewardsByCrate = Map.of();
-    private long frame;
+    private double frame;
     private boolean closed;
 
     CrateAmbientEffectService(ArcExcellentCratesPlugin plugin, CrateVisualSettingsStore settings) {
@@ -137,8 +140,8 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                 entity.setBillboard(Display.Billboard.CENTER);
                 entity.setBrightness(new Display.Brightness(15, 15));
                 entity.setViewRange(visual.viewRange());
-                entity.setTeleportDuration((int) ANIMATION_TICKS);
-                entity.setInterpolationDuration((int) ANIMATION_TICKS);
+                entity.setTeleportDuration(INTERPOLATION_TICKS);
+                entity.setInterpolationDuration(INTERPOLATION_TICKS);
                 entity.setShadowRadius(.12F);
                 entity.setShadowStrength(.55F);
                 entity.setTransformation(transformation(.01F, 0.0F));
@@ -151,7 +154,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
 
     private void animate() {
         if (closed) return;
-        frame++;
+        frame += FRAME_STEP;
         for (Map.Entry<Anchor, Orbit> entry : orbits.entrySet()) {
             Orbit orbit = entry.getValue();
             World world = orbit.anchor().getWorld();
@@ -183,11 +186,15 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     }
 
     static Frame frame(long globalFrame, int slot, CrateVisualSettingsStore.Ambient visual, int rewardCount) {
+        return frame((double) globalFrame, slot, visual, rewardCount);
+    }
+
+    static Frame frame(double globalFrame, int slot, CrateVisualSettingsStore.Ambient visual, int rewardCount) {
         int count = Math.max(1, visual.itemCount());
         int period = Math.max(12, (int) Math.round(BASE_PERIOD_FRAMES / visual.speed()));
-        long shifted = globalFrame + (long) slot * period / count;
-        long cycle = Math.floorDiv(shifted, period);
-        double progress = Math.floorMod(shifted, period) / (double) period;
+        double shifted = globalFrame + (long) slot * period / count;
+        double cycle = Math.floor(shifted / period);
+        double progress = (shifted - cycle * period) / period;
         double angle = Math.PI * 2.0 * slot / count + globalFrame * .035 * visual.speed();
         double envelope = Math.sin(Math.PI * progress);
         double radius;
@@ -296,8 +303,8 @@ public final class CrateAmbientEffectService implements AutoCloseable {
             }
             case "SHOWCASE" -> {
                 int hold = Math.max(8, period / 2);
-                int active = Math.floorMod((int) Math.floorDiv(globalFrame, hold), count);
-                double local = Math.floorMod(globalFrame, hold) / (double) hold;
+                int active = Math.floorMod((int) Math.floor(globalFrame / hold), count);
+                double local = (globalFrame - Math.floor(globalFrame / hold) * hold) / hold;
                 envelope = slot == active ? .82 + .18 * Math.sin(Math.PI * local) : 0.0;
                 radius = 0.0;
                 height = .95 + visual.height() * .55 + Math.sin(local * Math.PI * 2.0) * .08;
@@ -391,10 +398,10 @@ public final class CrateAmbientEffectService implements AutoCloseable {
             }
         }
         float scale = (float) (.01 + visual.itemScale() * Math.pow(Math.max(0.0, envelope), .72));
-        int rewardIndex = Math.floorMod((int) (cycle * count + slot), Math.max(1, rewardCount));
+        int rewardIndex = Math.floorMod((int) Math.floor(cycle * count + slot), Math.max(1, rewardCount));
         if (!Double.isFinite(x)) x = Math.cos(angle) * radius;
         if (!Double.isFinite(z)) z = Math.sin(angle) * radius;
-        if (!Double.isFinite(rotation)) rotation = angle + progress * Math.PI;
+        if (!Double.isFinite(rotation)) rotation = angle;
         return new Frame(x, height, z,
                 scale, (float) rotation, rewardIndex);
     }

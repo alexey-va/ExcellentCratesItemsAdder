@@ -11,12 +11,12 @@ case-holograms:
   # MiniMessage is supported. %crate_name% inserts the configured case name.
   text: "%crate_name%"
   offset-x: 0.0
-  height-above-block: 0.18
+  height-above-block: 0.58
   offset-z: 0.0
-  scale: 1.3
+  scale: 2.0
   yaw: 0.0
   pitch: 0.0
-  view-range: 10.5
+  view-range: 1.0
 case-roulette:
   offset-x: 0.0
   height-above-block: 2.65
@@ -39,12 +39,12 @@ case-ambient:
   # FOUNTAIN, HALO, CROWN, SPIRAL, PULSE, WHEEL, SWING, INFINITY, SATURN,
   # CAROUSEL, COMET, BLOOM, HELIX, TIDE, CLOCKWORK, SHOWCASE, REELS, WALL,
   # CONVEYOR, RAIN, TOWER, FAN or SCALES. Each crate can override it.
-  preset: HALO
-  item-count: 5
-  radius: 2.0
-  height: 1.85
-  item-scale: 0.7
-  speed: 1.45
-  view-range: 33.5
+  preset: SATURN
+  item-count: 8
+  radius: 1.6
+  height: 0.5
+  item-scale: 0.5
+  speed: 2.0
+  view-range: 20.0
 messages:
   protected: "<red>Этот кейс защищён."

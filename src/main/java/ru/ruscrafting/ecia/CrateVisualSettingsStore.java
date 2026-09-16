@@ -20,7 +20,7 @@ public final class CrateVisualSettingsStore {
     private static final double LEGACY_ROULETTE_Y = 3.65;
     private static final double DEFAULT_ROULETTE_Y = 2.65;
     private static final double LEGACY_AMBIENT_RADIUS = .9;
-    private static final double DEFAULT_AMBIENT_RADIUS = 2.0;
+    private static final double DEFAULT_AMBIENT_RADIUS = 1.6;
 
     private final Path file;
     private final Configuration config;
@@ -43,12 +43,12 @@ public final class CrateVisualSettingsStore {
         defaultHologram = new Hologram(
                 Objects.requireNonNullElse(config.getString("case-holograms.text"), "%crate_name%"),
                 value("case-holograms.offset-x", 0.0, -8.0, 8.0),
-                value("case-holograms.height-above-block", 0.18, -4.0, 8.0),
+                value("case-holograms.height-above-block", 0.58, -4.0, 8.0),
                 value("case-holograms.offset-z", 0.0, -8.0, 8.0),
                 (float) value("case-holograms.yaw", 0.0, -180.0, 180.0),
                 (float) value("case-holograms.pitch", 0.0, -90.0, 90.0),
-                (float) value("case-holograms.scale", 1.3, 0.1, 10.0),
-                (float) value("case-holograms.view-range", 10.5, 0.1, 64.0)
+                (float) value("case-holograms.scale", 2.0, 0.1, 10.0),
+                (float) value("case-holograms.view-range", 1.0, 0.1, 64.0)
         );
         defaultRoulette = new Roulette(
                 value("case-roulette.offset-x", 0.0, -16.0, 16.0),
@@ -63,13 +63,13 @@ public final class CrateVisualSettingsStore {
                 config.getBoolean("case-roulette.visible-to-nearby", true)
         );
         defaultAmbient = new Ambient(
-                preset(config.getString("case-ambient.preset")),
-                (int) value("case-ambient.item-count", 5, 1, 8),
+                preset(config.getString("case-ambient.preset", "SATURN")),
+                (int) value("case-ambient.item-count", 8, 1, 8),
                 value("case-ambient.radius", DEFAULT_AMBIENT_RADIUS, 0.1, 3.0),
-                value("case-ambient.height", 1.85, 0.1, 4.0),
-                (float) value("case-ambient.item-scale", 0.7, 0.1, 3.0),
-                value("case-ambient.speed", 1.45, 0.2, 3.0),
-                (float) value("case-ambient.view-range", 33.5, 1.0, 64.0)
+                value("case-ambient.height", 0.5, 0.1, 4.0),
+                (float) value("case-ambient.item-scale", 0.5, 0.1, 3.0),
+                value("case-ambient.speed", 2.0, 0.2, 3.0),
+                (float) value("case-ambient.view-range", 20.0, 1.0, 64.0)
         );
         overrides.clear();
         if (!Files.isRegularFile(file)) return;

@@ -60,22 +60,38 @@ class CrateVisualSettingsStoreTest {
         assertEquals(1.4f, loaded.roulette().itemScale());
         assertFalse(loaded.roulette().visibleToNearby());
         assertEquals("CROWN", loaded.ambient().preset());
-        assertEquals(5, loaded.ambient().itemCount());
+        assertEquals(8, loaded.ambient().itemCount());
     }
 
     @Test
     void defaultsMatchTheOriginDailyCrateVisuals() {
         var defaults = new CrateVisualSettingsStore(directory, new MemoryConfiguration()).defaults();
 
-        assertEquals(.18, defaults.hologram().offsetY());
-        assertEquals(1.3f, defaults.hologram().scale());
-        assertEquals(10.5f, defaults.hologram().viewRange());
+        assertEquals("%crate_name%", defaults.hologram().textTemplate());
+        assertEquals(0.0, defaults.hologram().offsetX());
+        assertEquals(.58, defaults.hologram().offsetY());
+        assertEquals(0.0, defaults.hologram().offsetZ());
+        assertEquals(0.0f, defaults.hologram().yaw());
+        assertEquals(0.0f, defaults.hologram().pitch());
+        assertEquals(2.0f, defaults.hologram().scale());
+        assertEquals(1.0f, defaults.hologram().viewRange());
+        assertEquals(0.0, defaults.roulette().offsetX());
         assertEquals(2.65, defaults.roulette().offsetY());
-        assertEquals("HALO", defaults.ambient().preset());
-        assertEquals(2.0, defaults.ambient().radius());
-        assertEquals(1.85, defaults.ambient().height());
-        assertEquals(1.45, defaults.ambient().speed());
-        assertEquals(33.5f, defaults.ambient().viewRange());
+        assertEquals(0.0, defaults.roulette().offsetZ());
+        assertEquals(.82, defaults.roulette().itemSpacing());
+        assertEquals(.95f, defaults.roulette().itemScale());
+        assertEquals(1.32f, defaults.roulette().winnerScale());
+        assertEquals(1.08, defaults.roulette().pointerHeight());
+        assertEquals(1.55f, defaults.roulette().pointerScale());
+        assertEquals(24.0f, defaults.roulette().viewRange());
+        assertTrue(defaults.roulette().visibleToNearby());
+        assertEquals("SATURN", defaults.ambient().preset());
+        assertEquals(8, defaults.ambient().itemCount());
+        assertEquals(1.6, defaults.ambient().radius());
+        assertEquals(.5, defaults.ambient().height());
+        assertEquals(.5f, defaults.ambient().itemScale());
+        assertEquals(2.0, defaults.ambient().speed());
+        assertEquals(20.0f, defaults.ambient().viewRange());
     }
 
     @Test
@@ -122,7 +138,7 @@ class CrateVisualSettingsStoreTest {
         var custom = store.get(new CrateVisualSettingsStore.Anchor("survival", 11, 64, -3));
 
         assertEquals(2.65, migrated.roulette().offsetY());
-        assertEquals(2.0, migrated.ambient().radius());
+        assertEquals(1.6, migrated.ambient().radius());
         assertEquals(2.0, custom.roulette().offsetY());
         assertEquals(2.0, custom.ambient().radius());
     }
