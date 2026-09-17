@@ -102,7 +102,7 @@ internal class WorldRouletteAnimator(
                 }
                 viewer.showEntity(plugin, pointer)
                 entities += pointer
-                views += View(viewer, displays, BooleanArray(displays.size))
+                views += View(viewer, axis.clone(), displays, BooleanArray(displays.size))
             }
 
             val effect = openingEffects.open(anchor)
@@ -110,7 +110,10 @@ internal class WorldRouletteAnimator(
                 anchorKey, row, anchor.clone(), effect, onComplete)
             sessions[player.uniqueId] = session
             render(session, WorldRouletteTrack.frame(0))
-            session.reelTask = runtime.tasks().runTimer(FRAME_PERIOD_TICKS, FRAME_PERIOD_TICKS) {
+            session.reelTask = runtime.tasks().runTimer(
+                WorldRouletteMotion.FRAME_PERIOD_TICKS,
+                WorldRouletteMotion.FRAME_PERIOD_TICKS,
+            ) {
                 advance(player.uniqueId)
             }
             if (session.reelTask == null) {
@@ -159,7 +162,6 @@ internal class WorldRouletteAnimator(
     private fun render(session: Session, frame: WorldRouletteFrame) {
         session.views.forEach { view ->
             if (!view.viewer.isOnline || view.viewer.world != session.center.world) return@forEach
-            val axis = reelAxis(session.center, view.viewer.eyeLocation)
             view.displays.forEachIndexed { sequenceIndex, display ->
                 val visible = WorldRouletteTrack.visible(sequenceIndex, frame)
                 if (!visible) {
@@ -167,7 +169,7 @@ internal class WorldRouletteAnimator(
                     view.visible[sequenceIndex] = false
                     return@forEachIndexed
                 }
-                display.teleport(position(session.center, axis, WorldRouletteTrack.cells(sequenceIndex, frame), session.visual.itemSpacing()))
+                display.teleport(position(session.center, view.axis, WorldRouletteTrack.cells(sequenceIndex, frame), session.visual.itemSpacing()))
                 if (!view.visible[sequenceIndex]) view.viewer.showEntity(plugin, display)
                 view.visible[sequenceIndex] = true
             }
@@ -206,8 +208,8 @@ internal class WorldRouletteAnimator(
         display.isVisibleByDefault = false
         display.billboard = Display.Billboard.CENTER
         display.brightness = Display.Brightness(15, 15)
-        display.teleportDuration = FRAME_PERIOD_TICKS.toInt()
-        display.interpolationDuration = FRAME_PERIOD_TICKS.toInt()
+        display.teleportDuration = WorldRouletteMotion.TELEPORT_DURATION_TICKS
+        display.interpolationDuration = WorldRouletteMotion.FRAME_PERIOD_TICKS.toInt()
         display.viewRange = viewRange
         display.shadowRadius = 0.15f
         display.shadowStrength = 0.6f
@@ -256,12 +258,12 @@ internal class WorldRouletteAnimator(
 
     private data class View(
         val viewer: Player,
+        val axis: Vector,
         val displays: List<ItemDisplay>,
         val visible: BooleanArray,
     )
 
     private companion object {
-        const val FRAME_PERIOD_TICKS = 1L
         const val HOLD_TICKS = 24L
     }
 }
