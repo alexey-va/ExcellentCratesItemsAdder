@@ -7,7 +7,8 @@ plugins {
 }
 
 group = "ru.ruscrafting"
-version = "0.14.6"
+version = "0.14.7"
+val arcCoreVersion = "2.7.9"
 
 repositories {
     mavenCentral()
@@ -33,15 +34,15 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib"))
-    implementation("ru.ruscrafting.arc:arc-core:2.7.8")
-    implementation("ru.ruscrafting.arc:arc-core-logging:2.7.8")
-    implementation("ru.ruscrafting.arc:arc-core-paper:2.7.8")
-    implementation("ru.ruscrafting.arc:arc-core-menu:2.7.8")
-    implementation("ru.ruscrafting.arc:arc-core-paper-menu:2.7.8")
+    implementation("ru.ruscrafting.arc:arc-core:$arcCoreVersion")
+    implementation("ru.ruscrafting.arc:arc-core-logging:$arcCoreVersion")
+    implementation("ru.ruscrafting.arc:arc-core-paper:$arcCoreVersion")
+    implementation("ru.ruscrafting.arc:arc-core-menu:$arcCoreVersion")
+    implementation("ru.ruscrafting.arc:arc-core-paper-menu:$arcCoreVersion")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.10")
 
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    compileOnly("ru.ruscrafting.arc:arc-core-paper-api:2.7.8")
+    compileOnly("ru.ruscrafting.arc:arc-core-paper-api:$arcCoreVersion")
     compileOnly("su.nightexpress.excellentcrates:ExcellentCrates:6.6.1")
     compileOnly("su.nightexpress.nightcore:main:2.16.4")
 
@@ -52,8 +53,8 @@ dependencies {
     testImplementation("io.kotest:kotest-runner-junit5:6.0.7")
     testImplementation("io.kotest:kotest-assertions-core:6.0.7")
     testImplementation("io.mockk:mockk:1.14.7")
-    testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:2.7.8")
-    testImplementation("ru.ruscrafting.arc:arc-core-paper-api:2.7.8")
+    testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:$arcCoreVersion")
+    testImplementation("ru.ruscrafting.arc:arc-core-paper-api:$arcCoreVersion")
     testImplementation("su.nightexpress.excellentcrates:ExcellentCrates:6.6.1")
     testImplementation("su.nightexpress.nightcore:main:2.16.4")
 }

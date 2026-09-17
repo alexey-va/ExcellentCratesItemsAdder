@@ -124,6 +124,8 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         CrateVisualSettingsStore.Anchor settingsAnchor = new CrateVisualSettingsStore.Anchor(
                 source.getWorldName(), source.getX(), source.getY(), source.getZ());
         CrateVisualSettingsStore.Ambient visual = settings.get(settingsAnchor).ambient();
+        ItemDisplayPresentation presentation = ItemDisplayPresentation.from(
+                plugin.getConfig(), "case-ambient.flat-item-displays");
         World world = source.getWorld();
         List<UUID> ids = new ArrayList<>(visual.itemCount());
         Location origin = source.toLocation().add(.5, .45, .5);
@@ -132,7 +134,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
             ItemDisplay display = world.spawn(origin, ItemDisplay.class, entity -> {
                 entity.getPersistentDataContainer().set(marker, PersistentDataType.BYTE, (byte) 1);
                 entity.setItemStack(rewards.get(slot % rewards.size()).clone());
-                entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.GUI);
+                entity.setItemDisplayTransform(presentation.transform());
                 entity.setPersistent(false);
                 entity.setInvulnerable(true);
                 entity.setSilent(true);
@@ -144,12 +146,12 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                 entity.setInterpolationDuration(INTERPOLATION_TICKS);
                 entity.setShadowRadius(.12F);
                 entity.setShadowStrength(.55F);
-                entity.setTransformation(transformation(.01F, 0.0F));
+                entity.setTransformation(transformation(.01F, 0.0F, presentation));
             });
             ids.add(display.getUniqueId());
         }
         return new Orbit(source.toLocation(), List.copyOf(ids), rewards.stream().map(ItemStack::clone).toList(),
-                new int[ids.size()], visual);
+                new int[ids.size()], visual, presentation);
     }
 
     private void animate() {
@@ -166,7 +168,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                 if (display == null) continue;
                 if (hidden) {
                     display.teleport(orbit.anchor().clone().add(.5, .45, .5));
-                    display.setTransformation(transformation(.01F, 0.0F));
+                    display.setTransformation(transformation(.01F, 0.0F, orbit.presentation()));
                     continue;
                 }
                 Frame next = frame(frame, index, orbit.visual(), orbit.rewards().size());
@@ -177,7 +179,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                 Location location = orbit.anchor().clone().add(.5 + next.x(), .45 + next.y(), .5 + next.z());
                 try {
                     display.teleport(location);
-                    display.setTransformation(transformation(next.scale(), next.rotation()));
+                    display.setTransformation(transformation(next.scale(), next.rotation(), orbit.presentation()));
                 } catch (RuntimeException ignored) {
                     // The next reconciliation recreates entities invalidated by a chunk lifecycle edge.
                 }
@@ -411,9 +413,10 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         return clamped * clamped * (3.0 - 2.0 * clamped);
     }
 
-    private static Transformation transformation(float scale, float rotation) {
+    private static Transformation transformation(float scale, float rotation,
+                                                 ItemDisplayPresentation presentation) {
         return new Transformation(new Vector3f(), new Quaternionf().rotateZ(rotation),
-                new Vector3f(scale, scale, scale), new Quaternionf());
+                presentation.scale(scale), new Quaternionf());
     }
 
     private boolean valid(Orbit orbit) {
@@ -461,7 +464,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     }
 
     record Orbit(Location anchor, List<UUID> displays, List<ItemStack> rewards, int[] rewardIndices,
-                 CrateVisualSettingsStore.Ambient visual) { }
+                 CrateVisualSettingsStore.Ambient visual, ItemDisplayPresentation presentation) { }
 
     record Frame(double x, double y, double z, float scale, float rotation, int rewardIndex) { }
 

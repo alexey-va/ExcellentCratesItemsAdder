@@ -18,6 +18,8 @@ case-holograms:
   pitch: 0.0
   view-range: 1.0
 case-roulette:
+  # Thin camera-facing previews avoid dark undersides. Set false for the old 3D GUI models.
+  flat-item-displays: true
   offset-x: 0.0
   height-above-block: 2.65
   offset-z: 0.0
@@ -36,6 +38,8 @@ case-key-glow:
 case-ambient:
   # Real reward previews animate beside every stationary managed crate.
   enabled: true
+  # Thin camera-facing previews avoid dark undersides. Set false for the old 3D GUI models.
+  flat-item-displays: true
   # FOUNTAIN, HALO, CROWN, SPIRAL, PULSE, WHEEL, SWING, INFINITY, SATURN,
   # CAROUSEL, COMET, BLOOM, HELIX, TIDE, CLOCKWORK, SHOWCASE, REELS, WALL,
   # CONVEYOR, RAIN, TOWER, FAN or SCALES. Each crate can override it.

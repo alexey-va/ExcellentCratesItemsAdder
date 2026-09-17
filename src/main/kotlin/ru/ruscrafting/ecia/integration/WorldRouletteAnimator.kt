@@ -20,6 +20,7 @@ import org.joml.Vector3f
 import ru.arc.core.ScheduledTask
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
 import ru.ruscrafting.ecia.CrateVisualSettingsStore
+import ru.ruscrafting.ecia.ItemDisplayPresentation
 import ru.ruscrafting.ecia.inventory.NativeItemPayload
 import ru.ruscrafting.ecia.journal.OpeningRecord
 import ru.ruscrafting.ecia.roll.RewardDefinition
@@ -51,6 +52,7 @@ internal class WorldRouletteAnimator(
 
         val anchorKey = CrateVisualSettingsStore.Anchor.of(anchor)
         val visual = visualSettings.get(anchorKey).roulette()
+        val presentation = ItemDisplayPresentation.from(plugin.config, "case-roulette.flat-item-displays")
         val occupiedRows = sessions.values.asSequence()
             .filter { it.anchorKey == anchorKey }
             .map { it.row.index }
@@ -77,8 +79,8 @@ internal class WorldRouletteAnimator(
                     val position = position(center, axis, WorldRouletteTrack.cells(index, initial), visual.itemSpacing())
                     val display = player.world.spawn(position, ItemDisplay::class.java) { entity ->
                         configure(entity, visual.viewRange())
-                        entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.GUI
-                        entity.transformation = transformation(visual.itemScale())
+                        entity.itemDisplayTransform = presentation.transform()
+                        entity.transformation = transformation(visual.itemScale(), presentation)
                         entity.setItemStack(item.clone())
                     }
                     displays += display
@@ -104,7 +106,7 @@ internal class WorldRouletteAnimator(
             }
 
             val effect = openingEffects.open(anchor)
-            val session = Session(player, views, entities, center, visual,
+            val session = Session(player, views, entities, center, visual, presentation,
                 anchorKey, row, anchor.clone(), effect, onComplete)
             sessions[player.uniqueId] = session
             render(session, WorldRouletteTrack.frame(0))
@@ -179,7 +181,7 @@ internal class WorldRouletteAnimator(
             val winner = view.displays[WorldRouletteTrack.SELECTED_INDEX]
             winner.isGlowing = true
             winner.glowColorOverride = Color.fromRGB(255, 213, 103)
-            winner.transformation = transformation(session.visual.winnerScale())
+            winner.transformation = transformation(session.visual.winnerScale(), session.presentation)
             if (view.viewer.isOnline) {
                 view.viewer.playSound(session.center, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 0.55f, 1.25f)
             }
@@ -221,10 +223,13 @@ internal class WorldRouletteAnimator(
     private fun position(center: Location, axis: Vector, cells: Double, itemSpacing: Double): Location =
         center.clone().add(axis.clone().multiply(cells * itemSpacing))
 
-    private fun transformation(scale: Float) = Transformation(
+    private fun transformation(
+        scale: Float,
+        presentation: ItemDisplayPresentation = ItemDisplayPresentation.THREE_DIMENSIONAL,
+    ) = Transformation(
         Vector3f(),
         Quaternionf(),
-        Vector3f(scale, scale, scale),
+        presentation.scale(scale),
         Quaternionf(),
     )
 
@@ -238,6 +243,7 @@ internal class WorldRouletteAnimator(
         val entities: List<Entity>,
         val center: Location,
         val visual: CrateVisualSettingsStore.Roulette,
+        val presentation: ItemDisplayPresentation,
         val anchorKey: CrateVisualSettingsStore.Anchor,
         val row: WorldRouletteRow,
         val anchor: Location,
