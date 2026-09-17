@@ -38,8 +38,8 @@ case-key-glow:
 case-ambient:
   # Real reward previews animate beside every stationary managed crate.
   enabled: true
-  # Thin camera-facing previews avoid dark undersides. Set false for the old 3D GUI models.
-  flat-item-displays: true
+  # Keep idle rewards volumetric by default. Set true for thin camera-facing icons.
+  flat-item-displays: false
   # FOUNTAIN, HALO, CROWN, SPIRAL, PULSE, WHEEL, SWING, INFINITY, SATURN,
   # CAROUSEL, COMET, BLOOM, HELIX, TIDE, CLOCKWORK, SHOWCASE, REELS, WALL,
   # CONVEYOR, RAIN, TOWER, FAN or SCALES. Each crate can override it.

@@ -18,7 +18,11 @@ public enum ItemDisplayPresentation {
     }
 
     public static ItemDisplayPresentation from(Configuration config, String path) {
-        return config.getBoolean(path, true) ? FLAT : THREE_DIMENSIONAL;
+        return from(config, path, true);
+    }
+
+    public static ItemDisplayPresentation from(Configuration config, String path, boolean flatByDefault) {
+        return config.getBoolean(path, flatByDefault) ? FLAT : THREE_DIMENSIONAL;
     }
 
     public ItemDisplay.ItemDisplayTransform transform() {

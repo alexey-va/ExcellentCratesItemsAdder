@@ -8,15 +8,25 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ItemDisplayPresentationTest {
     @Test
-    void flatPresentationIsTheDefaultAndCompressesModelDepth() {
+    void rouletteFlatPresentationIsTheDefaultAndCompressesModelDepth() {
         var config = new MemoryConfiguration();
 
-        var presentation = ItemDisplayPresentation.from(config, "case-ambient.flat-item-displays");
+        var presentation = ItemDisplayPresentation.from(config, "case-roulette.flat-item-displays", true);
 
         assertEquals(ItemDisplay.ItemDisplayTransform.FIXED, presentation.transform());
         assertEquals(1.0f, presentation.scale(1.0f).x());
         assertEquals(1.0f, presentation.scale(1.0f).y());
         assertEquals(.06f, presentation.scale(1.0f).z());
+    }
+
+    @Test
+    void ambientPresentationDefaultsToThePreviousThreeDimensionalModel() {
+        var config = new MemoryConfiguration();
+
+        var presentation = ItemDisplayPresentation.from(config, "case-ambient.flat-item-displays", false);
+
+        assertEquals(ItemDisplay.ItemDisplayTransform.GUI, presentation.transform());
+        assertEquals(1.0f, presentation.scale(1.0f).z());
     }
 
     @Test

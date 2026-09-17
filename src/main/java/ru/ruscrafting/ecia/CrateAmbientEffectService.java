@@ -125,7 +125,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                 source.getWorldName(), source.getX(), source.getY(), source.getZ());
         CrateVisualSettingsStore.Ambient visual = settings.get(settingsAnchor).ambient();
         ItemDisplayPresentation presentation = ItemDisplayPresentation.from(
-                plugin.getConfig(), "case-ambient.flat-item-displays");
+                plugin.getConfig(), "case-ambient.flat-item-displays", false);
         World world = source.getWorld();
         List<UUID> ids = new ArrayList<>(visual.itemCount());
         Location origin = source.toLocation().add(.5, .45, .5);
