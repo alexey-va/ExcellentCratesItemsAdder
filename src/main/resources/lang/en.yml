@@ -29,7 +29,6 @@ managed:
   busy: '<#ffe08a>Finish your current opening first.'
   vetoed: '<#ffb56b>Server rules prevented this opening. No key was consumed.'
   no-key: '<#ffb56b>You need a physical key for this crate.'
-  unknown-season: '<#ffb56b>This key does not match the crate. You keep your key.'
   native-command: '<#ffd567>Use the key on this crate pedestal. The addon tracks keys and rewards.'
   key-not-consumed: '<#ffe08a>Opening cancelled. No key was consumed.'
   review: '<#ffcc80>Delivery is under review. Your record is saved and no second key will be taken.'

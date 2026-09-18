@@ -33,7 +33,7 @@ the empty block adjacent to the face under the crosshair. The native namespaced
 ExcellentCrates command remains available without forking ExcellentCrates.
 
 `features.yml` ships disabled. Enable managed openings only after configuring
-each case and its frozen reward pool. `menus.yml` contains six-row history and
+each case and its native rewards. `menus.yml` contains six-row history and
 pool screens. Names and presentation are configurable;
 model 11001 is rejected in every menu template. Russian and English chat text
 is in `lang/`; existing protection messages in `config.yml` remain authoritative.
