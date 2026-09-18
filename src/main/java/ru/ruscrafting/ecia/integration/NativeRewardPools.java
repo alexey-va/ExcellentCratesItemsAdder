@@ -17,9 +17,15 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 /** Captures native EC weights and exact ARC item recipes once per season. */
 public final class NativeRewardPools {
@@ -27,13 +33,20 @@ public final class NativeRewardPools {
     private final NativeSeasonKeys keys;
     private final CatalogRewardBridge provider;
     private final NativeItemPayload payload;
+    private final Consumer<String> issueSink;
 
     public NativeRewardPools(SeasonPoolStore seasons, NativeSeasonKeys keys,
             CatalogRewardBridge provider, NativeItemPayload payload) {
+        this(seasons, keys, provider, payload, ignored -> { });
+    }
+
+    public NativeRewardPools(SeasonPoolStore seasons, NativeSeasonKeys keys,
+            CatalogRewardBridge provider, NativeItemPayload payload, Consumer<String> issueSink) {
         this.seasons = seasons;
         this.keys = keys;
         this.provider = provider;
         this.payload = payload;
+        this.issueSink = Objects.requireNonNull(issueSink, "issueSink");
     }
 
     public Map<String, PoolSnapshot> install(ManagedCratesSettings settings) {
@@ -52,8 +65,16 @@ public final class NativeRewardPools {
             var nativeRewards = crate.getRewards().stream().sorted(Comparator.comparing(Reward::getId)).toList();
             var old = seasons.find(crate.getId(), configured.seasonId());
             if (old.isPresent()) {
-                verifyUnchanged(old.get(), configured, nativeRewards);
-                installed.put(crate.getId(), old.get());
+                if (old.get().choiceCount() != configured.choiceCount()
+                        || old.get().maxRerolls() != configured.maxRerolls()
+                        || old.get().bundleSize() != configured.bundleSize()) {
+                    throw new IllegalStateException("Season rules changed; create a new season: " + crate.getId());
+                }
+                var nativeFingerprints = nativeRewards.stream()
+                        .map(reward -> new NativeRewardFingerprint(reward.getId(), sourceFingerprint(reward)))
+                        .toList();
+                filterFrozenPool(old.get(), nativeFingerprints, provider::sourceFingerprint, issueSink).ifPresent(
+                        active -> installed.put(crate.getId(), active));
                 continue;
             }
             List<RewardDefinition> rewards = new ArrayList<>();
@@ -104,20 +125,63 @@ public final class NativeRewardPools {
                 && (words[1].equals("%player%") || words[1].equals("%player_name%"));
     }
 
-    private void verifyUnchanged(PoolSnapshot pool, ManagedCratesSettings.CaseSettings config, List<Reward> nativeRewards) {
-        if (pool.choiceCount() != config.choiceCount() || pool.maxRerolls() != config.maxRerolls()
-                || pool.bundleSize() != config.bundleSize()
-                || pool.rewards().size() != nativeRewards.size()) {
-            throw new IllegalStateException("Season rules changed; create a new season: " + pool.crateId());
+    static Optional<PoolSnapshot> filterFrozenPool(PoolSnapshot pool,
+            List<NativeRewardFingerprint> nativeRewards,
+            Function<RewardDefinition, String> frozenFingerprint,
+            Consumer<String> issueSink) {
+        Objects.requireNonNull(pool, "pool");
+        Objects.requireNonNull(nativeRewards, "nativeRewards");
+        Objects.requireNonNull(frozenFingerprint, "frozenFingerprint");
+        Objects.requireNonNull(issueSink, "issueSink");
+
+        Map<String, RewardDefinition> frozenById = new HashMap<>();
+        for (RewardDefinition reward : pool.rewards()) {
+            frozenById.put(reward.id(), reward);
         }
-        for (Reward reward : nativeRewards) {
-            RewardDefinition frozen = pool.rewards().stream().filter(item -> item.id().equals(reward.getId())).findFirst()
-                    .orElseThrow(() -> new IllegalStateException("Season rewards changed: " + pool.crateId()));
-            if (!provider.sourceFingerprint(frozen).equals(sourceFingerprint(reward))) {
-                throw new IllegalStateException("Season reward changed; create a new season: " + pool.crateId() + "/" + reward.getId());
+        Set<String> nativeIds = new HashSet<>();
+        List<RewardDefinition> valid = new ArrayList<>();
+        for (NativeRewardFingerprint nativeReward : nativeRewards) {
+            if (!nativeIds.add(nativeReward.id())) {
+                issueSink.accept(issue(pool, nativeReward.id(), "duplicate native reward"));
+                continue;
+            }
+            RewardDefinition frozen = frozenById.get(nativeReward.id());
+            if (frozen == null) {
+                issueSink.accept(issue(pool, nativeReward.id(), "missing frozen reward"));
+                continue;
+            }
+            if (!nativeReward.fingerprint().equals(frozenFingerprint.apply(frozen))) {
+                issueSink.accept(issue(pool, nativeReward.id(), "fingerprint changed"));
+                continue;
+            }
+            valid.add(frozen);
+        }
+        for (RewardDefinition frozen : pool.rewards()) {
+            if (!nativeIds.contains(frozen.id())) {
+                issueSink.accept(issue(pool, frozen.id(), "missing native reward"));
             }
         }
+        if (valid.isEmpty()) {
+            issueSink.accept("crate=" + pool.crateId() + " season=" + pool.seasonId()
+                    + " reason=no valid rewards remain; managed case disabled");
+            return Optional.empty();
+        }
+        if (valid.size() < pool.bundleSize()) {
+            issueSink.accept("crate=" + pool.crateId() + " season=" + pool.seasonId()
+                    + " reason=valid reward count " + valid.size()
+                    + " is below bundle size " + pool.bundleSize() + "; managed case disabled");
+            return Optional.empty();
+        }
+        return Optional.of(new PoolSnapshot(pool.crateId(), pool.seasonId(), valid,
+                pool.choiceCount(), pool.maxRerolls(), pool.bundleSize()));
     }
+
+    private static String issue(PoolSnapshot pool, String rewardId, String reason) {
+        return "crate=" + pool.crateId() + " season=" + pool.seasonId()
+                + " reward=" + rewardId + " reason=" + reason;
+    }
+
+    record NativeRewardFingerprint(String id, String fingerprint) { }
 
     private String sourceFingerprint(Reward reward) {
         String definition = payload.write(List.of(reward.getId(), reward.getWeight(), reward.getName(),

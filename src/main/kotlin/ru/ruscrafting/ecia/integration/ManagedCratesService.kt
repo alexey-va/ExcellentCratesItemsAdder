@@ -90,7 +90,9 @@ class ManagedCratesService(
             val menuConfiguration = EciaMenuConfiguration.load(root)
             val nextSeasons = SeasonPoolStore(root)
             val nextLedger = OpeningLedger(DurableOpeningStore(root), Clock.systemUTC())
-            val nextPools = if (candidate.enabled) NativeRewardPools(nextSeasons, keys, rewards, payload).install(candidate) else emptyMap()
+            val nextPools = if (candidate.enabled) NativeRewardPools(nextSeasons, keys, rewards, payload) { issue ->
+                runtime.error("Managed reward excluded: {}", issue)
+            }.install(candidate) else emptyMap()
             runtime.installMenu(menuConfiguration)
             screens = EciaMenuScreens(menuConfiguration, payload)
             seasons = nextSeasons
@@ -142,7 +144,7 @@ class ManagedCratesService(
         }
         val cost = keys.cost(crate)
         val season = keys.selectedSeason(player, cost).orElse(null) ?: return message(player, "managed.no-key")
-        val pool = seasons?.find(crateId, season)?.orElse(null) ?: return message(player, "managed.unknown-season")
+        val pool = poolFor(crateId, season) ?: return message(player, "managed.unknown-season")
         if (router?.allowManagedOpen(player, crate) != true) return message(player, "managed.vetoed")
         val record = requireEngine().open(player, pool, keys.matches(cost.keyId(), season), cost.amount()).orElse(null)
             ?: return message(player, "managed.no-key")
@@ -155,8 +157,17 @@ class ManagedCratesService(
         val crate = CratesAPI.getCrateManager().getCrateById(crateId) ?: return message(player, "managed.unavailable")
         if (!crate.hasPermission(player)) return message(player, "no-permission")
         val season = keys.selectedSeason(player, keys.cost(crate)).orElse(settings.cases[crateId]?.seasonId())
-        val pool = season?.let { seasons?.find(crateId, it)?.orElse(null) } ?: return message(player, "managed.unavailable")
+        val pool = season?.let { poolFor(crateId, it) } ?: return message(player, "managed.unavailable")
         requireScreens().openPoolPreview(requireMenus(), player, pool, actions())
+    }
+
+    private fun poolFor(crateId: String, season: String): PoolSnapshot? {
+        val currentSeason = settings.cases[crateId]?.seasonId()
+        return if (season == currentSeason) {
+            pools[crateId]
+        } else {
+            seasons?.find(crateId, season)?.orElse(null)
+        }
     }
 
     private fun show(player: Player, record: OpeningRecord, anchor: Location? = null) {

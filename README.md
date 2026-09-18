@@ -88,6 +88,12 @@ weighted Treasure recipes. Provider-backed IDs such as mounts must remain
 available in their provider; absence keeps the reward unavailable rather than
 silently substituting another reward.
 
+If a native crate drifts after a season is frozen, the managed pool keeps only
+the intersection of rewards whose IDs and source fingerprints still match the
+frozen snapshot. Added, removed, changed or duplicate native rewards are
+excluded and reported at error level; the whole managed service is not taken
+down for one bad reward. A case with no usable rewards remains unavailable.
+
 The addon durably records an opening before key debit and records the exact
 reward payload before delivery. Exact inventory preimages and saved player
 receipts distinguish committed actions from actions proven not to have happened.
