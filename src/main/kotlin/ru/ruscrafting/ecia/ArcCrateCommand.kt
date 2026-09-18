@@ -10,7 +10,6 @@ import org.bukkit.block.data.Directional
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
 import org.bukkit.command.TabExecutor
-import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import ru.arc.network.BackendServerId
@@ -26,7 +25,6 @@ import ru.arc.paper.menu.PaperDialogScreen
 import ru.arc.paper.menu.PaperDialogTextInput
 import ru.ruscrafting.ecia.integration.CrateModelPairing
 import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess
-import ru.ruscrafting.ecia.integration.ManagedCratesSettings
 import ru.ruscrafting.ecia.integration.NativeSeasonKeys
 import su.nightexpress.excellentcrates.CratesAPI
 import su.nightexpress.excellentcrates.crate.cost.entry.impl.KeyCostEntry
@@ -284,7 +282,7 @@ internal class ArcCrateCommand(
         val listed = keys.drop(page * PAGE_SIZE).take(PAGE_SIZE)
         val buttons = listed.mapIndexed { index, key ->
             button("key_${page}_$index", key.label(), NamedTextColor.LIGHT_PURPLE) {
-                openGrant(it.player, key.id, key.season)
+                openGrant(it.player, key.id, null)
             }
         }.toMutableList()
         if (page > 0) buttons += button("keys_previous", if (english(player)) "‹ Previous" else "‹ Назад", NamedTextColor.BLUE) {
@@ -431,13 +429,7 @@ internal class ArcCrateCommand(
             message(sender, "key.unknown", mapOf("key" to parsed.keyId))
             return true
         }
-        val season = runCatching { seasonForKey(parsed.keyId) }.onFailure {
-            plugin.runtime().warn("Could not resolve current season for key {}: {}", parsed.keyId, it.toString())
-        }.getOrElse {
-            message(sender, "key.unavailable")
-            return true
-        }
-        val request = KeyGrantRequest.parse(parsed.player, parsed.keyId, parsed.amount, server?.value, season)
+        val request = KeyGrantRequest.parse(parsed.player, parsed.keyId, parsed.amount, server?.value, null)
         if (request == null) {
             val key = if (NetworkPlayerName.parseOrNull(parsed.player) == null) "key.invalid-player" else "key.invalid-amount"
             message(sender, key)
@@ -485,7 +477,6 @@ internal class ArcCrateCommand(
     private fun keyChoices(): List<KeyChoice> {
         if (!CratesAPI.isLoaded()) return emptyList()
         val cratesByKey = linkedMapOf<String, MutableSet<String>>()
-        val seasonsByKey = currentSeasonsByKey()
         CratesAPI.getCrateManager().crates.forEach { crate ->
             crate.costs.asSequence()
                 .filter { it.isEnabled }
@@ -496,7 +487,7 @@ internal class ArcCrateCommand(
         return CratesAPI.getKeyManager().keys.asSequence()
             .filterNot { it.isVirtual }
             .filter { KeyGrantRequest.safeKeyId(it.id) }
-            .map { KeyChoice(it.id, cratesByKey[it.id].orEmpty().sorted(), seasonsByKey[it.id]) }
+            .map { KeyChoice(it.id, cratesByKey[it.id].orEmpty().sorted(), null) }
             .sortedBy(KeyChoice::id)
             .toList()
     }
@@ -504,23 +495,6 @@ internal class ArcCrateCommand(
     private fun knownPhysicalKey(keyId: String): Boolean {
         if (!CratesAPI.isLoaded() || !KeyGrantRequest.safeKeyId(keyId)) return false
         return CratesAPI.getKeyManager().getKeyById(keyId)?.isVirtual == false
-    }
-
-    private fun seasonForKey(keyId: String): String? = currentSeasonsByKey()[keyId]
-
-    private fun currentSeasonsByKey(): Map<String, String> {
-        val file = plugin.dataFolder.toPath().resolve("features.yml").toFile()
-        val settings = ManagedCratesSettings.read(YamlConfiguration.loadConfiguration(file))
-        val result = linkedMapOf<String, String>()
-        settings.cases.values.forEach { configured ->
-            val crate = checkNotNull(CratesAPI.getCrateManager().getCrateById(configured.crateId)) {
-                "Missing configured crate ${configured.crateId}"
-            }
-            val keyId = nativeKeys.cost(crate).keyId()
-            val previous = result.putIfAbsent(keyId, configured.seasonId)
-            check(previous == null || previous == configured.seasonId) { "Shared key has conflicting current seasons: $keyId" }
-        }
-        return result
     }
 
     private fun backends(): List<BackendServerId> = plugin.config.getStringList("key-delivery.backends")

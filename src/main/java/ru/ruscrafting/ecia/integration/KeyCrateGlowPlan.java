@@ -30,7 +30,6 @@ final class KeyCrateGlowPlan {
         double rangeSquared = range * range;
         return targets.stream()
                 .filter(target -> target.keyId().equals(held.keyId()))
-                .filter(target -> target.season().equals(held.season()))
                 .filter(target -> target.world().equals(world))
                 .filter(target -> distanceSquared(target, x, y, z) <= rangeSquared)
                 .toList();

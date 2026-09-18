@@ -26,7 +26,6 @@ import ru.ruscrafting.ecia.roll.WeightedOfferGenerator
 import ru.ruscrafting.ecia.screens.EciaMenuActions
 import ru.ruscrafting.ecia.screens.EciaMenuConfiguration
 import ru.ruscrafting.ecia.screens.EciaMenuScreens
-import ru.ruscrafting.ecia.season.SeasonPoolStore
 import su.nightexpress.excellentcrates.CratesAPI
 import java.time.Clock
 import java.util.random.RandomGenerator
@@ -49,7 +48,6 @@ class ManagedCratesService(
     private var settings = ManagedCratesSettings(false, emptyMap())
     private var configurationFailed = true
     private var pools = emptyMap<String, PoolSnapshot>()
-    private var seasons: SeasonPoolStore? = null
     private var ledger: OpeningLedger? = null
     private var engine: ManagedOpeningEngine? = null
     private var screens: EciaMenuScreens? = null
@@ -88,14 +86,12 @@ class ManagedCratesService(
             ensureRouter()
             Config(root, EciaMenuConfiguration.RESOURCE).mergeMissingFromBundled(EciaMenuConfiguration.RESOURCE)
             val menuConfiguration = EciaMenuConfiguration.load(root)
-            val nextSeasons = SeasonPoolStore(root)
             val nextLedger = OpeningLedger(DurableOpeningStore(root), Clock.systemUTC())
-            val nextPools = if (candidate.enabled) NativeRewardPools(nextSeasons, keys, rewards, payload) { issue ->
+            val nextPools = if (candidate.enabled) NativeRewardPools(keys, rewards, payload) { issue ->
                 runtime.error("Managed reward excluded: {}", issue)
             }.install(candidate) else emptyMap()
             runtime.installMenu(menuConfiguration)
             screens = EciaMenuScreens(menuConfiguration, payload)
-            seasons = nextSeasons
             ledger = nextLedger
             engine = ManagedOpeningEngine(nextLedger, WeightedOfferGenerator(RandomGenerator.getDefault()), inventory, payload, rewards::materialize)
             pools = nextPools
@@ -107,7 +103,6 @@ class ManagedCratesService(
                     }.getOrNull()
                 }
             })
-            if (candidate.cases.isNotEmpty()) keys.stampTemplates(candidate.cases.mapValues { it.value.seasonId() })
             keyGlow.configure(if (candidate.enabled) candidate.cases else emptyMap())
             ready = candidate.enabled
             configurationFailed = false
@@ -143,10 +138,9 @@ class ManagedCratesService(
             return
         }
         val cost = keys.cost(crate)
-        val season = keys.selectedSeason(player, cost).orElse(null) ?: return message(player, "managed.no-key")
-        val pool = poolFor(crateId, season) ?: return message(player, "managed.unknown-season")
+        val pool = pools[crateId] ?: return message(player, "managed.unavailable")
         if (router?.allowManagedOpen(player, crate) != true) return message(player, "managed.vetoed")
-        val record = requireEngine().open(player, pool, keys.matches(cost.keyId(), season), cost.amount()).orElse(null)
+        val record = requireEngine().open(player, pool, keys.matches(cost.keyId()), cost.amount()).orElse(null)
             ?: return message(player, "managed.no-key")
         show(player, record, anchor)
         updateHealth()
@@ -156,18 +150,8 @@ class ManagedCratesService(
         if (!ready) return message(player, "managed.unavailable")
         val crate = CratesAPI.getCrateManager().getCrateById(crateId) ?: return message(player, "managed.unavailable")
         if (!crate.hasPermission(player)) return message(player, "no-permission")
-        val season = keys.selectedSeason(player, keys.cost(crate)).orElse(settings.cases[crateId]?.seasonId())
-        val pool = season?.let { poolFor(crateId, it) } ?: return message(player, "managed.unavailable")
+        val pool = pools[crateId] ?: return message(player, "managed.unavailable")
         requireScreens().openPoolPreview(requireMenus(), player, pool, actions())
-    }
-
-    private fun poolFor(crateId: String, season: String): PoolSnapshot? {
-        val currentSeason = settings.cases[crateId]?.seasonId()
-        return if (season == currentSeason) {
-            pools[crateId]
-        } else {
-            seasons?.find(crateId, season)?.orElse(null)
-        }
     }
 
     private fun show(player: Player, record: OpeningRecord, anchor: Location? = null) {

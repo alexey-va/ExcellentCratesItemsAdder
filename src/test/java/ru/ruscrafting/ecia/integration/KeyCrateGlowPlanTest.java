@@ -29,10 +29,14 @@ class KeyCrateGlowPlanTest {
     }
 
     @Test
-    void rejectsOldSeasonAndBoundaryOutsideRadius() {
-        assertEquals(List.of(), KeyCrateGlowPlan.select(
+    void matchesTheNativeKeyIdRegardlessOfLegacySeasonMetadata() {
+        assertEquals(List.of(DAILY), KeyCrateGlowPlan.select(
                 new KeyCrateGlowPlan.HeldKey("daily_key", "launch"),
                 "rc_origin_spawn", -50.0, 71.0, 28.0, 48.0, List.of(DAILY)));
+    }
+
+    @Test
+    void rejectsBoundaryOutsideRadius() {
         assertEquals(List.of(), KeyCrateGlowPlan.select(
                 new KeyCrateGlowPlan.HeldKey("daily_key", "autumn"),
                 "rc_origin_spawn", -1.4, 71.5, 28.5, 48.0, List.of(DAILY)));

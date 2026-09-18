@@ -61,9 +61,9 @@ The shipped hologram and idle-animation defaults match the tuned daily cache in
 the Origin world.
 
 With configured cases, `enabled: false` pauses their openings while retaining
-interception and current-season key stamps. It does not return old seasonal
-keys to native opening rules. The empty default `cases: {}` provides protection
-only. Removing a previously managed case requires an explicit key migration.
+interception. The empty default `cases: {}` provides protection only. The
+managed path accepts the native physical key by its key id, so old stamped keys
+remain usable after a reload without a separate season migration.
 
 ## Managed openings
 
@@ -77,22 +77,13 @@ fresh redeemable ARC vouchers. No reward command is interpreted as proof of
 delivery. A full inventory preserves the pending opening; free slots and
 right-click a crate again to retry delivery.
 
-## Seasons and recovery
+## Current rewards and recovery
 
-The first successful load freezes a case's reward definitions and selection
-rules under its season ID. Change the season ID before changing a managed pool.
-Native key-give commands stamp new physical keys with the current season;
-existing unstamped keys belong to `launch`. Old keys use their archived pool.
-Archived ARC vouchers preserve supported currency, command, furniture and
-weighted Treasure recipes. Provider-backed IDs such as mounts must remain
-available in their provider; absence keeps the reward unavailable rather than
-silently substituting another reward.
-
-If a native crate drifts after a season is frozen, the managed pool keeps only
-the intersection of rewards whose IDs and source fingerprints still match the
-frozen snapshot. Added, removed, changed or duplicate native rewards are
-excluded and reported at error level; the whole managed service is not taken
-down for one bad reward. A case with no usable rewards remains unavailable.
+Every reload reads the currently loaded native reward list and rebuilds the
+managed pool from it. A bad reward is reported at error level and omitted from
+that case; the other rewards remain usable. There is no immutable season pool
+and no reward drift gate. Physical keys are matched by the native key id, so
+legacy `ecia:season` metadata is ignored for new openings.
 
 The addon durably records an opening before key debit and records the exact
 reward payload before delivery. Exact inventory preimages and saved player
@@ -103,7 +94,8 @@ the addon data directory and ARC's `data/reward-physical-archive` in backups.
 
 Managed cases support exactly one enabled physical key cost and one supported
 ARC reward or native key-give command per prize. Native cooldowns, milestones,
-extra post-open commands and restricted rewards are rejected, not ignored.
+extra post-open commands and restricted rewards are logged and the affected
+case/reward is skipped, while valid rewards remain available.
 Use the placed furniture to open these cases. Native free/forced
 open commands and portable crate items are rejected because their additional
 cost semantics are outside the journal contract.
@@ -115,7 +107,7 @@ default). The command opens a native administrator center for placing a case or
 granting a physical key. The key flow selects a loaded key, player, amount from
 1 to 64, and exactly one backend from `key-delivery.backends`. ARC `/x` waits
 briefly for that player on the selected backend. The source serializes the exact
-physical key item, including its current managed season, so the lightweight
+physical key item, so the lightweight
 receiver can deliver it on a backend that does not run ExcellentCrates. Requests
 are never broadcast or retried automatically. The direct form is also available
 as `/arc-crate key player key [amount] [server]`. Amount defaults to `1`, and
@@ -136,8 +128,8 @@ are currently refused because a complete parent-provenance manifest is not yet
 supported. Ordinary protection and openings do not require grounding reports.
 
 Never delete journals to clear an uncertain transaction. Inspect the record and
-player receipt first. Journal corruption or an immutable-season conflict stops
-managed opening until repaired; protection remains an independent listener.
+player receipt first. Journal corruption stops managed opening until repaired;
+protection remains an independent listener.
 
 ## Building
 

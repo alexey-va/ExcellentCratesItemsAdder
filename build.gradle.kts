@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "ru.ruscrafting"
-version = "0.14.10"
+version = "0.14.11"
 val arcCoreVersion = "2.7.9"
 
 repositories {

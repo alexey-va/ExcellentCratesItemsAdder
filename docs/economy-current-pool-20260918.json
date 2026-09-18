@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "title": "ExcellentCrates: текущий native-пул без frozen seasons",
+  "assumptions": [
+    "Low/base/high are 0/1/5 keys opened per player day; this is a bounded load scenario, not measured key supply.",
+    "The change rebuilds the reward list from the currently loaded native crate on reload. It does not add a second roll or change bundle-size: 1.",
+    "Invalid reward definitions are omitted and logged; valid rewards remain weighted by their native weights.",
+    "Reward items, vouchers and keys are separate item units. No SELL value or Vault/Tokens exchange rate is assigned."
+  ],
+  "participants": [1, 10, 50],
+  "currencies": {
+    "vault": {
+      "minor_per_unit": 100,
+      "disposable_per_player_day": {
+        "before": ["0", "0", "0"],
+        "after": ["0", "0", "0"]
+      },
+      "flows": []
+    },
+    "case_reward_bundle": {
+      "minor_per_unit": 1,
+      "disposable_per_player_day": {
+        "before": ["0", "0", "0"],
+        "after": ["0", "0", "0"]
+      },
+      "flows": [
+        {
+          "id": "one_native_bundle_per_key",
+          "kind": "item",
+          "source": "ExcellentCratesItemsAdder/ManagedCratesService + NativeRewardPools",
+          "basis": "Current-pool rebuild changes eligibility of configured rewards, but each successful key debit still produces one durable weighted bundle.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {"value": "1", "unit": "major"},
+            "events_per_player_day": ["0", "1", "5"]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {"value": "1", "unit": "major"},
+            "events_per_player_day": ["0", "1", "5"]
+          }
+        }
+      ]
+    }
+  },
+  "prices": []
+}

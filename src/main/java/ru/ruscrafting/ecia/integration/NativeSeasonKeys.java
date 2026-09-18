@@ -17,7 +17,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
 
-/** Native key identity stays intact; only the addon season dimension is added. */
+/** Native key identity stays intact; managed openings match the native key id. */
 public final class NativeSeasonKeys implements AutoCloseable {
     public static final String LEGACY_SEASON = "launch";
     private static final NamespacedKey SEASON = Objects.requireNonNull(NamespacedKey.fromString("ecia:season"));
@@ -67,6 +67,15 @@ public final class NativeSeasonKeys implements AutoCloseable {
         };
     }
 
+    /** Current managed cases accept every physical key for the native key id. */
+    public Predicate<ItemStack> matches(String keyId) {
+        return item -> {
+            if (item == null || item.isEmpty()) return false;
+            CrateKey nativeKey = CratesAPI.getKeyManager().getKeyByItem(item);
+            return nativeKey != null && !nativeKey.isVirtual() && nativeKey.getId().equals(keyId);
+        };
+    }
+
     /** Identifies one physical native key without scanning the rest of the inventory. */
     public Optional<KeyIdentity> identify(ItemStack item) {
         if (item == null || item.isEmpty()) return Optional.empty();
@@ -95,6 +104,15 @@ public final class NativeSeasonKeys implements AutoCloseable {
         if (amount < 1 || amount > 64) throw new IllegalArgumentException("Key stack amount outside 1..64");
         ItemStack item = key(keyId).getItemStack().clone();
         item.editMeta(meta -> meta.getPersistentDataContainer().set(SEASON, PersistentDataType.STRING, season));
+        item.setAmount(amount);
+        return item;
+    }
+
+    /** Creates a plain native key; no managed season metadata is written. */
+    public ItemStack create(String keyId, int amount) {
+        if (amount < 1 || amount > 64) throw new IllegalArgumentException("Key stack amount outside 1..64");
+        ItemStack item = key(keyId).getItemStack().clone();
+        item.editMeta(meta -> meta.getPersistentDataContainer().remove(SEASON));
         item.setAmount(amount);
         return item;
     }

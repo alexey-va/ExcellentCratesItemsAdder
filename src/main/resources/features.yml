@@ -1,4 +1,4 @@
 # Native EC protection works independently. Operators opt individual cases into
-# managed openings after configuring immutable reward seasons.
+# managed openings; the current native reward list is used on every reload.
 enabled: false
 cases: {}

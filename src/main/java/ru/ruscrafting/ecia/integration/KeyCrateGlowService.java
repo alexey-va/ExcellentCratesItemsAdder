@@ -70,7 +70,7 @@ final class KeyCrateGlowService implements AutoCloseable {
             if (crate == null) continue;
             NativeSeasonKeys.KeyCost cost = keys.cost(crate);
             crate.getBlockPositions().forEach(position -> next.add(new KeyCrateGlowPlan.Target(
-                    crate.getId(), cost.keyId(), configured.seasonId(), position.getWorldName(),
+                    crate.getId(), cost.keyId(), NativeSeasonKeys.LEGACY_SEASON, position.getWorldName(),
                     position.getX(), position.getY(), position.getZ())));
         }
         targets = List.copyOf(next);
