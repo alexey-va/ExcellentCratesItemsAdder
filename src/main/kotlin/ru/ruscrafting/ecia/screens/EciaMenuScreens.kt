@@ -107,20 +107,22 @@ class EciaMenuScreens(
         val entries = allEntries.drop(currentPage * capacity).take(capacity)
         val previous = currentPage > 0
         val next = currentPage < lastPage
+        val paginated = lastPage > 0
         return PaperMenuContent(
             title = darkTitle(label("title-pool", "crate" to caseName(pool.crateId()))),
-            elements = mapOf(
+            elements = if (paginated) mapOf(
                 element("previous") to actionEntry("previous", previous) {
                     if (previous) actions.page.invoke(EciaMenuConfiguration.POOL_PREVIEW, -1)
                 },
                 element("next") to actionEntry("next", next) {
                     if (next) actions.page.invoke(EciaMenuConfiguration.POOL_PREVIEW, 1)
                 },
-            ),
-            regions = mapOf(
-                EciaMenuConfiguration.REWARDS to entries,
-                EciaMenuConfiguration.FOOTER to List(7) { PaperMenuEntry(background(), enabled = false) },
-            ),
+            ) else emptyMap(),
+            regions = buildMap {
+                put(EciaMenuConfiguration.REWARDS, entries)
+                if (paginated) put(EciaMenuConfiguration.FOOTER,
+                    List(7) { PaperMenuEntry(background(), enabled = false) })
+            },
         )
     }
 
@@ -166,7 +168,8 @@ class EciaMenuScreens(
         val currentPage = page.coerceAtMost(lastPage)
         val visible = (entryCount - currentPage * capacity).coerceIn(0, capacity)
         val rewardRows = maxOf(1, (visible + 8) / 9)
-        return EciaMenuConfiguration.poolPreview(rewardRows + 1)
+        return if (lastPage == 0) EciaMenuConfiguration.singlePagePreview(rewardRows)
+        else EciaMenuConfiguration.poolPreview(rewardRows + 1)
     }
 
     private fun poolPageCapacity(): Int = configuration.catalog
@@ -271,10 +274,25 @@ class EciaMenuScreens(
         val hasNativeName = item.itemMeta.hasDisplayName()
         item.editMeta { meta ->
             if (!hasNativeName) styleMeta.displayName()?.let(meta::displayName)
-            styleMeta.lore()?.let(meta::lore)
+            meta.displayName()?.let { meta.displayName(it.decoration(TextDecoration.ITALIC, false)) }
+            val nativeLore = meta.lore().orEmpty()
+            val menuLore = styleMeta.lore().orEmpty()
+            val description = nativeLore.dropWhile(::blankLine).dropLastWhile(::blankLine)
+            val context = menuLore.dropWhile(::blankLine).dropLastWhile(::blankLine)
+            val lore = buildList {
+                if (description.isNotEmpty() || context.isNotEmpty()) add(Component.empty())
+                addAll(description)
+                if (description.isNotEmpty() && context.isNotEmpty()) add(Component.empty())
+                addAll(context)
+            }
+            meta.lore(lore.map { it.decoration(TextDecoration.ITALIC, false) })
         }
         return Preview(item, available = true)
     }
+
+    private fun blankLine(line: Component): Boolean =
+        net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+            .serialize(line).isBlank()
 
     private fun selectedRewardOrNull(opening: OpeningRecord): RewardDefinition? =
         opening.selectedRewardId().takeIf(String::isNotEmpty)?.let { id ->

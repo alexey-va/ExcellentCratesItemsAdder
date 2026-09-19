@@ -3,6 +3,7 @@ package ru.ruscrafting.ecia.screens
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.AfterEach
@@ -113,11 +114,74 @@ class EciaMenuScreensTest {
         assertEquals(EciaMenuConfiguration.poolPreview(4), screens.poolPreviewMenu(46, 0))
         assertEquals(EciaMenuConfiguration.poolPreview(4), screens.poolPreviewMenu(46, 1))
         assertEquals(EciaMenuConfiguration.poolPreview(2), screens.poolPreviewMenu(35, 1))
-        assertEquals(EciaMenuConfiguration.poolPreview(4), screens.poolPreviewMenu(21, 0))
+        assertEquals(EciaMenuConfiguration.singlePagePreview(3), screens.poolPreviewMenu(21, 0))
         assertFalse(first.elements.getValue(MenuElementId.of("previous")).enabled)
         assertTrue(first.elements.getValue(MenuElementId.of("next")).enabled)
         assertTrue(second.elements.getValue(MenuElementId.of("previous")).enabled)
         assertFalse(second.elements.getValue(MenuElementId.of("next")).enabled)
+    }
+
+    @Test
+    fun singlePagePoolsHaveOnlyTheRewardRowsAndNoNavigationItems() {
+        val configuration = EciaMenuConfiguration.loadResource()
+        val plugin = paper.createSimplePlugin("SinglePagePreview")
+        val player = paper.addPlayer("SinglePreviewer")
+        val runtime = PaperMenuRuntime(plugin, BukkitTaskScheduler(plugin), configuration)
+        val screens = EciaMenuScreens(configuration)
+        val payload = NativeItemPayload()
+        try {
+            for (count in listOf(1, 9, 10, 18, 19, 27)) {
+                val rewards = (1..count).map { index ->
+                    RewardDefinition("reward-$index", 1.0, "delivery-$index",
+                        payload.items(arrayOf(ItemStack(Material.DIAMOND))))
+                }
+                val pool = PoolSnapshot("case_daily", "current", rewards, 1, 0)
+                val content = screens.renderPoolPreview(pool)
+                assertTrue(content.elements.isEmpty(), "Unexpected arrows for $count rewards")
+                assertFalse(content.regions.containsKey(EciaMenuConfiguration.FOOTER))
+                val session = screens.openPoolPreview(runtime, player, pool)
+                assertEquals(maxOf(1, (count + 8) / 9) * 9, session.inventory.size)
+                assertEquals(count, session.inventory.contents.filterNotNull().size)
+            }
+        } finally {
+            runtime.close()
+        }
+    }
+
+    @Test
+    fun rewardDescriptionAndUseSurviveAboveOneChanceLineWithoutMutatingThePrize() {
+        val configuration = EciaMenuConfiguration.loadResource()
+        val payload = NativeItemPayload()
+        val native = ItemStack(Material.CHEST, 3)
+        native.editMeta { meta ->
+            meta.displayName(Component.text("Таинственная шкатулка чар", NamedTextColor.LIGHT_PURPLE))
+            meta.setCustomModelData(12345)
+            meta.lore(listOf(
+                Component.empty(),
+                Component.text("Одна случайная книга или расходник для чар", NamedTextColor.WHITE),
+                Component.empty(),
+                Component.text("После получения: ПКМ — открыть шкатулку", NamedTextColor.GREEN),
+                Component.empty(),
+            ))
+        }
+        val original = native.clone()
+        val encoded = payload.items(arrayOf(native))
+        val reward = RewardDefinition("mystery", 1.0, "delivery", encoded)
+        val second = RewardDefinition("other", 3.0, "delivery-other", encoded)
+        val pool = PoolSnapshot("case_daily", "current", listOf(reward, second), 1, 0)
+        val item = EciaMenuScreens(configuration, payload).renderPoolPreview(pool)
+            .regions.getValue(EciaMenuConfiguration.REWARDS).first().item
+        val lore = item.itemMeta.lore()!!
+        val plain = PlainTextComponentSerializer.plainText()
+
+        assertEquals(listOf("", "Одна случайная книга или расходник для чар", "",
+            "После получения: ПКМ — открыть шкатулку", "", "Шанс: 25.0%"), lore.map(plain::serialize))
+        assertTrue(lore.all { it.decoration(TextDecoration.ITALIC) == TextDecoration.State.FALSE })
+        assertEquals(TextDecoration.State.FALSE, item.itemMeta.displayName()!!.decoration(TextDecoration.ITALIC))
+        assertEquals(3, item.amount)
+        assertEquals(12345, item.itemMeta.customModelData)
+        assertEquals(original, native)
+        assertEquals(original, payload.items(reward.previewPayload()).single())
     }
 
     @Test

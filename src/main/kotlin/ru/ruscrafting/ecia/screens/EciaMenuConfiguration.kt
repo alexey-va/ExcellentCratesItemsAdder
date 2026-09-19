@@ -32,6 +32,9 @@ object EciaMenuConfiguration {
     val POOL_PREVIEWS: Map<Int, MenuId> = (2..4).associateWith { rows ->
         MenuId.of("ecia-pool-preview-$rows")
     }
+    val SINGLE_PAGE_PREVIEWS: Map<Int, MenuId> = (1..3).associateWith { rows ->
+        MenuId.of("ecia-pool-single-$rows")
+    }
 
     val ENTRIES = MenuRegionId.of("entries")
     val REWARDS = MenuRegionId.of("rewards")
@@ -56,10 +59,17 @@ object EciaMenuConfiguration {
                 requiredRegions = setOf(REWARDS, FOOTER),
             ))
         }
+        SINGLE_PAGE_PREVIEWS.values.forEach { menu ->
+            put(menu, MenuContract(requiredRegions = setOf(REWARDS)))
+        }
     }
 
     fun poolPreview(rows: Int): MenuId = requireNotNull(POOL_PREVIEWS[rows]) {
         "Pool preview rows must be between 2 and 4"
+    }
+
+    fun singlePagePreview(rows: Int): MenuId = requireNotNull(SINGLE_PAGE_PREVIEWS[rows]) {
+        "Single-page preview rows must be between 1 and 3"
     }
 
     val textContracts: Map<String, PaperMenuTextContract> = mapOf(
@@ -125,6 +135,12 @@ object EciaMenuConfiguration {
             }
             require(layout.region(FOOTER).size == 7) {
                 "menus.layouts.$menu footer must keep seven slots between navigation buttons"
+            }
+        }
+        SINGLE_PAGE_PREVIEWS.forEach { (rows, menu) ->
+            val layout = configuration.catalog.require(menu)
+            require(layout.rows == rows && layout.region(REWARDS).size == rows * 9) {
+                "menus.layouts.$menu must fill its $rows rows with rewards"
             }
         }
         val caseNames = config.keys("menus.case-names").associateWith { id ->

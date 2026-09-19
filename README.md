@@ -51,11 +51,13 @@ Alongside the original circular scenes, non-orbit layouts include a single-item
 showcase, three slot-machine reels, a reward wall, conveyor, falling reward rain,
 vertical trophy tower, opening card fan, and two-sided balance. Count, radius,
 height, scale, speed, and range are adjustable per placed crate.
-Pool previews use only as many reward rows as the current page needs, followed
-by one fixed navigation row. Previous/next controls stay visible, disabled at
-the corresponding edge, and pages hold at most 27 rewards. The addon computes
-the displayed roll chance from the live pool weights; reward descriptions do
-not contain nested chance placeholders.
+Pool previews use only as many reward rows as the current page needs, with at
+most 27 rewards per page. A single-page pool has no navigation row or arrows.
+Multi-page pools add one navigation row; previous/next controls stay visible,
+disabled at the corresponding edge. Native reward descriptions and usage hints
+are preserved, followed by the roll chance computed from the live pool weights.
+Reward descriptions do not contain nested chance placeholders, and rendering
+never changes the delivered item's quantity or metadata.
 
 Placed cases use a native billboard `TextDisplay` above each anchor. It contains
 only the case name, sits close to the block, and turns toward each viewer;
