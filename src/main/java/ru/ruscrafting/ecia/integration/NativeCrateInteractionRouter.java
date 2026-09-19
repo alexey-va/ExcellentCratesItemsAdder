@@ -169,7 +169,11 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
         if (routedInteractions.remove(event)) return;
         if (closed || !CratesAPI.isLoaded() || event.getHand() != EquipmentSlot.HAND || !event.getPlayer().isSneaking()
                 || event.getAction() != Action.LEFT_CLICK_BLOCK || event.getClickedBlock() == null) return;
-        Crate crate = CratesAPI.getCrateManager().getCrateByBlock(event.getClickedBlock());
+        var manager = CratesAPI.getCrateManager();
+        var item = event.getItem();
+        if (item != null && manager.handleLinkToolInteraction(event.getPlayer(), event.getClickedBlock(), item, event)) return;
+        if (item != null && manager.getCrateByItem(item) != null) return;
+        Crate crate = manager.getCrateByBlock(event.getClickedBlock());
         if (crate == null || !managed.test(crate.getId())) return;
         if (visualEditor.test(event.getPlayer(), new ManagedOpenTarget(crate, event.getClickedBlock().getLocation()))) {
             event.setCancelled(true);

@@ -6,6 +6,7 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import io.mockk.Runs
+import io.mockk.verify
 import org.bukkit.Material
 import org.bukkit.Location
 import org.bukkit.block.Block
@@ -165,6 +166,63 @@ class NativeCrateInteractionRouterTest {
 
                 assertEquals(1, edits.get())
                 assertTrue(event.isCancelled)
+            }
+        }
+    }
+
+    @Test
+    fun cancelledPortableCrateInteractionDoesNotOpenVisualEditor() {
+        MockBukkitTestRuntime.open().use { paper ->
+            val fixture = fixture(paper)
+            fixture.player.isSneaking = true
+            val portable = ItemStack(Material.CHEST)
+            every { fixture.manager.getCrateByItem(portable) } returns fixture.crate
+            val edits = AtomicInteger()
+            withRouter(fixture, visualEditor = { _, _ -> edits.incrementAndGet(); true }) { _, _, _ ->
+                val event = PlayerInteractEvent(
+                    fixture.player,
+                    Action.LEFT_CLICK_BLOCK,
+                    portable,
+                    fixture.block,
+                    BlockFace.SELF,
+                    EquipmentSlot.HAND,
+                )
+                event.isCancelled = true
+                paper.server.pluginManager.callEvent(event)
+
+                assertEquals(0, edits.get())
+                assertTrue(event.isCancelled)
+            }
+        }
+    }
+
+    @Test
+    fun cancelledLinkToolInteractionKeepsNativeLinkToolPriority() {
+        MockBukkitTestRuntime.open().use { paper ->
+            val fixture = fixture(paper)
+            fixture.player.isSneaking = true
+            val linkTool = ItemStack(Material.BLAZE_ROD)
+            every {
+                fixture.manager.handleLinkToolInteraction(fixture.player, fixture.block, linkTool, any())
+            } returns true
+            val edits = AtomicInteger()
+            withRouter(fixture, visualEditor = { _, _ -> edits.incrementAndGet(); true }) { _, _, _ ->
+                val event = PlayerInteractEvent(
+                    fixture.player,
+                    Action.LEFT_CLICK_BLOCK,
+                    linkTool,
+                    fixture.block,
+                    BlockFace.SELF,
+                    EquipmentSlot.HAND,
+                )
+                event.isCancelled = true
+                paper.server.pluginManager.callEvent(event)
+
+                assertEquals(0, edits.get())
+                assertTrue(event.isCancelled)
+                verify(exactly = 1) {
+                    fixture.manager.handleLinkToolInteraction(fixture.player, fixture.block, linkTool, event)
+                }
             }
         }
     }
