@@ -3,6 +3,7 @@ package ru.ruscrafting.ecia.screens
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import ru.arc.menu.MenuElementId
@@ -20,6 +21,7 @@ import ru.ruscrafting.ecia.inventory.NativeItemPayload
 import ru.ruscrafting.ecia.journal.OpeningRecord
 import ru.ruscrafting.ecia.roll.PoolSnapshot
 import ru.ruscrafting.ecia.roll.RewardDefinition
+import java.text.Collator
 import java.util.Locale
 
 /**
@@ -90,17 +92,25 @@ class EciaMenuScreens(
         page: Int = 0,
     ): PaperMenuContent {
         require(page >= 0) { "Menu page must not be negative" }
+        val nameOrder = Collator.getInstance(Locale.forLanguageTag("ru")).apply {
+            strength = Collator.SECONDARY
+        }
         val allEntries = pool.rewards().map { reward ->
             val rendered = preview(
                 reward,
                 "pool-reward",
                 values = mapOf("weight" to weightShare(reward, pool)),
             )
-            PaperMenuEntry(
+            PoolRewardPreview(
+                reward = reward,
                 item = rendered.item,
-                enabled = false,
+                name = PlainTextComponentSerializer.plainText()
+                    .serialize(rendered.item.itemMeta.displayName() ?: Component.empty()).trim(),
             )
-        }
+        }.sortedWith(compareByDescending<PoolRewardPreview> { it.reward.weight() }
+            .thenComparator { left, right -> nameOrder.compare(left.name, right.name) }
+            .thenBy { it.reward.id() })
+            .map { PaperMenuEntry(item = it.item, enabled = false) }
         val capacity = poolPageCapacity()
         val lastPage = if (allEntries.isEmpty()) 0 else (allEntries.size - 1) / capacity
         val currentPage = page.coerceAtMost(lastPage)
@@ -291,8 +301,7 @@ class EciaMenuScreens(
     }
 
     private fun blankLine(line: Component): Boolean =
-        net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
-            .serialize(line).isBlank()
+        PlainTextComponentSerializer.plainText().serialize(line).isBlank()
 
     private fun selectedRewardOrNull(opening: OpeningRecord): RewardDefinition? =
         opening.selectedRewardId().takeIf(String::isNotEmpty)?.let { id ->
@@ -327,6 +336,8 @@ class EciaMenuScreens(
         values.fold(requireNotNull(labels[key]) { "Missing menu label '$key'" }) { text, (name, value) ->
             text.replace("<$name>", value)
         }
+
+    private data class PoolRewardPreview(val reward: RewardDefinition, val item: ItemStack, val name: String)
 
     private data class Preview(val item: ItemStack, val available: Boolean)
 }

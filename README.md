@@ -56,6 +56,9 @@ most 27 rewards per page. A single-page pool has no navigation row or arrows.
 Multi-page pools add one navigation row; previous/next controls stay visible,
 disabled at the corresponding edge. Native reward descriptions and usage hints
 are preserved, followed by the roll chance computed from the live pool weights.
+Rewards are sorted before pagination by descending unrounded chance, then by
+their visible name in Russian alphabetical order (ignoring formatting and case),
+then by stable reward ID. This presentation order never changes the rolling pool.
 Reward descriptions do not contain nested chance placeholders, and rendering
 never changes the delivered item's quantity or metadata.
 

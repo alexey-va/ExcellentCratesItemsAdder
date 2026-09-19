@@ -93,6 +93,63 @@ class EciaMenuScreensTest {
     }
 
     @Test
+    fun poolPreviewOrdersByExactChanceThenVisibleNameWithoutFormatting() {
+        val screens = EciaMenuScreens(EciaMenuConfiguration.loadResource())
+        val rewards = listOf(
+            namedReward("low", 1.0, "Алмаз", 1),
+            namedReward("equal-last", 5.0, "Яблоко", 2),
+            namedReward("equal-middle", 5.0, "Книга", 3),
+            namedReward("equal-first", 5.0, "алмаз", 4, NamedTextColor.RED),
+            namedReward("almost-highest", 10.0001, "Алмаз", 5),
+            namedReward("highest", 10.0002, "Яблоко", 6),
+        )
+        val pool = PoolSnapshot("case_daily", "current", rewards, 1, 0)
+
+        val entries = screens.renderPoolPreview(pool).regions.getValue(EciaMenuConfiguration.REWARDS)
+
+        assertEquals(listOf(6, 5, 4, 3, 2, 1), entries.map { it.item.itemMeta.customModelData })
+        assertEquals(rewards, pool.rewards(), "Preview must not reorder the rolling pool")
+    }
+
+    @Test
+    fun equalChanceAndNameUseRewardIdIndependentlyOfInputOrder() {
+        val screens = EciaMenuScreens(EciaMenuConfiguration.loadResource())
+        val rewards = listOf(
+            namedReward("key-b", 5.0, "Ключ", 2, NamedTextColor.RED),
+            namedReward("key-a", 5.0, "ключ", 1, NamedTextColor.GREEN),
+        )
+        for (input in listOf(rewards, rewards.reversed())) {
+            val pool = PoolSnapshot("case_daily", "current", input, 1, 0)
+            val entries = screens.renderPoolPreview(pool).regions.getValue(EciaMenuConfiguration.REWARDS)
+            assertEquals(listOf(1, 2), entries.map { it.item.itemMeta.customModelData })
+        }
+    }
+
+    @Test
+    fun sortingHappensBeforePaginationAndPlacesTheHighestChanceInTheTopLeftSlot() {
+        val configuration = EciaMenuConfiguration.loadResource()
+        val screens = EciaMenuScreens(configuration)
+        val plugin = paper.createSimplePlugin("SortedPoolPreview")
+        val player = paper.addPlayer("SortedPreviewer")
+        val runtime = PaperMenuRuntime(plugin, BukkitTaskScheduler(plugin), configuration)
+        val rewards = (1..35).map { index -> namedReward("reward-$index", index.toDouble(), "Приз $index", index) }
+        val pool = PoolSnapshot("case_daily", "current", rewards, 1, 0)
+        try {
+            val first = screens.openPoolPreview(runtime, player, pool)
+            assertEquals(35, first.inventory.getItem(0)!!.itemMeta.customModelData)
+            assertEquals(9, first.inventory.getItem(26)!!.itemMeta.customModelData)
+            val last = screens.renderPoolPreview(pool, page = 1).regions.getValue(EciaMenuConfiguration.REWARDS)
+            assertEquals(listOf(8, 7, 6, 5, 4, 3, 2, 1), last.map { it.item.itemMeta.customModelData })
+            val reversed = PoolSnapshot("case_daily", "current", rewards.reversed(), 1, 0)
+            assertEquals(last.map { it.item }, screens.renderPoolPreview(reversed, page = 1)
+                .regions.getValue(EciaMenuConfiguration.REWARDS).map { it.item })
+            assertEquals(rewards, pool.rewards())
+        } finally {
+            runtime.close()
+        }
+    }
+
+    @Test
     fun poolPreviewUsesDynamicRowsAndFixedFooterNavigation() {
         val configuration = EciaMenuConfiguration.loadResource()
         val screens = EciaMenuScreens(configuration)
@@ -170,7 +227,7 @@ class EciaMenuScreensTest {
         val second = RewardDefinition("other", 3.0, "delivery-other", encoded)
         val pool = PoolSnapshot("case_daily", "current", listOf(reward, second), 1, 0)
         val item = EciaMenuScreens(configuration, payload).renderPoolPreview(pool)
-            .regions.getValue(EciaMenuConfiguration.REWARDS).first().item
+            .regions.getValue(EciaMenuConfiguration.REWARDS).last().item
         val lore = item.itemMeta.lore()!!
         val plain = PlainTextComponentSerializer.plainText()
 
@@ -221,4 +278,19 @@ class EciaMenuScreensTest {
 
     private fun material(template: PaperMenuItemTemplate): Material =
         (template.source as PaperMenuItemSource.MaterialItem).material
+
+    private fun namedReward(
+        id: String,
+        weight: Double,
+        name: String,
+        modelData: Int,
+        color: NamedTextColor = NamedTextColor.WHITE,
+    ): RewardDefinition {
+        val item = ItemStack(Material.DIAMOND)
+        item.editMeta {
+            it.displayName(Component.text(name, color))
+            it.setCustomModelData(modelData)
+        }
+        return RewardDefinition(id, weight, "delivery-$id", NativeItemPayload().items(arrayOf(item)))
+    }
 }
