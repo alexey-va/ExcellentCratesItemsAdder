@@ -21,8 +21,10 @@ import su.nightexpress.excellentcrates.crate.impl.Crate;
 import su.nightexpress.excellentcrates.crate.listener.CrateListener;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
@@ -43,6 +45,7 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
     private final Predicate<Player> editor;
     private final Runnable reloaded;
     private final ThreadLocal<Set<CrateOpenEvent>> selfPermits = ThreadLocal.withInitial(HashSet::new);
+    private final Set<PlayerInteractEvent> routedInteractions = Collections.newSetFromMap(new WeakHashMap<>());
     private RegisteredListener nativeHandler;
     private RegisteredListener wrapper;
     private Plugin boundCratesPlugin;
@@ -125,7 +128,10 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
         var manager = CratesAPI.getCrateManager();
         var item = event.getItem();
         if (item != null && event.getClickedBlock() != null
-                && manager.handleLinkToolInteraction(event.getPlayer(), event.getClickedBlock(), item, event)) return true;
+                && manager.handleLinkToolInteraction(event.getPlayer(), event.getClickedBlock(), item, event)) {
+            routedInteractions.add(event);
+            return true;
+        }
         Crate crate = item == null ? null : manager.getCrateByItem(item);
         boolean portable = crate != null;
         if (crate == null && event.getClickedBlock() != null) crate = manager.getCrateByBlock(event.getClickedBlock());
@@ -134,8 +140,10 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
         event.setUseItemInHand(Event.Result.DENY);
         event.setUseInteractedBlock(Event.Result.DENY);
         if (previouslyCancelled) return true;
+        routedInteractions.add(event);
         if (leftClick && !portable && event.getPlayer().isSneaking()
                 && visualEditor.test(event.getPlayer(), new ManagedOpenTarget(crate, event.getClickedBlock().getLocation()))) {
+            event.setCancelled(true);
             return true;
         }
         if (editor.test(event.getPlayer())) return true;
@@ -149,6 +157,23 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
             open.accept(event.getPlayer(), new ManagedOpenTarget(crate, event.getClickedBlock().getLocation()));
         }
         return true;
+    }
+
+    /**
+     * Protection plugins can cancel a spawn interaction before EC's HIGH
+     * listener. In that case Bukkit skips the wrapped native listener entirely,
+     * but an authorized Shift+LMB must still reach our visual editor.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onProtectedVisualEdit(PlayerInteractEvent event) {
+        if (routedInteractions.remove(event)) return;
+        if (closed || !CratesAPI.isLoaded() || event.getHand() != EquipmentSlot.HAND || !event.getPlayer().isSneaking()
+                || event.getAction() != Action.LEFT_CLICK_BLOCK || event.getClickedBlock() == null) return;
+        Crate crate = CratesAPI.getCrateManager().getCrateByBlock(event.getClickedBlock());
+        if (crate == null || !managed.test(crate.getId())) return;
+        if (visualEditor.test(event.getPlayer(), new ManagedOpenTarget(crate, event.getClickedBlock().getLocation()))) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -200,6 +225,7 @@ public final class NativeCrateInteractionRouter implements Listener, CratesAddon
     @Override public void close() {
         if (closed) return;
         closed = true;
+        routedInteractions.clear();
         Plugin bound = boundCratesPlugin;
         detach(true);
         HandlerList.unregisterAll(this);

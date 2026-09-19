@@ -32,6 +32,33 @@ menus:
       regions:
         entries: { slots: ['10-16', '19-25', '28-34', '37-43'] }
       pagination: { region: entries, previous: previous, next: next }
+    ecia-pool-preview-2:
+      schema-version: 1
+      rows: 2
+      elements:
+        previous: { slot: 9, template: previous }
+        next: { slot: 17, template: next }
+      regions:
+        rewards: { slots: ['0-8'] }
+        footer: { slots: ['10-16'] }
+    ecia-pool-preview-3:
+      schema-version: 1
+      rows: 3
+      elements:
+        previous: { slot: 18, template: previous }
+        next: { slot: 26, template: next }
+      regions:
+        rewards: { slots: ['0-17'] }
+        footer: { slots: ['19-25'] }
+    ecia-pool-preview-4:
+      schema-version: 1
+      rows: 4
+      elements:
+        previous: { slot: 27, template: previous }
+        next: { slot: 35, template: next }
+      regions:
+        rewards: { slots: ['0-26'] }
+        footer: { slots: ['28-34'] }
     ecia-pool-preview:
       schema-version: 1
       rows: 6
@@ -41,7 +68,6 @@ menus:
       regions:
         rewards: { slots: ['0-44'] }
         footer: { slots: ['46-52'] }
-      pagination: { region: rewards, previous: previous, next: next }
   templates:
     background:
       material: GRAY_STAINED_GLASS_PANE

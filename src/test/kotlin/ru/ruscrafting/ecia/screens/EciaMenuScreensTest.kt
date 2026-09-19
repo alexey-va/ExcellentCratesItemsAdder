@@ -10,12 +10,18 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.bukkit.Material
+import org.bukkit.event.inventory.ClickType
+import org.bukkit.event.inventory.InventoryAction
+import org.bukkit.event.inventory.InventoryClickEvent
+import org.bukkit.event.inventory.InventoryType
 import org.bukkit.inventory.ItemStack
+import ru.arc.core.BukkitTaskScheduler
 import ru.arc.menu.MenuElementId
 import ru.arc.menu.MenuTemplateId
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.arc.paper.menu.PaperMenuItemSource
 import ru.arc.paper.menu.PaperMenuItemTemplate
+import ru.arc.paper.menu.PaperMenuRuntime
 import ru.ruscrafting.ecia.roll.PoolSnapshot
 import ru.ruscrafting.ecia.roll.RewardDefinition
 import ru.ruscrafting.ecia.inventory.NativeItemPayload
@@ -39,6 +45,13 @@ class EciaMenuScreensTest {
 
         assertEquals(6, configuration.catalog.require(EciaMenuConfiguration.HISTORY).rows)
         assertEquals(6, configuration.catalog.require(EciaMenuConfiguration.POOL_PREVIEW).rows)
+        assertEquals((2..4).toList(), EciaMenuConfiguration.POOL_PREVIEWS.keys.toList())
+        EciaMenuConfiguration.POOL_PREVIEWS.forEach { (rows, menu) ->
+            val layout = configuration.catalog.require(menu)
+            assertEquals(rows, layout.rows)
+            assertEquals((rows - 1) * 9, layout.region(EciaMenuConfiguration.REWARDS).size)
+            assertEquals(7, layout.region(EciaMenuConfiguration.FOOTER).size)
+        }
         assertEquals(11000, configuration.template(MenuTemplateId.of("background")).customModelData)
         assertEquals(Material.GRAY_STAINED_GLASS_PANE, material(configuration.template(MenuTemplateId.of("background"))))
         assertEquals(11013, configuration.template(MenuTemplateId.of("previous")).customModelData)
@@ -64,6 +77,8 @@ class EciaMenuScreensTest {
         assertFalse(entry.enabled)
         assertTrue(displayName.contains("Кожаная перчатка"))
         assertFalse(displayName.contains("reward-uuid"))
+        assertTrue(entry.item.itemMeta.lore().toString().contains("100.0%"))
+        assertFalse(entry.item.itemMeta.lore().toString().contains("reward_roll_chance"))
     }
 
     @Test
@@ -77,7 +92,7 @@ class EciaMenuScreensTest {
     }
 
     @Test
-    fun poolPreviewUsesFiveRewardRowsAndFixedFooterNavigation() {
+    fun poolPreviewUsesDynamicRowsAndFixedFooterNavigation() {
         val configuration = EciaMenuConfiguration.loadResource()
         val screens = EciaMenuScreens(configuration)
         val rewards = (1..46).map { RewardDefinition("reward-$it", 1.0, "delivery-$it", "") }
@@ -91,14 +106,53 @@ class EciaMenuScreensTest {
 
         assertEquals(expectedTitle, first.title)
         assertEquals(null, first.background)
-        assertEquals(45, configuration.catalog.require(EciaMenuConfiguration.POOL_PREVIEW)
+        assertEquals(27, configuration.catalog.require(EciaMenuConfiguration.poolPreview(4))
             .region(EciaMenuConfiguration.REWARDS).size)
-        assertEquals(7, configuration.catalog.require(EciaMenuConfiguration.POOL_PREVIEW)
+        assertEquals(7, configuration.catalog.require(EciaMenuConfiguration.poolPreview(4))
             .region(EciaMenuConfiguration.FOOTER).size)
+        assertEquals(EciaMenuConfiguration.poolPreview(4), screens.poolPreviewMenu(46, 0))
+        assertEquals(EciaMenuConfiguration.poolPreview(4), screens.poolPreviewMenu(46, 1))
+        assertEquals(EciaMenuConfiguration.poolPreview(2), screens.poolPreviewMenu(35, 1))
+        assertEquals(EciaMenuConfiguration.poolPreview(4), screens.poolPreviewMenu(21, 0))
         assertFalse(first.elements.getValue(MenuElementId.of("previous")).enabled)
         assertTrue(first.elements.getValue(MenuElementId.of("next")).enabled)
         assertTrue(second.elements.getValue(MenuElementId.of("previous")).enabled)
         assertFalse(second.elements.getValue(MenuElementId.of("next")).enabled)
+    }
+
+    @Test
+    fun nextButtonReopensTheLastPageAtItsSmallerInventorySize() {
+        val configuration = EciaMenuConfiguration.loadResource()
+        val plugin = paper.createSimplePlugin("DynamicPoolPreview")
+        val player = paper.addPlayer("Previewer")
+        val runtime = PaperMenuRuntime(plugin, BukkitTaskScheduler(plugin), configuration)
+        val rewards = (1..35).map { index ->
+            RewardDefinition("reward-$index", 1.0, "delivery-$index", "")
+        }
+        val pool = PoolSnapshot("case_daily", "summer", rewards, 3, 1)
+
+        try {
+            val first = EciaMenuScreens(configuration).openPoolPreview(runtime, player, pool)
+            assertEquals(36, first.inventory.size)
+            assertEquals(Material.BLUE_STAINED_GLASS_PANE, first.inventory.getItem(27)?.type)
+            assertEquals(Material.BLUE_STAINED_GLASS_PANE, first.inventory.getItem(35)?.type)
+
+            paper.server.pluginManager.callEvent(InventoryClickEvent(
+                player.openInventory,
+                InventoryType.SlotType.CONTAINER,
+                35,
+                ClickType.LEFT,
+                InventoryAction.PICKUP_ALL,
+            ))
+
+            val second = runtime.session(player)!!
+            assertFalse(first.isOpen)
+            assertEquals(18, second.inventory.size)
+            assertEquals(Material.BLUE_STAINED_GLASS_PANE, second.inventory.getItem(9)?.type)
+            assertEquals(Material.BLUE_STAINED_GLASS_PANE, second.inventory.getItem(17)?.type)
+        } finally {
+            runtime.close()
+        }
     }
 
     private fun material(template: PaperMenuItemTemplate): Material =

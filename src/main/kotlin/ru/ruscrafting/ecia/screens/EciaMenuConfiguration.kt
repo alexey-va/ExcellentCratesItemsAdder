@@ -29,6 +29,9 @@ object EciaMenuConfiguration {
 
     val HISTORY = MenuId.of("ecia-history")
     val POOL_PREVIEW = MenuId.of("ecia-pool-preview")
+    val POOL_PREVIEWS: Map<Int, MenuId> = (2..4).associateWith { rows ->
+        MenuId.of("ecia-pool-preview-$rows")
+    }
 
     val ENTRIES = MenuRegionId.of("entries")
     val REWARDS = MenuRegionId.of("rewards")
@@ -42,11 +45,22 @@ object EciaMenuConfiguration {
             requiredElements = elements("info", "previous", "next"),
             requiredRegions = setOf(ENTRIES),
         ),
-        POOL_PREVIEW to MenuContract(
+    ).apply {
+        put(POOL_PREVIEW, MenuContract(
             requiredElements = elements("previous", "next"),
             requiredRegions = setOf(REWARDS, FOOTER),
-        ),
-    )
+        ))
+        POOL_PREVIEWS.values.forEach { menu ->
+            put(menu, MenuContract(
+                requiredElements = elements("previous", "next"),
+                requiredRegions = setOf(REWARDS, FOOTER),
+            ))
+        }
+    }
+
+    fun poolPreview(rows: Int): MenuId = requireNotNull(POOL_PREVIEWS[rows]) {
+        "Pool preview rows must be between 2 and 4"
+    }
 
     val textContracts: Map<String, PaperMenuTextContract> = mapOf(
         "background" to PaperMenuTextContract(),
@@ -102,6 +116,16 @@ object EciaMenuConfiguration {
         )
         require(configuration.templates.values.none { it.customModelData == FORBIDDEN_MODEL_DATA }) {
             "menus.templates must not use reserved custom model data $FORBIDDEN_MODEL_DATA"
+        }
+        POOL_PREVIEWS.forEach { (rows, menu) ->
+            val layout = configuration.catalog.require(menu)
+            require(layout.rows == rows) { "menus.layouts.$menu must have $rows rows" }
+            require(layout.region(REWARDS).size == (rows - 1) * 9) {
+                "menus.layouts.$menu rewards must fill every slot above its footer"
+            }
+            require(layout.region(FOOTER).size == 7) {
+                "menus.layouts.$menu footer must keep seven slots between navigation buttons"
+            }
         }
         val caseNames = config.keys("menus.case-names").associateWith { id ->
             config.string("menus.case-names.$id")

@@ -51,8 +51,11 @@ Alongside the original circular scenes, non-orbit layouts include a single-item
 showcase, three slot-machine reels, a reward wall, conveyor, falling reward rain,
 vertical trophy tower, opening card fan, and two-sided balance. Count, radius,
 height, scale, speed, and range are adjustable per placed crate.
-Pool previews use five full reward rows and
-a fixed bottom navigation row, without an item frame around the pool.
+Pool previews use only as many reward rows as the current page needs, followed
+by one fixed navigation row. Previous/next controls stay visible, disabled at
+the corresponding edge, and pages hold at most 27 rewards. The addon computes
+the displayed roll chance from the live pool weights; reward descriptions do
+not contain nested chance placeholders.
 
 Placed cases use a native billboard `TextDisplay` above each anchor. It contains
 only the case name, sits close to the block, and turns toward each viewer;
@@ -137,7 +140,7 @@ protection remains an independent listener.
 ./gradlew test shadowJar
 ```
 
-Output: `build/libs/ArcExcellentCrates-0.13.0.jar`.
+Output: `build/libs/ArcExcellentCrates-<version>.jar`.
 For coordinated ARC development, use an explicit local composite:
 
 ```bash

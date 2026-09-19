@@ -89,7 +89,8 @@ class EciaMenuScreens(
         actions: EciaMenuActions = EciaMenuActions(),
         page: Int = 0,
     ): PaperMenuContent {
-        val entries = pool.rewards().map { reward ->
+        require(page >= 0) { "Menu page must not be negative" }
+        val allEntries = pool.rewards().map { reward ->
             val rendered = preview(
                 reward,
                 "pool-reward",
@@ -100,20 +101,20 @@ class EciaMenuScreens(
                 enabled = false,
             )
         }
-        val menu = EciaMenuConfiguration.POOL_PREVIEW
-        require(page >= 0) { "Menu page must not be negative" }
-        val capacity = configuration.catalog.require(menu).region(EciaMenuConfiguration.REWARDS).size
-        val lastPage = if (entries.isEmpty()) 0 else (entries.size - 1) / capacity
-        val previous = page > 0
-        val next = page < lastPage
+        val capacity = poolPageCapacity()
+        val lastPage = if (allEntries.isEmpty()) 0 else (allEntries.size - 1) / capacity
+        val currentPage = page.coerceAtMost(lastPage)
+        val entries = allEntries.drop(currentPage * capacity).take(capacity)
+        val previous = currentPage > 0
+        val next = currentPage < lastPage
         return PaperMenuContent(
             title = darkTitle(label("title-pool", "crate" to caseName(pool.crateId()))),
             elements = mapOf(
                 element("previous") to actionEntry("previous", previous) {
-                    if (previous) actions.page.invoke(menu, -1)
+                    if (previous) actions.page.invoke(EciaMenuConfiguration.POOL_PREVIEW, -1)
                 },
                 element("next") to actionEntry("next", next) {
-                    if (next) actions.page.invoke(menu, 1)
+                    if (next) actions.page.invoke(EciaMenuConfiguration.POOL_PREVIEW, 1)
                 },
             ),
             regions = mapOf(
@@ -138,10 +139,40 @@ class EciaMenuScreens(
         player: Player,
         pool: PoolSnapshot,
         actions: EciaMenuActions = EciaMenuActions(),
-    ): PaperMenuSession = openPaged(runtime, player, EciaMenuConfiguration.POOL_PREVIEW, EciaMenuConfiguration.REWARDS,
-        pool.rewards().size, actions) { effective, page ->
-        renderPoolPreview(pool, effective, page)
+    ): PaperMenuSession {
+        val capacity = poolPageCapacity()
+        val lastPage = if (pool.rewards().isEmpty()) 0 else (pool.rewards().size - 1) / capacity
+        var page = 0
+        lateinit var reopen: () -> PaperMenuSession
+        reopen = {
+            val menu = poolPreviewMenu(pool.rewards().size, page)
+            val effective = actions.copy(page = EciaMenuActions.Page { id, delta ->
+                val target = (page + delta).coerceIn(0, lastPage)
+                if (target == page) return@Page
+                page = target
+                reopen()
+                actions.page.invoke(id, delta)
+            })
+            runtime.open(player, menu) { renderPoolPreview(pool, effective, page) }
+        }
+        return reopen()
     }
+
+    internal fun poolPreviewMenu(entryCount: Int, page: Int): MenuId {
+        require(entryCount >= 0) { "Menu entry count must not be negative" }
+        require(page >= 0) { "Menu page must not be negative" }
+        val capacity = poolPageCapacity()
+        val lastPage = if (entryCount == 0) 0 else (entryCount - 1) / capacity
+        val currentPage = page.coerceAtMost(lastPage)
+        val visible = (entryCount - currentPage * capacity).coerceIn(0, capacity)
+        val rewardRows = maxOf(1, (visible + 8) / 9)
+        return EciaMenuConfiguration.poolPreview(rewardRows + 1)
+    }
+
+    private fun poolPageCapacity(): Int = configuration.catalog
+        .require(EciaMenuConfiguration.poolPreview(4))
+        .region(EciaMenuConfiguration.REWARDS)
+        .size
 
     private fun openPaged(
         runtime: PaperMenuRuntime,

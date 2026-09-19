@@ -139,6 +139,37 @@ class NativeCrateInteractionRouterTest {
     }
 
     @Test
+    fun cancelledSpawnInteractionStillOpensAuthorizedVisualEditor() {
+        MockBukkitTestRuntime.open().use { paper ->
+            val fixture = fixture(paper)
+            fixture.player.isSneaking = true
+            val edits = AtomicInteger()
+            withRouter(
+                fixture,
+                visualEditor = { _, target ->
+                    assertEquals(fixture.block.location, target.anchor())
+                    edits.incrementAndGet()
+                    true
+                },
+            ) { _, _, _ ->
+                val event = PlayerInteractEvent(
+                    fixture.player,
+                    Action.LEFT_CLICK_BLOCK,
+                    null,
+                    fixture.block,
+                    BlockFace.SELF,
+                    EquipmentSlot.HAND,
+                )
+                event.isCancelled = true
+                paper.server.pluginManager.callEvent(event)
+
+                assertEquals(1, edits.get())
+                assertTrue(event.isCancelled)
+            }
+        }
+    }
+
+    @Test
     fun sneakingRightClickKeepsTheNormalOpeningRoute() {
         MockBukkitTestRuntime.open().use { paper ->
             val fixture = fixture(paper)
