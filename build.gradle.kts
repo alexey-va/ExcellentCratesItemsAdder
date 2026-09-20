@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "ru.ruscrafting"
-version = "0.14.14"
+version = "0.14.15"
 
 repositories {
     mavenCentral()
@@ -15,6 +15,7 @@ repositories {
         content { includeGroup("ru.ruscrafting.arc") }
     }
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://repo.codemc.io/repository/maven-public/")
     maven("https://repo.nightexpressdev.com/releases/")
     // ExcellentCrates publishes its 6.6.1 binary through its official
     // Modrinth release, while the source POM's NightExpress coordinate is
@@ -33,15 +34,16 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib"))
-    implementation("ru.ruscrafting.arc:arc-core:2.7.9")
-    implementation("ru.ruscrafting.arc:arc-core-logging:2.7.9")
-    implementation("ru.ruscrafting.arc:arc-core-paper:2.7.9")
-    implementation("ru.ruscrafting.arc:arc-core-menu:2.7.9")
-    implementation("ru.ruscrafting.arc:arc-core-paper-menu:2.7.9")
+    implementation("ru.ruscrafting.arc:arc-core:2.7.10")
+    implementation("ru.ruscrafting.arc:arc-core-logging:2.7.10")
+    implementation("ru.ruscrafting.arc:arc-core-paper:2.7.10")
+    implementation("ru.ruscrafting.arc:arc-core-menu:2.7.10")
+    implementation("ru.ruscrafting.arc:arc-core-paper-menu:2.7.10")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.10")
 
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    compileOnly("ru.ruscrafting.arc:arc-core-paper-api:2.7.9")
+    compileOnly("ru.ruscrafting.arc:arc-core-paper-api:2.7.10")
+    compileOnly("com.github.retrooper:packetevents-spigot:2.12.1")
     compileOnly("su.nightexpress.excellentcrates:ExcellentCrates:6.6.1")
     compileOnly("su.nightexpress.nightcore:main:2.16.4")
 
@@ -52,8 +54,9 @@ dependencies {
     testImplementation("io.kotest:kotest-runner-junit5:6.0.7")
     testImplementation("io.kotest:kotest-assertions-core:6.0.7")
     testImplementation("io.mockk:mockk:1.14.7")
-    testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:2.7.9")
-    testImplementation("ru.ruscrafting.arc:arc-core-paper-api:2.7.9")
+    testImplementation("com.github.retrooper:packetevents-spigot:2.12.1")
+    testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:2.7.10")
+    testImplementation("ru.ruscrafting.arc:arc-core-paper-api:2.7.10")
     testImplementation("su.nightexpress.excellentcrates:ExcellentCrates:6.6.1")
     testImplementation("su.nightexpress.nightcore:main:2.16.4")
 }

@@ -4,14 +4,21 @@ import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.entity.BlockDisplay;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.ItemDisplay;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.world.EntitiesLoadEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+import ru.arc.paper.display.PacketItemDisplay;
+import ru.arc.paper.display.PaperPacketDisplays;
 import su.nightexpress.excellentcrates.CratesAPI;
 import su.nightexpress.excellentcrates.api.crate.Reward;
 import su.nightexpress.excellentcrates.crate.impl.Crate;
@@ -23,9 +30,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
-/** Animates real reward previews beside every idle placed crate. */
+/** Animates packet-only reward previews beside every idle placed crate. */
 public final class CrateAmbientEffectService implements AutoCloseable {
     private static final long RECONCILE_TICKS = 40L;
     private static final long ANIMATION_TICKS = 1L;
@@ -36,7 +42,9 @@ public final class CrateAmbientEffectService implements AutoCloseable {
 
     private final ArcExcellentCratesPlugin plugin;
     private final CrateVisualSettingsStore settings;
+    private final PaperPacketDisplays packetDisplays;
     private final NamespacedKey marker;
+    private final LegacyAmbientCleanup legacyCleanup;
     private final Map<Anchor, Orbit> orbits = new HashMap<>();
     private final Set<Anchor> paused = new HashSet<>();
     private final BukkitTask reconcileTask;
@@ -45,16 +53,20 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     private double frame;
     private boolean closed;
 
-    CrateAmbientEffectService(ArcExcellentCratesPlugin plugin, CrateVisualSettingsStore settings) {
+    CrateAmbientEffectService(ArcExcellentCratesPlugin plugin, CrateVisualSettingsStore settings,
+                              PaperPacketDisplays packetDisplays) {
         this.plugin = plugin;
         this.settings = settings;
+        this.packetDisplays = packetDisplays;
         this.marker = new NamespacedKey(plugin, "case_ambient");
+        this.legacyCleanup = new LegacyAmbientCleanup(marker);
         removeOrphans();
         reconcile();
         reconcileTask = plugin.getServer().getScheduler().runTaskTimer(plugin, this::reconcile,
                 RECONCILE_TICKS, RECONCILE_TICKS);
         animationTask = plugin.getServer().getScheduler().runTaskTimer(plugin, this::animate,
                 ANIMATION_TICKS, ANIMATION_TICKS);
+        plugin.getServer().getPluginManager().registerEvents(legacyCleanup, plugin);
     }
 
     public void setRewards(Map<String, List<ItemStack>> rewards) {
@@ -126,32 +138,31 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         CrateVisualSettingsStore.Ambient visual = settings.get(settingsAnchor).ambient();
         ItemDisplayPresentation presentation = ItemDisplayPresentation.from(
                 plugin.getConfig(), "case-ambient.flat-item-displays", false);
-        World world = source.getWorld();
-        List<UUID> ids = new ArrayList<>(visual.itemCount());
+        List<PacketItemDisplay> displays = new ArrayList<>(visual.itemCount());
         Location origin = source.toLocation().add(.5, .45, .5);
-        for (int index = 0; index < visual.itemCount(); index++) {
-            int slot = index;
-            ItemDisplay display = world.spawn(origin, ItemDisplay.class, entity -> {
-                entity.getPersistentDataContainer().set(marker, PersistentDataType.BYTE, (byte) 1);
-                entity.setItemStack(rewards.get(slot % rewards.size()).clone());
-                entity.setItemDisplayTransform(presentation.transform());
-                entity.setPersistent(false);
-                entity.setInvulnerable(true);
-                entity.setSilent(true);
-                entity.setGravity(false);
-                entity.setBillboard(Display.Billboard.CENTER);
-                entity.setBrightness(new Display.Brightness(15, 15));
-                entity.setViewRange(visual.viewRange());
-                entity.setTeleportDuration(INTERPOLATION_TICKS);
-                entity.setInterpolationDuration(INTERPOLATION_TICKS);
-                entity.setShadowRadius(.12F);
-                entity.setShadowStrength(.55F);
-                entity.setTransformation(transformation(.01F, 0.0F, presentation));
-            });
-            ids.add(display.getUniqueId());
+        try {
+            for (int index = 0; index < visual.itemCount(); index++) {
+                int slot = index;
+                PacketItemDisplay display = packetDisplays.spawnItem(
+                        origin.clone(), rewards.get(slot % rewards.size()).clone());
+                displays.add(display);
+                display.setVisibleByDefault(true);
+                display.setItemDisplayTransform(presentation.transform());
+                display.setBillboard(Display.Billboard.CENTER);
+                display.setBrightness(new Display.Brightness(15, 15));
+                display.setViewRange(visual.viewRange());
+                display.setTeleportDuration(INTERPOLATION_TICKS);
+                display.setInterpolationDuration(INTERPOLATION_TICKS);
+                display.setShadowRadius(.12F);
+                display.setShadowStrength(.55F);
+                display.setTransformation(transformation(.01F, 0.0F, presentation));
+            }
+        } catch (RuntimeException failure) {
+            displays.forEach(PacketItemDisplay::remove);
+            throw failure;
         }
-        return new Orbit(source.toLocation(), List.copyOf(ids), rewards.stream().map(ItemStack::clone).toList(),
-                new int[ids.size()], visual, presentation);
+        return new Orbit(source.toLocation(), List.copyOf(displays), rewards.stream().map(ItemStack::clone).toList(),
+                new int[displays.size()], visual, presentation);
     }
 
     private void animate() {
@@ -164,8 +175,8 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                     orbit.anchor().getBlockZ() >> 4)) continue;
             boolean hidden = paused.contains(entry.getKey());
             for (int index = 0; index < orbit.displays().size(); index++) {
-                ItemDisplay display = entity(orbit.displays().get(index));
-                if (display == null) continue;
+                PacketItemDisplay display = orbit.displays().get(index);
+                if (!display.isValid()) continue;
                 if (hidden) {
                     display.teleport(orbit.anchor().clone().add(.5, .45, .5));
                     display.setTransformation(transformation(.01F, 0.0F, orbit.presentation()));
@@ -177,12 +188,8 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                     orbit.rewardIndices()[index] = next.rewardIndex() + 1;
                 }
                 Location location = orbit.anchor().clone().add(.5 + next.x(), .45 + next.y(), .5 + next.z());
-                try {
-                    display.teleport(location);
-                    display.setTransformation(transformation(next.scale(), next.rotation(), orbit.presentation()));
-                } catch (RuntimeException ignored) {
-                    // The next reconciliation recreates entities invalidated by a chunk lifecycle edge.
-                }
+                display.teleport(location);
+                display.setTransformation(transformation(next.scale(), next.rotation(), orbit.presentation()));
             }
         }
     }
@@ -420,21 +427,13 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     }
 
     private boolean valid(Orbit orbit) {
-        return orbit != null && orbit.displays().stream().allMatch(id -> entity(id) != null);
-    }
-
-    private ItemDisplay entity(UUID id) {
-        return plugin.getServer().getEntity(id) instanceof ItemDisplay display && display.isValid()
-                ? display : null;
+        return orbit != null && orbit.displays().stream().allMatch(PacketItemDisplay::isValid);
     }
 
     private void remove(Anchor anchor) {
         Orbit orbit = orbits.remove(anchor);
         if (orbit == null) return;
-        orbit.displays().forEach(id -> {
-            var entity = plugin.getServer().getEntity(id);
-            if (entity != null) entity.remove();
-        });
+        orbit.displays().forEach(PacketItemDisplay::remove);
     }
 
     private void removeAll() {
@@ -443,12 +442,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
 
     private void removeOrphans() {
         for (World world : plugin.getServer().getWorlds()) {
-            for (ItemDisplay display : world.getEntitiesByClass(ItemDisplay.class)) {
-                if (display.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) display.remove();
-            }
-            for (BlockDisplay display : world.getEntitiesByClass(BlockDisplay.class)) {
-                if (display.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) display.remove();
-            }
+            legacyCleanup.remove(world);
         }
     }
 
@@ -456,6 +450,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     public void close() {
         if (closed) return;
         closed = true;
+        HandlerList.unregisterAll(legacyCleanup);
         reconcileTask.cancel();
         animationTask.cancel();
         removeAll();
@@ -463,10 +458,36 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         rewardsByCrate = Map.of();
     }
 
-    record Orbit(Location anchor, List<UUID> displays, List<ItemStack> rewards, int[] rewardIndices,
+    record Orbit(Location anchor, List<PacketItemDisplay> displays, List<ItemStack> rewards, int[] rewardIndices,
                  CrateVisualSettingsStore.Ambient visual, ItemDisplayPresentation presentation) { }
 
     record Frame(double x, double y, double z, float scale, float rotation, int rewardIndex) { }
+
+    /** Removes only the old server-entity ambient markers when a chunk arrives later. */
+    public static final class LegacyAmbientCleanup implements Listener {
+        private final NamespacedKey marker;
+
+        LegacyAmbientCleanup(NamespacedKey marker) {
+            this.marker = marker;
+        }
+
+        @EventHandler
+        public void onEntitiesLoad(EntitiesLoadEvent event) {
+            event.getEntities().forEach(this::remove);
+        }
+
+        void remove(World world) {
+            for (ItemDisplay display : world.getEntitiesByClass(ItemDisplay.class)) remove(display);
+            for (BlockDisplay display : world.getEntitiesByClass(BlockDisplay.class)) remove(display);
+        }
+
+        private void remove(Entity entity) {
+            if ((entity instanceof ItemDisplay || entity instanceof BlockDisplay)
+                    && entity.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) {
+                entity.remove();
+            }
+        }
+    }
 
     private record Anchor(String world, int x, int y, int z) {
         static Anchor of(WorldPos value) {

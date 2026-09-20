@@ -8,6 +8,7 @@ import ru.ruscrafting.ecia.runtime.EciaRuntime;
 import ru.ruscrafting.ecia.integration.CrateOpeningEffects;
 import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess;
 import ru.ruscrafting.ecia.integration.ManagedCratesService;
+import ru.arc.paper.display.PaperPacketDisplays;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,6 +24,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
     private ManagedCratesService managedCrates;
     private CrateHologramService crateHolograms;
     private CrateAmbientEffectService ambientEffects;
+    private PaperPacketDisplays packetDisplays;
     private CrateVisualSettingsStore visualSettings;
     private CrateVisualEditor visualEditor;
 
@@ -31,6 +33,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
         migrateLegacyDataFolder();
         saveDefaultConfig();
         runtime = EciaRuntime.create(this);
+        packetDisplays = registerService(new PaperPacketDisplays(this));
         EciaLocale locale = runtime.installLocale(getDataFolder().toPath(), legacyMessages());
         Path configuredDirectory = Path.of(getConfig().getString(
                 "excellent-crates-directory",
@@ -58,7 +61,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
         if (getServer().getPluginManager().isPluginEnabled("ExcellentCrates")) {
             try {
                 crateHolograms = registerService(new CrateHologramService(this, visualSettings));
-                ambientEffects = registerService(new CrateAmbientEffectService(this, visualSettings));
+                ambientEffects = registerService(new CrateAmbientEffectService(this, visualSettings, packetDisplays));
             } catch (RuntimeException | LinkageError failure) {
                 runtime.error("Compact crate holograms are unavailable: {}", failure.toString());
             }
@@ -81,7 +84,8 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
                     if (ambientEffects != null) ambientEffects.refresh();
                     return kotlin.Unit.INSTANCE;
                 }));
-                managedCrates = registerService(new ManagedCratesService(this, visualSettings, openingEffects, ambientEffects, furniture));
+                managedCrates = registerService(new ManagedCratesService(
+                        this, visualSettings, openingEffects, ambientEffects, packetDisplays, furniture));
             } catch (RuntimeException | LinkageError failure) {
                 runtime.error("Managed crate service is unavailable; furniture protection remains active: {}", failure.toString());
             }

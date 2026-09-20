@@ -7,6 +7,7 @@ left clicks, and provides animated weighted rolls with durable recovery.
 ## Requirements
 
 - Paper/Purpur 1.21.11 and Java 25
+- PacketEvents **2.12.1**
 - ExcellentCrates **6.6.1**, NightCore **2.16.4**
 - ItemsAdder 4.x (deployment target: 4.0.18)
 - ARC 1.4.64 or later with `ArcItemMaterializer` for managed reward pools
@@ -38,7 +39,7 @@ pool screens. Names and presentation are configurable;
 model 11001 is rejected in every menu template. Russian and English chat text
 is in `lang/`; existing protection messages in `config.yml` remain authoritative.
 Managed openings perform one durable weighted roll and immediately start a
-player-only display-entity reel above the physical crate. The rolled item stops
+player-only packet-display reel above the physical crate. The rolled item stops
 beneath its pointer before delivery. A paired ItemsAdder model such as
 `akira_chest` / `akira_chest_opening` switches while the reel runs; vanilla
 chests use their native lid. World-visible sound and particle bursts accompany
@@ -46,7 +47,7 @@ the transition. The roulette can be private or visible to nearby players; every
 viewer receives a personal display plane that continuously turns toward them.
 Concurrent reels at the same crate reserve separate vertical rows, and every
 reward step plays a short mechanical click before the distinct winner sound.
-While the crate is idle, real items from its reward pool use one of 23 presets.
+While the crate is idle, packet-backed item displays from its reward pool use one of 23 presets.
 Alongside the original circular scenes, non-orbit layouts include a single-item
 showcase, three slot-machine reels, a reward wall, conveyor, falling reward rain,
 vertical trophy tower, opening card fan, and two-sided balance. Count, radius,

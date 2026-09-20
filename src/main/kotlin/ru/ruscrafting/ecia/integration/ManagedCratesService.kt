@@ -12,6 +12,7 @@ import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.server.ServerLoadEvent
 import org.bukkit.inventory.ItemStack
 import ru.arc.config.Config
+import ru.arc.paper.display.PaperPacketDisplays
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
 import ru.ruscrafting.ecia.CrateAmbientEffectService
 import ru.ruscrafting.ecia.CrateVisualSettingsStore
@@ -36,6 +37,7 @@ class ManagedCratesService(
     visualSettings: CrateVisualSettingsStore,
     openingEffects: CrateOpeningEffects,
     private val ambientEffects: CrateAmbientEffectService,
+    packetDisplays: PaperPacketDisplays,
     furniture: ItemsAdderFurnitureAccess,
 ) : AutoCloseable, Listener {
     private val runtime = plugin.runtime()
@@ -52,7 +54,7 @@ class ManagedCratesService(
     private var engine: ManagedOpeningEngine? = null
     private var screens: EciaMenuScreens? = null
     private var router: NativeCrateInteractionRouter? = null
-    private val roulette = WorldRouletteAnimator(plugin, runtime, payload, visualSettings, openingEffects)
+    private val roulette = WorldRouletteAnimator(plugin, runtime, payload, visualSettings, openingEffects, packetDisplays)
     private var ready = false
     private var closed = false
 
