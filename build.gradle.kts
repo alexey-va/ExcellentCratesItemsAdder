@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "ru.ruscrafting"
-version = "0.14.15"
+version = "0.14.16"
 
 repositories {
     mavenCentral()
@@ -34,15 +34,15 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib"))
-    implementation("ru.ruscrafting.arc:arc-core:2.7.10")
-    implementation("ru.ruscrafting.arc:arc-core-logging:2.7.10")
-    implementation("ru.ruscrafting.arc:arc-core-paper:2.7.10")
-    implementation("ru.ruscrafting.arc:arc-core-menu:2.7.10")
-    implementation("ru.ruscrafting.arc:arc-core-paper-menu:2.7.10")
+    implementation("ru.ruscrafting.arc:arc-core:2.7.11")
+    implementation("ru.ruscrafting.arc:arc-core-logging:2.7.11")
+    implementation("ru.ruscrafting.arc:arc-core-paper:2.7.11")
+    implementation("ru.ruscrafting.arc:arc-core-menu:2.7.11")
+    implementation("ru.ruscrafting.arc:arc-core-paper-menu:2.7.11")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.10")
 
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    compileOnly("ru.ruscrafting.arc:arc-core-paper-api:2.7.10")
+    compileOnly("ru.ruscrafting.arc:arc-core-paper-api:2.7.11")
     compileOnly("com.github.retrooper:packetevents-spigot:2.12.1")
     compileOnly("su.nightexpress.excellentcrates:ExcellentCrates:6.6.1")
     compileOnly("su.nightexpress.nightcore:main:2.16.4")
@@ -55,8 +55,8 @@ dependencies {
     testImplementation("io.kotest:kotest-assertions-core:6.0.7")
     testImplementation("io.mockk:mockk:1.14.7")
     testImplementation("com.github.retrooper:packetevents-spigot:2.12.1")
-    testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:2.7.10")
-    testImplementation("ru.ruscrafting.arc:arc-core-paper-api:2.7.10")
+    testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:2.7.11")
+    testImplementation("ru.ruscrafting.arc:arc-core-paper-api:2.7.11")
     testImplementation("su.nightexpress.excellentcrates:ExcellentCrates:6.6.1")
     testImplementation("su.nightexpress.nightcore:main:2.16.4")
 }
