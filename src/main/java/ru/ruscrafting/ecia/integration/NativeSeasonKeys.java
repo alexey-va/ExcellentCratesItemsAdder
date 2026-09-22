@@ -1,5 +1,7 @@
 package ru.ruscrafting.ecia.integration;
 
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -20,6 +22,7 @@ import java.util.function.Predicate;
 /** Native key identity stays intact; managed openings match the native key id. */
 public final class NativeSeasonKeys implements AutoCloseable {
     public static final String LEGACY_SEASON = "launch";
+    private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
     private static final NamespacedKey SEASON = Objects.requireNonNull(NamespacedKey.fromString("ecia:season"));
     private final Map<CrateKey, AdaptedItem> originals = new HashMap<>();
 
@@ -54,6 +57,7 @@ public final class NativeSeasonKeys implements AutoCloseable {
             CrateKey key = key(entry.getKey());
             originals.putIfAbsent(key, key.getItem());
             ItemStack item = key.getRawItem().clone();
+            applyConfiguredName(item, key.getName());
             item.editMeta(meta -> meta.getPersistentDataContainer().set(SEASON, PersistentDataType.STRING, entry.getValue()));
             key.setItem(ItemHelper.vanilla(item));
         }
@@ -102,19 +106,31 @@ public final class NativeSeasonKeys implements AutoCloseable {
 
     public ItemStack create(String keyId, String season, int amount) {
         if (amount < 1 || amount > 64) throw new IllegalArgumentException("Key stack amount outside 1..64");
-        ItemStack item = key(keyId).getItemStack().clone();
-        item.editMeta(meta -> meta.getPersistentDataContainer().set(SEASON, PersistentDataType.STRING, season));
-        item.setAmount(amount);
-        return item;
+        return createKeyStack(key(keyId), amount, season);
     }
 
     /** Creates a plain native key; no managed season metadata is written. */
     public ItemStack create(String keyId, int amount) {
         if (amount < 1 || amount > 64) throw new IllegalArgumentException("Key stack amount outside 1..64");
-        ItemStack item = key(keyId).getItemStack().clone();
-        item.editMeta(meta -> meta.getPersistentDataContainer().remove(SEASON));
+        return createKeyStack(key(keyId), amount, null);
+    }
+
+    /** Builds an addon-issued copy without replacing its native metadata or ItemsAdder model data. */
+    static ItemStack createKeyStack(CrateKey key, int amount, String season) {
+        if (amount < 1 || amount > 64) throw new IllegalArgumentException("Key stack amount outside 1..64");
+        ItemStack item = key.getItemStack().clone();
+        applyConfiguredName(item, key.getName());
+        item.editMeta(meta -> {
+            if (season == null) meta.getPersistentDataContainer().remove(SEASON);
+            else meta.getPersistentDataContainer().set(SEASON, PersistentDataType.STRING, season);
+        });
         item.setAmount(amount);
         return item;
+    }
+
+    static void applyConfiguredName(ItemStack item, String configuredName) {
+        item.editMeta(meta -> meta.displayName(
+                MINI_MESSAGE.deserialize(configuredName).decoration(TextDecoration.ITALIC, false)));
     }
 
     public String season(ItemStack key) {

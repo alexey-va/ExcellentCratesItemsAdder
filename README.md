@@ -38,6 +38,9 @@ each case and its native rewards. `menus.yml` contains six-row history and
 pool screens. Names and presentation are configurable;
 model 11001 is rejected in every menu template. Russian and English chat text
 is in `lang/`; existing protection messages in `config.yml` remain authoritative.
+Newly issued physical keys use the configured ExcellentCrates key name while
+preserving their native key identity and ItemsAdder model metadata. Existing
+keys already held by players are not rewritten.
 Managed openings perform one durable weighted roll and immediately start a
 player-only packet-display reel above the physical crate. The rolled item stops
 beneath its pointer before delivery. A paired ItemsAdder model such as

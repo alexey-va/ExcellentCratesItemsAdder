@@ -470,9 +470,7 @@ internal class ArcCrateCommand(
 
     private fun physicalKey(request: KeyGrantRequest): ItemStack = request.season?.let {
         nativeKeys.create(request.keyId, it, request.amount)
-    } ?: checkNotNull(CratesAPI.getKeyManager().getKeyById(request.keyId)).itemStack.clone().also {
-        it.amount = request.amount
-    }
+    } ?: nativeKeys.create(request.keyId, request.amount)
 
     private fun keyChoices(): List<KeyChoice> {
         if (!CratesAPI.isLoaded()) return emptyList()
