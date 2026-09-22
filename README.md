@@ -41,8 +41,9 @@ is in `lang/`; existing protection messages in `config.yml` remain authoritative
 Newly issued physical keys use the configured ExcellentCrates key name while
 preserving their native key identity and ItemsAdder model metadata. Existing
 keys already held by players are not rewritten.
-Enabled managed reward pools are checked again on server-load completion, so
-providers initialized after the add-on's early enable pass are not permanently omitted.
+Enabled managed reward pools are checked again four ticks after server-load completion,
+after PlayerParticles 8.13's three-tick preset parser. This lifecycle-owned retry
+includes late reward providers even when the early enable pass succeeded.
 Managed openings perform one durable weighted roll and immediately start a
 player-only packet-display reel above the physical crate. The rolled item stops
 beneath its pointer before delivery. A paired ItemsAdder model such as

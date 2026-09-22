@@ -12,6 +12,7 @@ import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.server.ServerLoadEvent
 import org.bukkit.inventory.ItemStack
 import ru.arc.config.Config
+import ru.arc.core.LifecycleTaskScope
 import ru.arc.paper.display.PaperPacketDisplays
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
 import ru.ruscrafting.ecia.CrateAmbientEffectService
@@ -203,8 +204,9 @@ class ManagedCratesService(
 
     @EventHandler
     fun onServerLoad(event: ServerLoadEvent) {
-        // The early enable-time load may succeed before all reward providers finish loading.
-        reloadManagedCratesAfterServerLoad(settings.enabled, configurationFailed, ::reload)
+        reloadManagedCratesAfterServerLoad(settings.enabled, configurationFailed, runtime.tasks()) {
+            if (!closed) reload()
+        }
     }
 
     private fun readSettings(): ManagedCratesSettings {
@@ -249,7 +251,9 @@ class ManagedCratesService(
 internal fun reloadManagedCratesAfterServerLoad(
     settingsEnabled: Boolean,
     configurationFailed: Boolean,
+    tasks: LifecycleTaskScope,
     reload: () -> Unit,
 ) {
-    if (settingsEnabled || configurationFailed) reload()
+    // PlayerParticles 8.13 parses preset groups three ticks after enable, after ServerLoadEvent.
+    if (settingsEnabled || configurationFailed) tasks.runLater(4L, reload)
 }
