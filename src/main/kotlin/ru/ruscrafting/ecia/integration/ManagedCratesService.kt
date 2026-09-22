@@ -203,8 +203,8 @@ class ManagedCratesService(
 
     @EventHandler
     fun onServerLoad(event: ServerLoadEvent) {
-        // ARC can finish provider initialization after its onEnable callback.
-        if (!ready && (settings.enabled || configurationFailed)) reload()
+        // The early enable-time load may succeed before all reward providers finish loading.
+        reloadManagedCratesAfterServerLoad(settings.enabled, configurationFailed, ::reload)
     }
 
     private fun readSettings(): ManagedCratesSettings {
@@ -244,4 +244,12 @@ class ManagedCratesService(
         HandlerList.unregisterAll(this)
     }
 
+}
+
+internal fun reloadManagedCratesAfterServerLoad(
+    settingsEnabled: Boolean,
+    configurationFailed: Boolean,
+    reload: () -> Unit,
+) {
+    if (settingsEnabled || configurationFailed) reload()
 }
