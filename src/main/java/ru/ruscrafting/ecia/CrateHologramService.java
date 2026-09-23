@@ -13,6 +13,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
 import org.joml.Vector3f;
+import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess;
 import su.nightexpress.excellentcrates.CratesAPI;
 import su.nightexpress.excellentcrates.crate.impl.Crate;
 import su.nightexpress.excellentcrates.hologram.HologramManager;
@@ -26,6 +27,7 @@ import java.util.UUID;
 
 /** Replaces ExcellentCrates' line-per-entity labels with one compact TextDisplay per block. */
 final class CrateHologramService implements AutoCloseable {
+    private final ItemsAdderFurnitureAccess furniture = ItemsAdderFurnitureAccess.create();
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
     private static final long RECONCILE_TICKS = 20L;
     private static final long VISIBILITY_TICKS = 2L;
@@ -104,7 +106,7 @@ final class CrateHologramService implements AutoCloseable {
 
     private void reconcileDisplay(Anchor anchor, Source source) {
         World world = source.position().getWorld();
-        if (world == null || !source.position().isChunkLoaded()) {
+        if (!CrateShellPresence.isPresent(source.position(), furniture)) {
             remove(anchor);
             return;
         }

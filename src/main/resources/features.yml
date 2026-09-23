@@ -1,4 +1,7 @@
 # Native EC protection works independently. Operators opt individual cases into
 # managed openings; the current native reward list is used on every reload.
+# Free-opening claims are durable in this plugin's local data directory and
+# must only be enabled on the single backend that owns ExcellentCrates openings.
 enabled: false
+free-open-time-zone: Europe/Moscow
 cases: {}

@@ -57,6 +57,29 @@ class EciaLocaleTest : FunSpec({
         }
     }
 
+    test("renders the free-opening reset date as replacement text in both locales") {
+        val root = Files.createTempDirectory("ecia-locale-reset-date-")
+        try {
+            val locale = EciaLocale(root, emptyMap())
+            val reset = "24.09.2026 00:00 MSK"
+            val english = PlainTextComponentSerializer.plainText().serialize(
+                locale.renderWithLocale("managed.no-key-until-reset", "en-US", mapOf("next_reset" to reset)),
+            )
+            english shouldBe "Your free opening has been used. Next available: $reset."
+            english.contains("<reset>") shouldBe false
+            english.contains("<next_reset>") shouldBe false
+
+            val russian = PlainTextComponentSerializer.plainText().serialize(
+                locale.renderWithLocale("managed.no-key-until-reset", "ru-RU", mapOf("next_reset" to reset)),
+            )
+            russian shouldBe "Бесплатная попытка уже использована. Следующая доступна: $reset."
+            russian.contains("<reset>") shouldBe false
+            russian.contains("<next_reset>") shouldBe false
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     test("migrates removed ecia command hints from an existing catalog") {
         val root = Files.createTempDirectory("ecia-locale-migration-")
         try {

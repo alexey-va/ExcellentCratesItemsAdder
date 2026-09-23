@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import static ru.ruscrafting.ecia.journal.OpeningRecord.Stage;
 
@@ -20,6 +21,14 @@ import static ru.ruscrafting.ecia.journal.OpeningRecord.Stage;
  * stale GUI clicks; an interrupted side effect remains explicit for reconciliation.
  */
 public final class OpeningLedger {
+    public enum VirtualReservationStatus { CREATED, EXISTING_PERIOD, BLOCKED_BY_ACTIVE }
+    public record VirtualReservation(VirtualReservationStatus status, OpeningRecord record) {
+        public VirtualReservation {
+            Objects.requireNonNull(status);
+            Objects.requireNonNull(record);
+        }
+    }
+
     private final OpeningStore store;
     private final Clock clock;
     private final Map<UUID, OpeningRecord> records = new HashMap<>();
@@ -51,6 +60,37 @@ public final class OpeningLedger {
         long now = Math.max(clock.millis(), Math.addExact(previous, 1));
         return save(new OpeningRecord(id, player, pool, now, now, 0, Stage.RESERVED,
                 offers, 0, "", keyWitness, "", "", ""));
+    }
+
+    /**
+     * Atomically consumes one local calendar entitlement and freezes its offers.
+     * The stable period id is retained forever in this journal; no native virtual
+     * balance is incremented or decremented. Invoke only on the storage executor.
+     */
+    public synchronized VirtualReservation reserveVirtual(UUID id, UUID player, PoolSnapshot pool,
+            Supplier<List<RewardDefinition>> offers, String witness) {
+        Objects.requireNonNull(offers);
+        if (witness == null || !witness.startsWith("virtual:v1:")) {
+            throw new IllegalArgumentException("A versioned virtual entitlement witness is required");
+        }
+        OpeningRecord existing = records.get(id);
+        if (existing != null) {
+            if (!existing.playerId().equals(player) || !existing.pool().crateId().equals(pool.crateId())
+                    || !existing.keyWitness().equals(witness)) {
+                throw new IllegalStateException("Virtual entitlement identity conflicts with its durable record");
+            }
+            return new VirtualReservation(VirtualReservationStatus.EXISTING_PERIOD, existing);
+        }
+        Optional<OpeningRecord> active = active(player);
+        if (active.isPresent()) {
+            return new VirtualReservation(VirtualReservationStatus.BLOCKED_BY_ACTIVE, active.get());
+        }
+        long previous = records.values().stream().filter(r -> r.playerId().equals(player))
+                .mapToLong(OpeningRecord::createdAt).max().orElse(-1);
+        long now = Math.max(clock.millis(), Math.addExact(previous, 1));
+        OpeningRecord created = save(new OpeningRecord(id, player, pool, now, now, 0, Stage.CHOOSING,
+                offers.get(), 0, "", witness, "", "", ""));
+        return new VirtualReservation(VirtualReservationStatus.CREATED, created);
     }
 
     public synchronized OpeningRecord debitConfirmed(UUID id, UUID player, long revision) {
@@ -166,6 +206,14 @@ public final class OpeningLedger {
 
     public synchronized List<OpeningRecord> snapshot() { return List.copyOf(records.values()); }
 
+    /** Stable ids are published to the Paper thread as a read-only glow cache. */
+    public synchronized java.util.Set<UUID> virtualOpeningIds() {
+        return records.values().stream()
+                .filter(record -> record.keyWitness().startsWith("virtual:v1:"))
+                .map(OpeningRecord::id)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
     private OpeningRecord expect(UUID id, UUID player, long revision, Stage stage) {
         OpeningRecord record = get(id, player);
         if (record.revision() != revision || record.stage() != stage) {
@@ -182,7 +230,7 @@ public final class OpeningLedger {
     }
 
     private OpeningRecord save(OpeningRecord record) {
-        if (storageUncertain) throw new IllegalStateException("Opening storage requires reload and reconciliation");
+        if (storageUncertain) throw new IllegalStateException("Opening storage requires plugin restart and reconciliation");
         try {
             OpeningRecord readback = store.commit(record);
             if (!record.equals(readback)) throw new IllegalStateException("Durable opening readback mismatch");

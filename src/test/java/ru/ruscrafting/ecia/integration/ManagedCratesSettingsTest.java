@@ -29,4 +29,25 @@ class ManagedCratesSettingsTest {
         assertEquals(1, settings.maxRerolls());
         assertEquals(1, settings.bundleSize());
     }
+
+    @Test void freeOpeningCadenceAndTimeZoneAreExplicitAndInvalidCadenceFailsClosed() {
+        var config = new YamlConfiguration();
+        config.set("enabled", true);
+        config.set("free-open-time-zone", "Europe/Moscow");
+        config.set("cases.case_daily.free-open-period", "daily");
+        config.set("cases.case_weekly.free-open-period", "weekly");
+        var settings = ManagedCratesSettings.read(config);
+        assertEquals("Europe/Moscow", settings.freeOpeningZone().getId());
+        assertEquals(PeriodicVirtualOpening.Period.DAILY,
+                settings.cases().get("case_daily").freeOpenPeriod());
+        assertEquals(PeriodicVirtualOpening.Period.WEEKLY,
+                settings.cases().get("case_weekly").freeOpenPeriod());
+
+        config.set("cases.case_daily.free-open-period", "monthly");
+        var warnings = new java.util.ArrayList<String>();
+        settings = ManagedCratesSettings.read(config, warnings::add);
+        assertEquals(PeriodicVirtualOpening.Period.NONE,
+                settings.cases().get("case_daily").freeOpenPeriod());
+        assertEquals(1, warnings.size());
+    }
 }

@@ -7,6 +7,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -48,6 +49,21 @@ class KeyCrateGlowPlanTest {
         assertEquals(List.of(DAILY, near), KeyCrateGlowPlan.select(
                 new KeyCrateGlowPlan.HeldKey("daily_key", "autumn"),
                 "rc_origin_spawn", -49.0, 71.0, 28.0, 48.0, List.of(DAILY, WEEKLY, near)));
+    }
+
+    @Test
+    void virtualEntitlementGlowsWithEmptyHandOnlyForAvailableQuotaAndConfiguredCase() {
+        var freeDaily = new KeyCrateGlowPlan.Target("daily", "daily_key", "launch", "rc_origin_spawn",
+                -50, 71, 28, PeriodicVirtualOpening.Period.DAILY);
+        var freeWeekly = new KeyCrateGlowPlan.Target("weekly", "weekly_key", "launch", "rc_origin_spawn",
+                -20, 71, 28, PeriodicVirtualOpening.Period.WEEKLY);
+
+        assertEquals(List.of(freeDaily), KeyCrateGlowPlan.selectVirtual(Set.of("daily"), "rc_origin_spawn",
+                -49.0, 71.0, 28.0, 48.0, List.of(freeDaily, freeWeekly)));
+        assertEquals(List.of(), KeyCrateGlowPlan.selectVirtual(Set.of(), "rc_origin_spawn",
+                -49.0, 71.0, 28.0, 48.0, List.of(freeDaily, freeWeekly)));
+        assertEquals(List.of(), KeyCrateGlowPlan.selectVirtual(Set.of("daily"), "survival",
+                -49.0, 71.0, 28.0, 48.0, List.of(freeDaily, freeWeekly)));
     }
 
     @Test

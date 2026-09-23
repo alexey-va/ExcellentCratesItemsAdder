@@ -19,6 +19,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import ru.arc.paper.display.PacketItemDisplay;
 import ru.arc.paper.display.PaperPacketDisplays;
+import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess;
 import su.nightexpress.excellentcrates.CratesAPI;
 import su.nightexpress.excellentcrates.api.crate.Reward;
 import su.nightexpress.excellentcrates.crate.impl.Crate;
@@ -45,6 +46,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     private final PaperPacketDisplays packetDisplays;
     private final NamespacedKey marker;
     private final LegacyAmbientCleanup legacyCleanup;
+    private final ItemsAdderFurnitureAccess furniture = ItemsAdderFurnitureAccess.create();
     private final Map<Anchor, Orbit> orbits = new HashMap<>();
     private final Set<Anchor> paused = new HashSet<>();
     private final BukkitTask reconcileTask;
@@ -108,7 +110,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
             for (WorldPos position : crate.getBlockPositions()) {
                 Anchor anchor = Anchor.of(position);
                 desired.add(anchor);
-                if (position.getWorld() == null || !position.isChunkLoaded()) {
+                if (!CrateShellPresence.isPresent(position, furniture)) {
                     remove(anchor);
                 } else if (!valid(orbits.get(anchor))) {
                     remove(anchor);

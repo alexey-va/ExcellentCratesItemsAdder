@@ -6,6 +6,7 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.runs
 import io.mockk.unmockkStatic
+import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.configuration.MemoryConfiguration
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -41,10 +42,13 @@ class CrateVisualEditorTest {
             val furniture = mockk<ItemsAdderFurnitureAccess>(relaxed = true)
             val refreshed = AtomicInteger()
             val changed = AtomicInteger()
-            every { crate.blockPositions } returns positions
+            every { crate.blockPositions } answers { positions.toMutableSet() }
             every { manager.getCrateById("case_daily") } returns crate
-            every { manager.removeCratePositions(crate) } just runs
-            every { manager.addCratePositions(crate) } just runs
+            every { crate.clearBlockPositions() } answers { positions.clear() }
+            every { crate.addBlockPosition(any()) } answers {
+                val location = firstArg<Location>()
+                positions.add(WorldPos(location.world.name, location.blockX, location.blockY, location.blockZ))
+            }
             every { crate.saveForce() } just runs
             every { crate.recreateHologram() } just runs
             every { furniture.at(block) } returns Optional.empty()
@@ -63,6 +67,52 @@ class CrateVisualEditorTest {
                 assertEquals(setOf(retained), positions)
                 assertEquals(1, refreshed.get())
                 assertEquals(1, changed.get())
+            } finally {
+                editor.close()
+                unmockkStatic(CratesAPI::class)
+            }
+        }
+    }
+
+    @Test
+    fun deletionRollbackRestoresEveryAnchorThroughNativeMutators() {
+        MockBukkitTestRuntime.open().use { paper ->
+            val plugin = paper.createSimplePlugin("CrateVisualEditorRollbackTest")
+            val player = paper.addPlayer("Editor")
+            val block = player.world.getBlockAt(7, 65, -4)
+            block.type = Material.ENDER_CHEST
+            val retained = WorldPos(player.world.name, 9, 65, -4)
+            val selected = WorldPos(player.world.name, block.x, block.y, block.z)
+            val positions = mutableSetOf(selected, retained)
+            val crate = mockk<Crate>(relaxed = true)
+            val manager = mockk<CrateManager>(relaxed = true)
+            val furniture = mockk<ItemsAdderFurnitureAccess>(relaxed = true)
+            every { crate.blockPositions } answers { positions.toMutableSet() }
+            every { manager.getCrateById("case_daily") } returns crate
+            every { crate.clearBlockPositions() } answers { positions.clear() }
+            every { crate.addBlockPosition(any()) } answers {
+                val location = firstArg<Location>()
+                positions.add(WorldPos(location.world.name, location.blockX, location.blockY, location.blockZ))
+            }
+            every { crate.saveForce() } just runs
+            var hologramRecreations = 0
+            every { crate.recreateHologram() } answers {
+                if (hologramRecreations++ == 0) error("Synthetic deletion failure")
+            }
+            every { furniture.at(block) } returns Optional.empty()
+            mockkStatic(CratesAPI::class)
+            every { CratesAPI.getCrateManager() } returns manager
+            val editor = CrateVisualEditor(
+                plugin,
+                CrateVisualSettingsStore(directory, MemoryConfiguration()),
+                furniture,
+                Consumer {},
+                Runnable {},
+            )
+            try {
+                assertTrue(!editor.deleteCrate(player, CrateVisualTarget("case_daily", block.location)))
+                assertEquals(setOf(selected, retained), positions)
+                assertEquals(Material.ENDER_CHEST, block.type)
             } finally {
                 editor.close()
                 unmockkStatic(CratesAPI::class)

@@ -2,6 +2,7 @@ package ru.ruscrafting.ecia.integration;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /** Pure matching and distance policy for the held-key crate locator. */
 final class KeyCrateGlowPlan {
@@ -15,12 +16,18 @@ final class KeyCrateGlowPlan {
         }
     }
 
-    record Target(String crateId, String keyId, String season, String world, int x, int y, int z) {
+    record Target(String crateId, String keyId, String season, String world, int x, int y, int z,
+            PeriodicVirtualOpening.Period freeOpenPeriod) {
         Target {
             Objects.requireNonNull(crateId, "crateId");
             Objects.requireNonNull(keyId, "keyId");
             Objects.requireNonNull(season, "season");
             Objects.requireNonNull(world, "world");
+            Objects.requireNonNull(freeOpenPeriod, "freeOpenPeriod");
+        }
+
+        Target(String crateId, String keyId, String season, String world, int x, int y, int z) {
+            this(crateId, keyId, season, world, x, y, z, PeriodicVirtualOpening.Period.NONE);
         }
     }
 
@@ -30,6 +37,19 @@ final class KeyCrateGlowPlan {
         double rangeSquared = range * range;
         return targets.stream()
                 .filter(target -> target.keyId().equals(held.keyId()))
+                .filter(target -> target.world().equals(world))
+                .filter(target -> distanceSquared(target, x, y, z) <= rangeSquared)
+                .toList();
+    }
+
+    static List<Target> selectVirtual(Set<String> availableCrates, String world, double x, double y, double z,
+            double range, List<Target> targets) {
+        if (availableCrates == null || availableCrates.isEmpty() || world == null
+                || !Double.isFinite(range) || range <= 0.0D) return List.of();
+        double rangeSquared = range * range;
+        return targets.stream()
+                .filter(target -> target.freeOpenPeriod() != PeriodicVirtualOpening.Period.NONE)
+                .filter(target -> availableCrates.contains(target.crateId()))
                 .filter(target -> target.world().equals(world))
                 .filter(target -> distanceSquared(target, x, y, z) <= rangeSquared)
                 .toList();

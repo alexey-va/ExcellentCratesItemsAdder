@@ -82,9 +82,19 @@ remain usable after a reload without a separate season migration.
 
 ## Managed openings
 
-One physical key performs one weighted roll and buys one configured reward
+One physical key or available virtual attempt performs one weighted roll and buys one configured reward
 bundle. The reel only visualizes the result already written to the durable
 journal; it never rolls again while moving or when the item is delivered.
+
+An individual case can set `free-open-period: daily` or `weekly` in
+`features.yml`. Calendar windows use `free-open-time-zone` (default
+`Europe/Moscow`); weeks reset on Monday. One attempt is available per player and
+window, missed windows do not accumulate, and no inventory item is created.
+The available virtual attempt is used before an extra physical key. Nearby
+cases are highlighted for that player even with an empty hand. The durable
+opening ID is the claim, so a reconnect or restart cannot reroll a spent window.
+Enable this policy only on the single backend that owns case openings: local
+journals are not a distributed quota across independent server directories.
 
 Players open and preview a crate directly at its pedestal; `ecia.use` is granted
 by default and crate-specific native permissions still apply. Rewards enter the inventory as real items, including
@@ -106,6 +116,14 @@ receipts distinguish committed actions from actions proven not to have happened.
 An uncertain disk/player-save result blocks automatic replay and enters review.
 Rejoining allows reconciliation against freshly loaded player data. Keep both
 the addon data directory and ARC's `data/reward-physical-archive` in backups.
+Journal I/O failures remain fail-closed across settings reloads; after repairing
+storage, restart the plugin runtime to reload and reconcile the journal. Never
+delete a journal to reset a player's quota or clear an uncertain delivery.
+
+Removing an anchor uses ExcellentCrates' native position mutators because its
+position getter returns a copy. Idle displays and holograms also stop rendering
+when the saved point no longer contains a block or ItemsAdder furniture; this
+does not destructively remove the saved point.
 
 Managed cases support exactly one enabled physical key cost and one supported
 ARC reward or native key-give command per prize. Native cooldowns, milestones,

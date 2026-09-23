@@ -3,6 +3,7 @@ package ru.ruscrafting.ecia
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.TextColor
 import net.kyori.adventure.text.format.TextDecoration
+import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.data.Directional
 import org.bukkit.entity.Player
@@ -360,6 +361,23 @@ class CrateVisualEditor(
         }
 
         val previousPositions = crate.blockPositions.map { it.copy() }
+        if (previousPositions.none { it == position }) {
+            player.sendMessage(text("Этот сундук уже не привязан к кейсу.", DANGER))
+            dialogs.close(player)
+            return false
+        }
+        val previousLocations = mutableListOf<Location>()
+        for (savedPosition in previousPositions) {
+            val savedLocation = savedPosition.toLocation()
+            if (savedLocation == null) {
+                player.sendMessage(text("Не удалось проверить все точки кейса; удаление отменено.", DANGER))
+                return false
+            }
+            previousLocations.add(savedLocation)
+        }
+        val retainedLocations = previousPositions.zip(previousLocations)
+            .filterNot { (savedPosition, _) -> savedPosition == position }
+            .map { (_, savedLocation) -> savedLocation }
         val oldFurniture = furniture.at(block).orElse(null)?.namespacedId()
         val oldData = block.blockData.clone()
         val shellRemoved = if (oldFurniture != null) furniture.remove(block) else runCatching {
@@ -372,10 +390,9 @@ class CrateVisualEditor(
         }
 
         return runCatching {
-            manager.removeCratePositions(crate)
-            check(crate.blockPositions.remove(position)) { "Crate anchor disappeared during deletion" }
+            crate.clearBlockPositions()
+            retainedLocations.forEach(crate::addBlockPosition)
             crate.saveForce()
-            manager.addCratePositions(crate)
             crate.recreateHologram()
         }.onSuccess {
             val anchor = CrateVisualSettingsStore.Anchor.of(block.location)
@@ -394,11 +411,9 @@ class CrateVisualEditor(
             plugin.logger.log(Level.SEVERE,
                 "Crate deletion failed for ${target.crateId()} at ${block.world.name} ${block.x} ${block.y} ${block.z}", failure)
             runCatching {
-                manager.removeCratePositions(crate)
-                crate.blockPositions.clear()
-                crate.blockPositions.addAll(previousPositions)
+                crate.clearBlockPositions()
+                previousLocations.forEach(crate::addBlockPosition)
                 crate.saveForce()
-                manager.addCratePositions(crate)
                 crate.recreateHologram()
                 block.type = Material.AIR
                 if (oldFurniture != null) {
