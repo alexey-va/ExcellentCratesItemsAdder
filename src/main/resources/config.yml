@@ -38,6 +38,8 @@ case-key-glow:
 case-ambient:
   # Real reward previews animate beside every stationary managed crate.
   enabled: true
+  # Server-side visibility cap in blocks, also applied to existing per-crate overrides.
+  max-view-distance-blocks: 30.0
   # Keep idle rewards volumetric by default. Set true for thin camera-facing icons.
   flat-item-displays: false
   # FOUNTAIN, HALO, CROWN, SPIRAL, PULSE, WHEEL, SWING, INFINITY, SATURN,

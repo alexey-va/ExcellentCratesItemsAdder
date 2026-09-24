@@ -58,6 +58,10 @@ Alongside the original circular scenes, non-orbit layouts include a single-item
 showcase, three slot-machine reels, a reward wall, conveyor, falling reward rain,
 vertical trophy tower, opening card fan, and two-sided balance. Count, radius,
 height, scale, speed, and range are adjustable per placed crate.
+Idle reward displays are capped at 30 blocks by `case-ambient.max-view-distance-blocks`,
+including crates with older per-anchor range overrides. The packet renderer removes
+the displays from viewers outside that distance and restores them on approach.
+Changes to this global `config.yml` limit require a plugin/server restart.
 Pool previews use only as many reward rows as the current page needs, with at
 most 27 rewards per page. A single-page pool has no navigation row or arrows.
 Multi-page pools add one navigation row; previous/next controls stay visible,

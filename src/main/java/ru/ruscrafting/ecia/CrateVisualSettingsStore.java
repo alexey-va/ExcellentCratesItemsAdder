@@ -176,6 +176,12 @@ public final class CrateVisualSettingsStore {
         }
     }
 
+    /** Packet Display view range is a multiplier of 64 blocks, including legacy per-crate values. */
+    public float ambientDisplayViewRange(Ambient visual) {
+        double maxDistance = value("case-ambient.max-view-distance-blocks", 30.0, 1.0, 256.0);
+        return Math.min(visual.viewRange(), (float) (maxDistance / 64.0));
+    }
+
     private static void write(YamlConfiguration yaml, String path, Hologram value) {
         yaml.set(path + ".text", value.textTemplate());
         yaml.set(path + ".offset-x", value.offsetX()); yaml.set(path + ".offset-y", value.offsetY());

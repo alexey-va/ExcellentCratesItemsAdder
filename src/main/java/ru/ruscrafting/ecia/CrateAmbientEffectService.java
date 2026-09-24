@@ -152,7 +152,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                 display.setItemDisplayTransform(presentation.transform());
                 display.setBillboard(Display.Billboard.CENTER);
                 display.setBrightness(new Display.Brightness(15, 15));
-                display.setViewRange(visual.viewRange());
+                display.setViewRange(settings.ambientDisplayViewRange(visual));
                 display.setTeleportDuration(INTERPOLATION_TICKS);
                 display.setInterpolationDuration(INTERPOLATION_TICKS);
                 display.setShadowRadius(.12F);

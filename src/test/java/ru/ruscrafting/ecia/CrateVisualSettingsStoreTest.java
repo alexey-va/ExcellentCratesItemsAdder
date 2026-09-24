@@ -64,6 +64,26 @@ class CrateVisualSettingsStoreTest {
     }
 
     @Test
+    void idleVisibilityCapsLegacyOverridesInBlocksWithoutRewritingTheirGeometry() {
+        MemoryConfiguration config = new MemoryConfiguration();
+        CrateVisualSettingsStore store = new CrateVisualSettingsStore(directory, config);
+        var anchor = new CrateVisualSettingsStore.Anchor("survival", 10, 64, -3);
+        store.save(anchor, store.defaults());
+        var reloaded = new CrateVisualSettingsStore(directory, config);
+        var ambient = reloaded.get(anchor).ambient();
+
+        assertEquals(20f, ambient.viewRange());
+        assertEquals(30f, reloaded.ambientDisplayViewRange(ambient) * 64f);
+
+        config.set("case-ambient.max-view-distance-blocks", 12.0);
+        reloaded.reload();
+        assertEquals(12f, reloaded.ambientDisplayViewRange(reloaded.get(anchor).ambient()) * 64f);
+        config.set("case-ambient.max-view-distance-blocks", Double.NaN);
+        reloaded.reload();
+        assertEquals(30f, reloaded.ambientDisplayViewRange(reloaded.get(anchor).ambient()) * 64f);
+    }
+
+    @Test
     void defaultsMatchTheOriginDailyCrateVisuals() {
         var defaults = new CrateVisualSettingsStore(directory, new MemoryConfiguration()).defaults();
 
