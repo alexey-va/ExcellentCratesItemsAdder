@@ -123,6 +123,8 @@ keep their existing behavior. Holding an actual valid key highlights its case.
 
 `PeriodicKeysService` owns the online schedule and daily notification gate;
 `PeriodicKeyIssuer` persists a capacity-checked inventory witness before granting.
+When HuskSync is installed, recovery and grants wait for its native inventory
+unlock; sync completion retries join recovery after the provider has applied data.
 `periodic-keys/` and `periodic-key-notices/` use arc-core's durable record journal.
 One notification per player per local calendar day combines the received daily
 and weekly keys. The notice restores the “Сундуки RusCrafting” heading and omits

@@ -6,7 +6,7 @@ api-version: "1.21"
 description: RusCrafting crate integration with protected anchors, display visuals, and durable delivery recovery.
 authors: [alexey-va]
 depend: [packetevents]
-softdepend: [ExcellentCrates, ItemsAdder, ARC]
+softdepend: [ExcellentCrates, ItemsAdder, ARC, HuskSync]
 commands:
   arc-crate:
     description: Opens the ArcExcellentCrates administrator center.

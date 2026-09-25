@@ -17,6 +17,9 @@ repositories {
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://repo.codemc.io/repository/maven-public/")
     maven("https://repo.nightexpressdev.com/releases/")
+    maven("https://repo.william278.net/releases/") {
+        content { includeGroup("net.william278.husksync") }
+    }
     // ExcellentCrates publishes its 6.6.1 binary through its official
     // Modrinth release, while the source POM's NightExpress coordinate is
     // not present in the public NightExpress Maven repository. Keep the
@@ -46,6 +49,7 @@ dependencies {
     compileOnly("com.github.retrooper:packetevents-spigot:2.12.1")
     compileOnly("su.nightexpress.excellentcrates:ExcellentCrates:6.6.1")
     compileOnly("su.nightexpress.nightcore:main:2.16.4")
+    compileOnly("net.william278.husksync:husksync-bukkit:3.8.7+1.21.8")
 
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")

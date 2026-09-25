@@ -6,6 +6,7 @@ import org.bukkit.command.CommandSender
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
+import org.bukkit.event.EventPriority
 import org.bukkit.event.HandlerList
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerJoinEvent
@@ -80,6 +81,10 @@ class ManagedCratesService(
     private val inFlight = mutableSetOf<UUID>()
     private val playerSessions = mutableMapOf<UUID, Long>()
     private val activePlayers = mutableMapOf<UUID, Player>()
+    private val recoveredPlayers = mutableSetOf<UUID>()
+    private val dataSync = if (plugin.server.pluginManager.isPluginEnabled("HuskSync")) {
+        HuskSyncReadiness(plugin, lifecycleTasks, ::recoverJoinedPlayer)
+    } else null
     private var periodicKeys: PeriodicKeysService? = null
     @Volatile private var storageHealthy = false
     @Volatile private var pendingOpeningCount = 0
@@ -154,6 +159,7 @@ class ManagedCratesService(
                 object : PeriodicKeysService.PlayerAccess {
                     override fun acquire(player: Player): Long? {
                         if (!ready || !storageHealthy || roulette.isRolling(player.uniqueId)
+                            || !playerDataReady(player)
                             || activePlayers[player.uniqueId] !== player || !inFlight.add(player.uniqueId)) return null
                         return session(player.uniqueId)
                     }
@@ -216,6 +222,7 @@ class ManagedCratesService(
 
     private fun open(player: Player, crateId: String, anchor: Location?) {
         if (!ready || !storageHealthy || !player.hasPermission("ecia.use")) return message(player, "managed.unavailable")
+        if (!playerDataReady(player)) return message(player, "managed.busy")
         if (roulette.isRolling(player.uniqueId)) return message(player, "managed.busy")
         val playerId = player.uniqueId
         val connected = activePlayers[playerId]
@@ -319,12 +326,13 @@ class ManagedCratesService(
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.MONITOR)
     fun onJoin(event: PlayerJoinEvent) {
         val player = event.player
         val id = player.uniqueId
         playerSessions[id] = (playerSessions[id] ?: 0L) + 1L
         activePlayers[id] = player
+        recoveredPlayers.remove(id)
         recoverJoinedPlayer(player)
     }
 
@@ -343,8 +351,9 @@ class ManagedCratesService(
     private fun recoverJoinedPlayer(player: Player) {
         val current = engine ?: return
         val id = player.uniqueId
-        if (!player.isOnline || activePlayers[id] !== player) return
+        if (!player.isOnline || activePlayers[id] !== player || !playerDataReady(player) || id in recoveredPlayers) return
         if (!inFlight.add(id)) return
+        recoveredPlayers.add(id)
         val session = session(id)
         current.playerDataLoaded(player, session).thenCompose { current.pending(id) }.also { future ->
             observe(player, session, future) { pending ->
@@ -359,6 +368,7 @@ class ManagedCratesService(
         val id = event.player.uniqueId
         roulette.cancel(id)
         periodicKeys?.playerLeft(event.player)
+        recoveredPlayers.remove(id)
         inventory.playerLeft(id)
         inFlight.remove(id)
         playerSessions[id] = (playerSessions[id] ?: 0L) + 1L
@@ -432,7 +442,9 @@ class ManagedCratesService(
     private fun session(playerId: UUID): Long = playerSessions.getOrPut(playerId) { 1L }
 
     private fun isCurrentSession(player: Player, expected: Long): Boolean =
-        player.isOnline && playerSessions[player.uniqueId] == expected && activePlayers[player.uniqueId] === player
+        player.isOnline && playerSessions[player.uniqueId] == expected && activePlayers[player.uniqueId] === player && playerDataReady(player)
+
+    private fun playerDataReady(player: Player): Boolean = dataSync?.isReady(player) != false
 
     private fun <T> asyncStorage(action: () -> T): CompletableFuture<T> {
         val result = CompletableFuture<T>()
@@ -471,6 +483,7 @@ class ManagedCratesService(
         plugin.clearManagedOpenHandler()
         router?.close()
         periodicKeys?.close()
+        dataSync?.close()
         keyGlow.close()
         keys.close()
         HandlerList.unregisterAll(this)
