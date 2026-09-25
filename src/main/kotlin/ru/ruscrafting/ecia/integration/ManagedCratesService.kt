@@ -310,7 +310,10 @@ class ManagedCratesService(
     private fun show(player: Player, record: OpeningRecord, anchor: Location? = null) {
         when (record.stage()) {
             OpeningRecord.Stage.CHOOSING -> selectAndAnimate(player, record, anchor)
-            OpeningRecord.Stage.MAIL -> { player.closeInventory(); message(player, "managed.inventory-full") }
+            OpeningRecord.Stage.MAIL -> {
+                player.closeInventory()
+                message(player, if (record.preparedReward().isEmpty()) "managed.pending" else "managed.inventory-full")
+            }
             OpeningRecord.Stage.DELIVERED -> player.closeInventory()
             OpeningRecord.Stage.ABORTED -> { player.closeInventory(); message(player, "managed.key-not-consumed") }
             else -> { player.closeInventory(); message(player, "managed.review") }
