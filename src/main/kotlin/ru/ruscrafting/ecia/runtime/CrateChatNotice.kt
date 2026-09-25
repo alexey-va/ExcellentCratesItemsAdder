@@ -21,36 +21,41 @@ internal object CrateChatNotice {
     private val white = TextColor.color(0xFFFFFF)
     private val spacing = PixelSpacing(Key.key("minecraft:default"), SPACING_CODE_POINT)
 
-    fun render(heading: Component, body: Component): Component {
-        val laidOut = DialogTextLayout.layout(normalize(body, white), TextAlignment.LEFT, WRAP_WIDTH)
+    fun render(heading: Component?, body: Component): Component {
+        val normalizedBody = normalize(body).colorIfAbsent(white)
+        val laidOut = DialogTextLayout.layout(normalizedBody, TextAlignment.LEFT, WRAP_WIDTH)
         val bodyComponent = when (laidOut) {
             is TextLayoutResult.Aligned -> laidOut.component
-            is TextLayoutResult.Unsupported -> normalize(body, white)
+            is TextLayoutResult.Unsupported -> normalizedBody
         }
         val lineCount = when (laidOut) {
             is TextLayoutResult.Aligned -> laidOut.lineCount
             is TextLayoutResult.Unsupported -> bodyComponent.plainLineCount()
         }
-        val twoRowBody = if (lineCount < 2) bodyComponent.append(Component.newline()) else bodyComponent
+        // The icon spans three rows. Spend them on the message before adding a heading.
+        val showHeading = heading != null && lineCount < 3
+        var content = if (showHeading) {
+            normalize(requireNotNull(heading)).colorIfAbsent(gold)
+                .append(Component.newline()).append(bodyComponent)
+        } else bodyComponent
+        repeat((3 - lineCount - if (showHeading) 1 else 0).coerceAtLeast(0)) {
+            content = content.append(Component.newline())
+        }
 
         return Component.newline()
             .append(outerPrefix())
             .append(columnIndent())
-            .append(normalize(heading, gold))
-            .append(Component.newline())
-            .append(outerPrefix())
-            .append(columnIndent())
-            .append(indentBodyRows(twoRowBody))
+            .append(indentRows(content))
             .append(Component.newline())
     }
 
-    private fun indentBodyRows(body: Component): Component {
+    private fun indentRows(body: Component): Component {
         var newlineCount = 0
         val replacement = TextReplacementConfig.builder()
             .matchLiteral("\n")
             .replacement { _: TextComponent.Builder ->
                 newlineCount += 1
-                val indent = if (newlineCount == 1) glyphColumn() else columnIndent()
+                val indent = if (newlineCount == 2) glyphColumn() else columnIndent()
                 Component.newline().append(outerPrefix()).append(indent)
             }
             .build()
@@ -69,10 +74,9 @@ internal object CrateChatNotice {
         .decoration(TextDecoration.BOLD, false)
         .append(spacing.padding(4).color(white).decoration(TextDecoration.BOLD, false))
 
-    private fun normalize(component: Component, color: TextColor): Component = component
-        .color(color)
+    private fun normalize(component: Component): Component = component
         .decoration(TextDecoration.BOLD, false)
-        .children(component.children().map { child -> normalize(child, color) })
+        .children(component.children().map(::normalize))
 
     private fun Component.plainLineCount(): Int =
         net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()

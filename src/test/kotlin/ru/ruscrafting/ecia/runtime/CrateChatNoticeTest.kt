@@ -53,9 +53,9 @@ class CrateChatNoticeTest : FunSpec({
                     plain.startsWith("\n\n") shouldBe false
                     plain.endsWith("\n") shouldBe true
                     plain.endsWith("\n\n") shouldBe false
-                    (visibleRows.size >= 3) shouldBe true
+                    visibleRows.size shouldBe 3
                     visibleRows.all { it.startsWith("  ") } shouldBe true
-                    visibleRows[0].contains(if (localeTag.startsWith("ru")) "Сундуки RusCrafting" else "RusCrafting Crates") shouldBe true
+                    if (path == "key.received") plain.contains("RusCrafting") shouldBe false
                     visibleRows[2].contains("\uE531") shouldBe true
                     plain.count { it == '\uE531' } shouldBe 1
                 }
@@ -103,7 +103,7 @@ class CrateChatNoticeTest : FunSpec({
                 mapOf("amount" to "64", "key" to longKey),
             )
             val plain = PlainTextComponentSerializer.plainText().serialize(output)
-            val bodyRows = plain.trim('\n').split('\n').drop(1)
+            val bodyRows = plain.trim('\n').split('\n')
             val recovered = bodyRows.joinToString(" ") { row ->
                 row.removePrefix("  ").filterNot { it == '\uE531' || it.code == 0xF0F01 }
             }.replace(Regex("\\s+"), " ").trim()
@@ -113,6 +113,34 @@ class CrateChatNoticeTest : FunSpec({
             (0..24).forEach { index -> recovered shouldContain "segment_$index" }
             recovered shouldContain "Используйте его у подходящего сундука."
             bodyRows.all { it.startsWith("  ") } shouldBe true
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("daily key receipt keeps three rows and highlights literal values across wrapping") {
+        val root = Files.createTempDirectory("ecia-chat-key-highlight-")
+        try {
+            val locale = EciaLocale(root, emptyMap())
+            val key = "Ключ от кейса «Ежедневный тайник»"
+            val output = locale.renderPadded("key.received", player("ru-RU"),
+                mapOf("amount" to "1", "key" to key))
+            val plain = PlainTextComponentSerializer.plainText().serialize(output)
+            val rows = plain.trim('\n').split('\n')
+
+            rows.size shouldBe 3
+            plain.contains("RusCrafting") shouldBe false
+            rows[2].contains("\uE531") shouldBe true
+            val runs = output.coloredText().toList()
+            val goldText = runs.filter { it.second == TextColor.color(0xFFD66A) }.joinToString("") { it.first }
+            goldText shouldContain "1"
+            goldText shouldContain "Ежедневный тайник"
+            val whiteText = runs.filter { it.second == TextColor.color(0xFFFFFF) }.joinToString("") { it.first }
+            whiteText shouldContain "Вы получили ключ:"
+            whiteText shouldContain "Используйте его у подходящего сундука."
+
+            val custom = CrateChatNotice.render(null, Component.text("Custom accent", TextColor.color(0x70F0A5)))
+            custom.coloredText().single { it.first == "Custom accent" }.second shouldBe TextColor.color(0x70F0A5)
         } finally {
             root.toFile().deleteRecursively()
         }
@@ -178,7 +206,7 @@ private data class FixtureSample(
 )
 
 private fun noticeValues(): Map<String, Map<String, String>> = mapOf(
-    "key.received" to mapOf("amount" to "4", "key" to "Изумрудный ключ"),
+    "key.received" to mapOf("amount" to "1", "key" to "Ключ от кейса «Ежедневный тайник»"),
     "managed.no-key-until-reset" to mapOf("next_reset" to "30.09.2026 00:00 MSK"),
 )
 
@@ -203,6 +231,12 @@ private fun player(localeTag: String): Player {
 private fun Component.descendants(): Sequence<Component> = sequence {
     yield(this@descendants)
     children().forEach { yieldAll(it.descendants()) }
+}
+
+private fun Component.coloredText(inherited: TextColor? = null): Sequence<Pair<String, TextColor?>> = sequence {
+    val effective = color() ?: inherited
+    if (this@coloredText is TextComponent) yield(content() to effective)
+    children().forEach { yieldAll(it.coloredText(effective)) }
 }
 
 private fun Map<String, String>.toJsonObject(): String = entries.joinToString(

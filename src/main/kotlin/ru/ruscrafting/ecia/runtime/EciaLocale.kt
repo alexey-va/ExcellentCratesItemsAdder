@@ -1,6 +1,7 @@
 package ru.ruscrafting.ecia.runtime
 
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.TextColor
 import org.bukkit.command.CommandSender
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
@@ -31,13 +32,13 @@ class EciaLocale(
     }
 
     fun render(path: String, sender: CommandSender?, values: Map<String, String>): Component =
-        renderer.render(path, localeTag(sender), values.mapValues { renderer.literal(it.value) })
+        renderer.render(path, localeTag(sender), literalValues(values))
 
     /** Chat presentation shared by player and administrator messages. */
     fun renderPadded(path: String, sender: CommandSender?, values: Map<String, String>): Component {
         if (sender is Player && path in PLAYER_NOTICE_KEYS) {
             return CrateChatNotice.render(
-                heading = render(NOTICE_HEADING, sender, emptyMap()),
+                heading = if (path == "key.received") null else render(NOTICE_HEADING, sender, emptyMap()),
                 body = render(path, sender, values),
             )
         }
@@ -58,7 +59,13 @@ class EciaLocale(
 
     /** Explicit locale-tag entry point for non-Bukkit callers and tests. */
     fun renderWithLocale(path: String, localeTag: String, values: Map<String, String>): Component =
-        renderer.render(path, localeTag, values.mapValues { renderer.literal(it.value) })
+        renderer.render(path, localeTag, literalValues(values))
+
+    private fun literalValues(values: Map<String, String>): Map<String, Component> =
+        values.mapValues { (key, value) ->
+            val literal = renderer.literal(value)
+            if (key in HIGHLIGHTED_VALUES) literal.color(TextColor.color(0xFFD66A)) else literal
+        }
 
     fun render(path: String): Component = render(path, null, emptyMap())
 
@@ -181,6 +188,7 @@ class EciaLocale(
     companion object {
         private const val CHAT_INDENT = "   "
         private const val NOTICE_HEADING = "notice.heading"
+        private val HIGHLIGHTED_VALUES = setOf("crate", "key", "amount", "next_reset")
         private const val OLD_PROTECTED_DEFAULT = "<red>Этот кейс защищён."
         private const val NEW_PROTECTED_DEFAULT = "<red>Этот сундук защищён."
         private val HTML_ENTITY = Regex("&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]+);", RegexOption.IGNORE_CASE)
