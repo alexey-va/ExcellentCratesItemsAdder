@@ -38,6 +38,20 @@ each case and its native rewards. `menus.yml` contains six-row history and
 pool screens. Names and presentation are configurable;
 model 11001 is rejected in every menu template. Russian and English chat text
 is in `lang/`; existing protection messages in `config.yml` remain authoritative.
+The thirteen ordinary player chat notices share `notice.heading` and a white
+body. `CrateChatNotice` wraps resolved literal values, places the text column
+35 logical pixels from the left edge (8 outer + 27 icon column), and sends the
+whole framed notice as one component. The key is `arc:crate_key_large`, U+E531:
+54×54 native pixels, provider height 27 / ascent 26 / advance 23. Install and
+publish that ItemsAdder glyph before activating this version. Compact protection
+actionbars and administrator messages keep their existing presentation.
+
+`CrateChatNoticeTest` exports actual rendered components to
+`build/reports/crate-chat-notices.json`. `scripts/preview-crate-chat.py` renders
+those fixtures through the ops workspace's shared Minecraft renderer, using
+an official 1.21.11 client JAR, the current server pack and matching Faithful32.
+It records input hashes and checks every rendered line against chat width.
+These images are offline previews; native-client acceptance is a separate check.
 Newly issued physical keys use the configured ExcellentCrates key name while
 preserving their native key identity and ItemsAdder model metadata. Existing
 keys already held by players are not rewritten.

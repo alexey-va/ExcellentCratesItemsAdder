@@ -1,5 +1,6 @@
 package ru.ruscrafting.ecia
 
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
 import org.bukkit.command.TabExecutor
@@ -84,11 +85,14 @@ internal class NetworkKeyReceiver(private val plugin: ArcExcellentCratesPlugin) 
             return LocalKeyDeliveryResult.PLAYER_NOT_HERE
         }
         return runCatching {
+            val keyName = item.itemMeta?.displayName()
+                ?.let { PlainTextComponentSerializer.plainText().serialize(it) }
+                ?.takeIf(String::isNotBlank) ?: keyId
             val leftovers = player.inventory.addItem(item)
             leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
             remember(requestId)
             message(player, "key.received", mapOf(
-                "key" to keyId,
+                "key" to keyName,
                 "amount" to amount.toString(),
             ))
             plugin.runtime().info(

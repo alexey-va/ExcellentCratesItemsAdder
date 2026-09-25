@@ -7,7 +7,7 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import java.nio.file.Files
 
 class EciaLocaleTest : FunSpec({
-    test("merges bundled locales and keeps legacy Russian overrides") {
+    test("merges bundled locales and migrates only the exact legacy protected default") {
         val root = Files.createTempDirectory("ecia-locale-")
         try {
             val locale = EciaLocale(root, mapOf("protected" to "<gold>Operator override"))
@@ -18,6 +18,13 @@ class EciaLocaleTest : FunSpec({
                 "Operator override"
             PlainTextComponentSerializer.plainText().serialize(locale.render("protected", null, emptyMap())) shouldBe
                 "Operator override"
+
+            locale.reload(mapOf("protected" to "<red>Этот кейс защищён."))
+            PlainTextComponentSerializer.plainText().serialize(locale.render("protected")) shouldBe
+                "Этот сундук защищён."
+            locale.reload(mapOf("protected" to "<gold>Custom protected message"))
+            PlainTextComponentSerializer.plainText().serialize(locale.render("protected")) shouldBe
+                "Custom protected message"
         } finally {
             root.toFile().deleteRecursively()
         }
@@ -45,13 +52,13 @@ class EciaLocaleTest : FunSpec({
             val locale = EciaLocale(root, emptyMap())
             PlainTextComponentSerializer.plainText().serialize(
                 locale.renderPadded("no-permission", null, emptyMap()),
-            ) shouldBe "\n   Недостаточно прав.\n"
+            ) shouldBe "\n   Для этого действия нужно дополнительное разрешение.\nВы можете открыть доступные сундуки.\n"
             PlainTextComponentSerializer.plainText().serialize(
                 locale.renderBlock(null, listOf(
                     "no-permission" to emptyMap(),
                     "placement.no-target" to emptyMap(),
                 )),
-            ) shouldBe "\n   Недостаточно прав.\n   Посмотрите на грань блока, рядом с которой нужно поставить кейс.\n"
+            ) shouldBe "\n   Для этого действия нужно дополнительное разрешение.\nВы можете открыть доступные сундуки.\n   Посмотрите на грань блока, рядом с которой нужно поставить кейс.\n"
         } finally {
             root.toFile().deleteRecursively()
         }
@@ -65,14 +72,14 @@ class EciaLocaleTest : FunSpec({
             val english = PlainTextComponentSerializer.plainText().serialize(
                 locale.renderWithLocale("managed.no-key-until-reset", "en-US", mapOf("next_reset" to reset)),
             )
-            english shouldBe "Your free opening has been used. Next available: $reset."
+            english shouldBe "You have used this free opening.\nThe next one is available at:\n$reset"
             english.contains("<reset>") shouldBe false
             english.contains("<next_reset>") shouldBe false
 
             val russian = PlainTextComponentSerializer.plainText().serialize(
                 locale.renderWithLocale("managed.no-key-until-reset", "ru-RU", mapOf("next_reset" to reset)),
             )
-            russian shouldBe "Бесплатная попытка уже использована. Следующая доступна: $reset."
+            russian shouldBe "Бесплатная попытка уже использована.\nСледующая попытка будет доступна:\n$reset"
             russian.contains("<reset>") shouldBe false
             russian.contains("<next_reset>") shouldBe false
         } finally {
@@ -87,7 +94,7 @@ class EciaLocaleTest : FunSpec({
             Files.writeString(root.resolve("lang/ru.yml"), "protected: '<red>/ecia edit on'\n")
             val locale = EciaLocale(root, emptyMap())
             PlainTextComponentSerializer.plainText().serialize(locale.render("protected")) shouldBe
-                "Этот кейс защищён."
+                "Этот сундук защищён."
             Files.readString(root.resolve("lang/ru.yml")).contains("/ecia") shouldBe false
         } finally {
             root.toFile().deleteRecursively()
@@ -128,6 +135,22 @@ class EciaLocaleTest : FunSpec({
             )
 
             shouldThrow<IllegalArgumentException> { EciaLocale(root, emptyMap()) }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("keeps console padding on administrator output") {
+        val root = Files.createTempDirectory("ecia-locale-admin-padding-")
+        try {
+            val locale = EciaLocale(root, emptyMap())
+            val rendered = PlainTextComponentSerializer.plainText().serialize(
+                locale.renderPadded("command.usage", null, emptyMap()),
+            )
+
+            rendered shouldBe "\n   Использование: /arc-crate, /arc-crate place или /arc-crate key игрок ключ [количество] [сервер].\n"
+            rendered.contains("Сундуки RusCrafting") shouldBe false
+            rendered.contains("\uE531") shouldBe false
         } finally {
             root.toFile().deleteRecursively()
         }

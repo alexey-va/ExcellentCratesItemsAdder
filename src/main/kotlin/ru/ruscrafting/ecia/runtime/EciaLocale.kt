@@ -20,7 +20,7 @@ class EciaLocale(
     private val dataRoot: Path,
     legacyMessages: Map<String, String>,
 ) {
-    private var legacyMessages = legacyMessages.toMap()
+    private var legacyMessages = migrateKnownLegacyDefaults(legacyMessages)
     @Volatile
     private var renderer: LocalizedMiniMessage
 
@@ -34,11 +34,18 @@ class EciaLocale(
         renderer.render(path, localeTag(sender), values.mapValues { renderer.literal(it.value) })
 
     /** Chat presentation shared by player and administrator messages. */
-    fun renderPadded(path: String, sender: CommandSender?, values: Map<String, String>): Component =
-        Component.newline()
+    fun renderPadded(path: String, sender: CommandSender?, values: Map<String, String>): Component {
+        if (sender is Player && path in PLAYER_NOTICE_KEYS) {
+            return CrateChatNotice.render(
+                heading = render(NOTICE_HEADING, sender, emptyMap()),
+                body = render(path, sender, values),
+            )
+        }
+        return Component.newline()
             .append(Component.text(CHAT_INDENT))
             .append(render(path, sender, values))
             .append(Component.newline())
+    }
 
     /** One padded chat block without blank gaps between its rows. */
     fun renderBlock(sender: CommandSender?, lines: List<Pair<String, Map<String, String>>>): Component =
@@ -61,9 +68,10 @@ class EciaLocale(
     @Synchronized
     fun reload(legacyMessages: Map<String, String>) {
         synchronizeFiles()
-        val candidate = prepare(legacyMessages)
+        val migratedLegacyMessages = migrateKnownLegacyDefaults(legacyMessages)
+        val candidate = prepare(migratedLegacyMessages)
         candidate.validate(LocaleRequirements(REQUIRED_KEYS, emptySet()))
-        this.legacyMessages = legacyMessages.toMap()
+        this.legacyMessages = migratedLegacyMessages
         renderer = candidate
     }
 
@@ -85,8 +93,14 @@ class EciaLocale(
     private fun synchronizeFiles() {
         val russian = Config(dataRoot, "lang/ru.yml")
         russian.mergeMissingFromBundled("lang/ru.yml")
+        migrateDefaultValue(
+            russian,
+            "protected",
+            OLD_PROTECTED_DEFAULT,
+            NEW_PROTECTED_DEFAULT,
+        )
         migrateRemovedCommand(russian, mapOf(
-            "protected" to "<red>Этот кейс защищён.",
+            "protected" to NEW_PROTECTED_DEFAULT,
             "managed.native-command" to "<#ffd567>Откройте кейс ключом на его пьедестале.\n   <#fff2df>Призы и ключи учитывает аддон.",
             "managed.pending" to "<#ffd567>Есть незавершённое открытие.\n   <#fff2df>Нажмите ПКМ по кейсу, чтобы продолжить.",
             "managed.operation-refused" to "<#ffcc80>Действие не завершено.\n   <#fff2df>Нажмите ПКМ по кейсу, чтобы продолжить.",
@@ -120,6 +134,13 @@ class EciaLocale(
             }
         }
         if (changed) config.save()
+    }
+
+    private fun migrateDefaultValue(config: Config, path: String, previous: String, replacement: String) {
+        if (config.string(path) == previous) {
+            config.setString(path, replacement)
+            config.save()
+        }
     }
 
     private fun migrateBrokenUsage(config: Config, replacement: String) {
@@ -159,13 +180,31 @@ class EciaLocale(
 
     companion object {
         private const val CHAT_INDENT = "   "
+        private const val NOTICE_HEADING = "notice.heading"
+        private const val OLD_PROTECTED_DEFAULT = "<red>Этот кейс защищён."
+        private const val NEW_PROTECTED_DEFAULT = "<red>Этот сундук защищён."
         private val HTML_ENTITY = Regex("&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]+);", RegexOption.IGNORE_CASE)
+        private val PLAYER_NOTICE_KEYS = setOf(
+            "no-permission",
+            "key.received",
+            "managed.unavailable",
+            "managed.busy",
+            "managed.vetoed",
+            "managed.no-key",
+            "managed.no-key-until-reset",
+            "managed.native-command",
+            "managed.key-not-consumed",
+            "managed.review",
+            "managed.pending",
+            "managed.operation-refused",
+            "managed.inventory-full",
+        )
 
         /** Keys used by the currently shipped protection and administration flow. */
         @JvmField
-        val REQUIRED_KEYS: Set<String> = setOf(
+        val REQUIRED_KEYS: Set<String> = PLAYER_NOTICE_KEYS + setOf(
+            NOTICE_HEADING,
             "protected",
-            "no-permission",
             "command.player-only",
             "command.source-only",
             "command.usage",
@@ -179,7 +218,6 @@ class EciaLocale(
             "key.unknown",
             "key.dispatch-failed",
             "key.sent",
-            "key.received",
             "placement.no-target",
             "placement.occupied",
             "placement.unavailable",
@@ -187,5 +225,10 @@ class EciaLocale(
             "placement.failed",
             "placement.placed",
         )
+
+        private fun migrateKnownLegacyDefaults(messages: Map<String, String>): Map<String, String> =
+            messages.mapValues { (path, value) ->
+                if (path == "protected" && value == OLD_PROTECTED_DEFAULT) NEW_PROTECTED_DEFAULT else value
+            }
     }
 }
