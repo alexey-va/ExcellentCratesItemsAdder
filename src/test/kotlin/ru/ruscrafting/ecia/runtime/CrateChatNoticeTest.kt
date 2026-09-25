@@ -59,6 +59,9 @@ class CrateChatNoticeTest : FunSpec({
                     plain.endsWith("\n") shouldBe true
                     plain.endsWith("\n\n") shouldBe false
                     visibleRows.size shouldBe 3
+                    visibleRows.all { row -> row.codePoints().anyMatch {
+                        it != 0xE531 && it !in 0xF0F01..0xF0F0A && !Character.isWhitespace(it)
+                    } } shouldBe true
                     visibleRows.all { !it.startsWith(" ") } shouldBe true
                     if (path in setOf("key.received", "key.periodic-received-one", "key.periodic-received-both")) {
                         val expectedHeading = if (localeTag == "ru-RU") "Сундуки RusCrafting" else "RusCrafting Crates"
@@ -66,6 +69,29 @@ class CrateChatNoticeTest : FunSpec({
                     }
                     visibleRows[2].contains("\uE531") shouldBe true
                     plain.count { it == '\uE531' } shouldBe 1
+                }
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("short key and crate names occupy their own third text row") {
+        val root = Files.createTempDirectory("ecia-chat-short-receipts-")
+        try {
+            val locale = EciaLocale(root, emptyMap())
+            listOf("ru-RU" to "Ключ", "en-US" to "Key").forEach { (tag, name) ->
+                listOf("key.received", "key.periodic-received-one").forEach { key ->
+                    val output = locale.renderPadded(key, player(tag),
+                        mapOf("amount" to "1", "key" to name, "crate" to name))
+                    val rows = PlainTextComponentSerializer.plainText().serialize(output)
+                        .trim('\n').split('\n').map { row ->
+                            val points = row.codePoints().filter { it != 0xE531 && it !in 0xF0F01..0xF0F0A }.toArray()
+                            String(points, 0, points.size)
+                        }
+                    rows.size shouldBe 3
+                    rows.all { it.isNotBlank() } shouldBe true
+                    rows[2] shouldBe "$name."
                 }
             }
         } finally {
@@ -93,7 +119,7 @@ class CrateChatNoticeTest : FunSpec({
             val fullColumn = plain.serialize(spacing.padding(26))
             val glyphColumn = "\uE531" + plain.serialize(spacing.padding(3))
             plain.serialize(output).trim('\n').split('\n').forEachIndexed { index, row ->
-                row.startsWith(plain.serialize(spacing.padding(2)) + if (index == 2) glyphColumn else fullColumn) shouldBe true
+                row.startsWith(if (index == 2) glyphColumn else fullColumn) shouldBe true
             }
         } finally {
             root.toFile().deleteRecursively()

@@ -87,7 +87,7 @@ class EciaLocaleTest : FunSpec({
             val plain = PlainTextComponentSerializer.plainText()
             val gold = TextColor.color(0xFFD66A)
 
-            plain.serialize(one) shouldBe "Получен ключ: Ежедневный тайник."
+            plain.serialize(one) shouldBe "Получен ключ:\nЕжедневный тайник."
             plain.serialize(both) shouldBe "Получены ключи: Ежедневный тайник\nНедельная реликвия"
             plain.serialize(owner) shouldBe "Владелец: Alex"
             plain.serialize(expiry) shouldBe "Действует до полуночи понедельника"
@@ -272,22 +272,64 @@ class EciaLocaleTest : FunSpec({
             val values = mapOf("amount" to "1", "key" to "Daily Cache")
 
             plain.serialize(locale.renderWithLocale("key.received", "ru-RU", values)) shouldBe
-                "Вы получили ключ: 1 × Daily Cache."
+                "Вы получили ключ: 1 ×\nDaily Cache."
             plain.serialize(locale.renderWithLocale("key.received", "en-US", values)) shouldBe
-                "You received a key: 1 × Daily Cache."
-            Files.readString(root.resolve("lang/ru.yml")) shouldContain "Вы получили ключ: <amount> × <key>."
+                "You received a key: 1 ×\nDaily Cache."
+            Files.readString(root.resolve("lang/ru.yml")) shouldContain "Вы получили ключ: <amount> ×<newline><key>."
             Files.readString(root.resolve("lang/ru.yml")).contains("Используйте его у подходящего сундука.") shouldBe false
-            Files.readString(root.resolve("lang/en.yml")) shouldContain "You received a key: <amount> × <key>."
+            Files.readString(root.resolve("lang/en.yml")) shouldContain "You received a key: <amount> ×<newline><key>."
             Files.readString(root.resolve("lang/en.yml")).contains("Use it at the matching crate.") shouldBe false
 
             locale.reload(mapOf(
                 "key.received" to "Вы получили ключ: <amount> × <key>.\nИспользуйте его у подходящего сундука.",
             ))
             plain.serialize(locale.renderWithLocale("key.received", "ru-RU", values)) shouldBe
-                "Вы получили ключ: 1 × Daily Cache."
+                "Вы получили ключ: 1 ×\nDaily Cache."
             locale.reload(mapOf("key.received" to "Custom key receipt: <key>"))
             plain.serialize(locale.renderWithLocale("key.received", "ru-RU", values)) shouldBe
                 "Custom key receipt: Daily Cache"
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("migrates inline receipt defaults while preserving custom receipt text") {
+        val root = Files.createTempDirectory("ecia-locale-inline-receipt-migration-")
+        try {
+            Files.createDirectories(root.resolve("lang"))
+            Files.writeString(root.resolve("lang/ru.yml"), """
+                key:
+                  received: "Вы получили ключ: <amount> × <key>."
+                  periodic-received-one: "Получен ключ: <crate>."
+            """.trimIndent())
+            Files.writeString(root.resolve("lang/en.yml"), """
+                key:
+                  received: "You received a key: <amount> × <key>."
+                  periodic-received-one: "Key received: <crate>."
+            """.trimIndent())
+            val locale = EciaLocale(root, emptyMap())
+            val plain = PlainTextComponentSerializer.plainText()
+            val values = mapOf("amount" to "1", "key" to "Key", "crate" to "Cache")
+            listOf("ru-RU", "en-US").forEach { tag ->
+                listOf("key.received", "key.periodic-received-one").forEach { key ->
+                    plain.serialize(locale.renderWithLocale(key, tag, values)).split('\n').size shouldBe 2
+                }
+            }
+            Files.readString(root.resolve("lang/ru.yml")) shouldContain "Получен ключ:<newline><crate>."
+            Files.readString(root.resolve("lang/en.yml")) shouldContain "Key received:<newline><crate>."
+            locale.reload(mapOf(
+                "key.received" to "Вы получили ключ: <amount> × <key>.",
+                "key.periodic-received-one" to "Получен ключ: <crate>.",
+            ))
+            plain.serialize(locale.renderWithLocale("key.received", "ru-RU", values)) shouldBe
+                "Вы получили ключ: 1 ×\nKey."
+            plain.serialize(locale.renderWithLocale("key.periodic-received-one", "ru-RU", values)) shouldBe
+                "Получен ключ:\nCache."
+
+            Files.writeString(root.resolve("lang/ru.yml"), "key:\n  periodic-received-one: 'Ваш ключ: <crate>'\n")
+            val custom = EciaLocale(root, emptyMap())
+            plain.serialize(custom.renderWithLocale("key.periodic-received-one", "ru-RU", values)) shouldBe
+                "Ваш ключ: Cache"
         } finally {
             root.toFile().deleteRecursively()
         }

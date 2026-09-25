@@ -44,11 +44,14 @@ values keep every word. The large key remains anchored to the third row.
 Self-grants omit the separate request-sent chat confirmation in both commands
 and dialogs; the recipient still receives the actual key-delivery notice.
 `CrateChatNotice` wraps resolved literal values, places the text column
-28 logical pixels from the left edge (2 outer + 23 icon + 3 gap), and sends the
+26 logical pixels from the left edge (23 icon + 3 gap, no outer inset), and sends the
 whole framed notice as one component. The key is `arc:crate_key_large`, U+E531:
 54×54 native pixels, provider height 27 / ascent 26 / advance 23. Install and
 publish that ItemsAdder glyph before activating this version. Compact protection
-actionbars keep their existing presentation. Other player chat also uses the 2px inset; console output retains ordinary spaces.
+actionbars keep their existing presentation. Player chat has no added outer inset;
+console output retains ordinary spaces. Key receipts put the key or crate name
+on its own body row, giving the large glyph three meaningful text rows even
+for short names. Known prior defaults migrate automatically; custom copy is preserved.
 
 `CrateChatNoticeTest` exports actual rendered components to
 `build/reports/crate-chat-notices.json`. `scripts/preview-crate-chat.py` renders

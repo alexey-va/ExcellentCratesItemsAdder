@@ -14,7 +14,7 @@ import ru.arc.text.TextLayoutResult
 /** Three-row, player-only chat notice composition for managed crate feedback. */
 internal object CrateChatNotice {
     private const val WRAP_WIDTH = 253
-    private const val OUTER_INSET = 2
+    private const val OUTER_INSET = 0
     private const val SPACING_CODE_POINT = 0xF0F01
     private const val KEY_GLYPH = "\uE531"
     private val gold = TextColor.color(0xFFD66A)
