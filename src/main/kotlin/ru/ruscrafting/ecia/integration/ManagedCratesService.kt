@@ -58,6 +58,9 @@ class ManagedCratesService(
     private val keys = NativeSeasonKeys()
     private val keyGlow = KeyCrateGlowService(plugin, keys, furniture)
     private val rewards = CatalogRewardBridge(payload)
+    private val rewardPools = NativeRewardPools(keys, rewards, payload) { issue ->
+        runtime.error("Managed reward excluded: {}", issue)
+    }
     private val lifecycleTasks = runtime.tasks()
     private val lifecycleToken = lifecycleTasks.token()
     private val storageExecutor = Executor { command ->
@@ -124,9 +127,7 @@ class ManagedCratesService(
         val candidate = runCatching {
             val nextSettings = readSettings()
             val menuConfiguration = EciaMenuConfiguration.load(root)
-            val nextPools = if (nextSettings.enabled) NativeRewardPools(keys, rewards, payload) { issue ->
-                runtime.error("Managed reward excluded: {}", issue)
-            }.install(nextSettings) else emptyMap()
+            val nextPools = if (nextSettings.enabled) rewardPools.install(nextSettings) else emptyMap()
             Configuration(nextSettings, menuConfiguration, nextPools)
         }.onFailure { failure ->
             runtime.error("Managed crate configuration rejected: {}", failure.toString())
@@ -240,7 +241,23 @@ class ManagedCratesService(
             inFlight.remove(player.uniqueId)
             return message(player, "managed.busy")
         }
-        val pool = pools[crateId]
+        val caseRules = settings.cases[crateId]
+        val period = caseRules?.freeOpenPeriod() ?: PeriodicVirtualOpening.Period.NONE
+        val zone = settings.freeOpeningZone()
+        val now = Instant.now()
+        if (PeriodicPhysicalKey.expiredFor(player.inventory.itemInMainHand, playerId, crateId, period, now)) {
+            // A pending inventory receipt must be settled before changing its preimage.
+            observe(player, session, checkNotNull(engine).pending(playerId)) { pending ->
+                if (pending.isPresent) {
+                    if (pending.get().stage() == OpeningRecord.Stage.MAIL) finishSelection(player, pending.get())
+                    else show(player, pending.get(), anchor)
+                } else if (PeriodicPhysicalKey.discardExpiredHeldKey(player, crateId, period, Instant.now())) {
+                    message(player, "key.periodic-expired")
+                }
+            }
+            return
+        }
+        val pool = currentPool(crateId)
         if (pool == null) {
             inFlight.remove(player.uniqueId)
             return message(player, "managed.unavailable")
@@ -251,11 +268,8 @@ class ManagedCratesService(
         }
         val cost = keys.cost(crate)
         val current = checkNotNull(engine)
-        val caseRules = settings.cases[crateId]
-        val period = caseRules?.freeOpenPeriod() ?: PeriodicVirtualOpening.Period.NONE
-        val zone = settings.freeOpeningZone()
         val window = if (period == PeriodicVirtualOpening.Period.NONE) null
-            else PeriodicVirtualOpening.window(period, Instant.now(), zone)
+            else PeriodicVirtualOpening.window(period, now, zone)
         val physicalAttempt: () -> CompletableFuture<OpeningRecord?> = {
             current.openPhysical(player, session, pool, keys.matches(cost.keyId()), cost.amount())
                 .thenApply { opening -> opening.orElse(null) }
@@ -286,9 +300,12 @@ class ManagedCratesService(
         if (!ready) return message(player, "managed.unavailable")
         val crate = CratesAPI.getCrateManager().getCrateById(crateId) ?: return message(player, "managed.unavailable")
         if (!crate.hasPermission(player)) return message(player, "no-permission")
-        val pool = pools[crateId] ?: return message(player, "managed.unavailable")
+        val pool = currentPool(crateId) ?: return message(player, "managed.unavailable")
         checkNotNull(screens).openPoolPreview(checkNotNull(runtime.menuOrNull()).runtime(), player, pool, EciaMenuActions())
     }
+
+    private fun currentPool(crateId: String): PoolSnapshot? =
+        settings.cases[crateId]?.let(rewardPools::loadCurrent)
 
     private fun show(player: Player, record: OpeningRecord, anchor: Location? = null) {
         when (record.stage()) {

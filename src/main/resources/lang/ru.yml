@@ -19,6 +19,8 @@ key:
   dispatch-failed: "<#ffb56b>ARC не смог отправить заявку. Ничего не выдано."
   sent: "<#a6efcf>Заявка отправлена: <white><amount> × <key></white> для <white><player></white> на <white><server></white>."
   received: "Вы получили ключ: <amount> ×<newline><key>."
+  received-name: "<white>Ключ от кейса «<crate>»</white>"
+  periodic-expired: "Ключ просрочен и удалён.<newline>Сундук остался закрыт."
   periodic-received-one: "Получен ключ:<newline><crate>."
   periodic-received-both: "Получены ключи: <daily>\n<weekly>"
   periodic-owner: "Владелец: <owner>"

@@ -13,7 +13,8 @@ import java.util.Objects;
 
 /** Typed ARC provider integration; a handled console command is never a receipt. */
 public final class CatalogRewardBridge {
-    public enum Provider { FROZEN_ITEMS, ARC_VOUCHER }
+    // The two legacy providers remain readable for openings already in the journal.
+    public enum Provider { FROZEN_ITEMS, ARC_VOUCHER, ARC_CURRENT, NATIVE_ITEMS }
     public record Recipe(int schema, Provider provider, String categoryId, String entryId,
             String providerFingerprint, String sourceKey, List<String> nativeItems, String sourceFingerprint) {
         public Recipe {
@@ -25,8 +26,9 @@ public final class CatalogRewardBridge {
             Objects.requireNonNull(sourceKey);
             Objects.requireNonNull(sourceFingerprint);
             nativeItems = List.copyOf(nativeItems);
-            if (provider == Provider.FROZEN_ITEMS && nativeItems.isEmpty()
-                    || provider == Provider.ARC_VOUCHER && (sourceKey.isBlank() || providerFingerprint.isBlank())) {
+            if ((provider == Provider.FROZEN_ITEMS || provider == Provider.NATIVE_ITEMS) && nativeItems.isEmpty()
+                    || provider == Provider.ARC_VOUCHER && (sourceKey.isBlank() || providerFingerprint.isBlank())
+                    || provider == Provider.ARC_CURRENT && (categoryId.isBlank() || entryId.isBlank())) {
                 throw new IllegalArgumentException("Incomplete reward recipe");
             }
         }
@@ -36,24 +38,15 @@ public final class CatalogRewardBridge {
 
     public CatalogRewardBridge(NativeItemPayload payload) { this.payload = payload; }
 
-    public String freeze(String category, String entry, String sourceFingerprint) {
-        ArcItemMaterializer provider = provider();
-        if (provider == null || !provider.capability().getAvailable()) throw new IllegalStateException("ARC reward provider is unavailable");
-        var reference = provider.prepare(new ArcItemMaterializationRequest(category, entry));
-        if (reference instanceof ArcItemMaterializationReference.FrozenItems frozen) {
-            return payload.write(new Recipe(1, Provider.FROZEN_ITEMS, category, entry,
-                    frozen.getProviderFingerprint(), "", payload.capture(frozen.getTemplates().toArray(ItemStack[]::new)), sourceFingerprint));
-        }
-        if (reference instanceof ArcItemMaterializationReference.FreshVoucher voucher) {
-            return payload.write(new Recipe(1, Provider.ARC_VOUCHER, category, entry,
-                    voucher.getProviderFingerprint(), voucher.getSourceKey(), List.of(), sourceFingerprint));
-        }
-        throw new IllegalStateException("ARC cannot freeze case reward " + category + "/" + entry);
+    /** Records the catalog identity without creating items or archiving the catalog at startup. */
+    public String catalogReward(String category, String entry, String sourceFingerprint) {
+        return payload.write(new Recipe(1, Provider.ARC_CURRENT, category, entry,
+                "", "", List.of(), sourceFingerprint));
     }
 
-    public String freezeNative(ItemStack item, String sourceFingerprint) {
-        if (item == null || item.isEmpty()) throw new IllegalArgumentException("Cannot freeze empty native reward");
-        return payload.write(new Recipe(1, Provider.FROZEN_ITEMS, "", "", "", "",
+    public String nativeReward(ItemStack item, String sourceFingerprint) {
+        if (item == null || item.isEmpty()) throw new IllegalArgumentException("Empty native reward");
+        return payload.write(new Recipe(1, Provider.NATIVE_ITEMS, "", "", "", "",
                 payload.capture(new ItemStack[]{item}), sourceFingerprint));
     }
 
@@ -63,12 +56,22 @@ public final class CatalogRewardBridge {
 
     public ItemStack[] materialize(RewardDefinition reward) {
         Recipe recipe = payload.read(reward.deliveryPayload(), Recipe.class);
-        if (recipe.provider() == Provider.FROZEN_ITEMS) return payload.restore(recipe.nativeItems());
+        if (recipe.provider() == Provider.FROZEN_ITEMS || recipe.provider() == Provider.NATIVE_ITEMS) {
+            return payload.restore(recipe.nativeItems());
+        }
         ArcItemMaterializer provider = provider();
         if (provider == null) return null;
         var request = new ArcItemMaterializationRequest(recipe.categoryId(), recipe.entryId());
-        var items = provider.materialize(new ArcItemMaterializationReference.FreshVoucher(
-                request, recipe.providerFingerprint(), recipe.sourceKey()));
+        ArcItemMaterializationReference reference;
+        if (recipe.provider() == Provider.ARC_CURRENT) {
+            if (!provider.capability().getAvailable()) return null;
+            reference = provider.prepare(request);
+            if (reference == null) return null;
+        } else {
+            reference = new ArcItemMaterializationReference.FreshVoucher(
+                    request, recipe.providerFingerprint(), recipe.sourceKey());
+        }
+        var items = provider.materialize(reference);
         return items == null ? null : items.toArray(ItemStack[]::new);
     }
 

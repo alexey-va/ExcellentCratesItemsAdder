@@ -1,6 +1,7 @@
 package ru.ruscrafting.ecia.integration;
 
 import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -134,6 +135,35 @@ public final class PeriodicPhysicalKey {
         return identity.start().equals(current.start())
                 && identity.expiry().equals(current.nextReset())
                 && identity.id().equals(PeriodicVirtualOpening.openingId(playerId, crateId, period, current));
+    }
+
+    /**
+     * Whether this is a well-formed expired key belonging to this player and
+     * the exact case/cadence. Other owners' or cases' keys must not be reclaimed.
+     */
+    public static boolean expiredFor(ItemStack item, UUID playerId, String crateId,
+            PeriodicVirtualOpening.Period period, Instant now) {
+        if (playerId == null || crateId == null || period == null
+                || period == PeriodicVirtualOpening.Period.NONE || now == null) return false;
+        Identity identity = identify(item).orElse(null);
+        return identity != null
+                && identity.playerId().equals(playerId)
+                && identity.crateId().equals(crateId)
+                && identity.period() == period
+                && !now.isBefore(identity.expiry());
+    }
+
+    /**
+     * Remove an expired matching key held in the main hand. Call on the Paper
+     * thread when routing the crate interaction; no opening or reward is issued.
+     */
+    public static boolean discardExpiredHeldKey(Player player, String crateId,
+            PeriodicVirtualOpening.Period period, Instant now) {
+        if (player == null) return false;
+        ItemStack held = player.getInventory().getItemInMainHand();
+        if (!expiredFor(held, player.getUniqueId(), crateId, period, now)) return false;
+        player.getInventory().setItemInMainHand(null);
+        return true;
     }
 
     private static NamespacedKey key(String value) {

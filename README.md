@@ -38,7 +38,7 @@ each case and its native rewards. `menus.yml` contains six-row history and
 pool screens. Names and presentation are configurable;
 model 11001 is rejected in every menu template. Russian and English chat text
 is in `lang/`; existing protection messages in `config.yml` remain authoritative.
-The fifteen ordinary player chat notices use a white body with gold crate/key
+The sixteen ordinary player chat notices use a white body with gold crate/key
 names, amounts and reset dates. Notices keep `notice.heading` when the wrapped body leaves room within three rows. Longer custom
 values keep every word. The large key remains anchored to the third row.
 Self-grants omit the separate request-sent chat confirmation in both commands
@@ -52,6 +52,8 @@ actionbars keep their existing presentation. Player chat has no added outer inse
 console output retains ordinary spaces. Key receipts put the key or crate name
 on its own body row, giving the large glyph three meaningful text rows even
 for short names. Known prior defaults migrate automatically; custom copy is preserved.
+The descriptive `Ключ от кейса` label stays white while the actual crate name
+is gold; known physical-key name formats are composed from literal components.
 
 `CrateChatNoticeTest` exports actual rendered components to
 `build/reports/crate-chat-notices.json`. `scripts/preview-crate-chat.py` renders
@@ -61,10 +63,17 @@ It records input hashes and checks every rendered line against chat width.
 These images are offline previews; native-client acceptance is a separate check.
 Newly issued physical keys use the configured ExcellentCrates key name while
 preserving their native key identity and ItemsAdder model metadata. Existing
-keys already held by players are not rewritten.
+ordinary keys already held by players are not rewritten.
 Enabled managed reward pools are checked again four ticks after server-load completion,
 after PlayerParticles 8.13's three-tick preset parser. This lifecycle-owned retry
 includes late reward providers even when the early enable pass succeeded.
+Catalog loading records reward identities without preparing or archiving every
+reward. Each new opening and pool preview reads the current ExcellentCrates
+reward list and weights, so additions and removals apply to subsequent openings.
+Only the selected reward is prepared from the current ARC catalog at claim time.
+Its resulting items are recorded before inventory delivery; a retry reuses that
+receipt. Legacy pending recipes remain readable, and an unavailable provider
+leaves the prize claim pending rather than rerolling or losing it.
 Managed openings perform one durable weighted roll and immediately start a
 player-only packet-display reel above the physical crate. The rolled item stops
 beneath its pointer before delivery. A paired ItemsAdder model such as
@@ -117,8 +126,13 @@ An individual case can set `free-open-period: daily` or `weekly` in
 window. At login and calendar rollover the addon issues one physical key when a
 storage slot is available; a full inventory leaves the entitlement unclaimed and
 retries within five seconds after space appears. Missed periods do not accumulate.
-Auto-keys are personal and expire at their period boundary; the next inventory
-reconciliation removes expired copies. Their native appearance is preserved, but
+Auto-keys are personal and expire at their period boundary. A new grant replaces
+the owner's expired keys for that same case and cadence in one durable inventory
+transaction, including renewal in an occupied off-hand slot when storage is full.
+Expired keys from storage cannot open a case: using one in the main hand removes
+it and shows an expiry notice, without spending another key or starting a roll.
+Any unresolved inventory receipt is resumed before this removal. Other owners'
+keys and the other cadence are not reclaimed by renewal. Native appearance is preserved, but
 the native ExcellentCrates key marker is replaced with the addon's period identity
 so another native/unmanaged opener cannot ignore expiry. Ordinary admin/paid keys
 keep their existing behavior. Holding an actual valid key highlights its case.

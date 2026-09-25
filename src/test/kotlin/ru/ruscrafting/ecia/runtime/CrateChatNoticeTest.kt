@@ -24,6 +24,7 @@ class CrateChatNoticeTest : FunSpec({
     val paths = listOf(
         "no-permission",
         "key.received",
+        "key.periodic-expired",
         "key.periodic-received-one",
         "key.periodic-received-both",
         "managed.unavailable",
@@ -39,7 +40,7 @@ class CrateChatNoticeTest : FunSpec({
         "managed.inventory-full",
     )
 
-    test("renders all 15 Russian and English notices with the same frame and glyph row") {
+    test("renders all 16 Russian and English notices with the same frame and glyph row") {
         val root = Files.createTempDirectory("ecia-chat-notices-")
         try {
             val locale = EciaLocale(root, emptyMap())
@@ -63,7 +64,7 @@ class CrateChatNoticeTest : FunSpec({
                         it != 0xE531 && it !in 0xF0F01..0xF0F0A && !Character.isWhitespace(it)
                     } } shouldBe true
                     visibleRows.all { !it.startsWith(" ") } shouldBe true
-                    if (path in setOf("key.received", "key.periodic-received-one", "key.periodic-received-both")) {
+                    if (path in setOf("key.received", "key.periodic-expired", "key.periodic-received-one", "key.periodic-received-both")) {
                         val expectedHeading = if (localeTag == "ru-RU") "Сундуки RusCrafting" else "RusCrafting Crates"
                         plain shouldContain expectedHeading
                     }
@@ -156,7 +157,7 @@ class CrateChatNoticeTest : FunSpec({
         val root = Files.createTempDirectory("ecia-chat-key-highlight-")
         try {
             val locale = EciaLocale(root, emptyMap())
-            val key = "Ключ от кейса «Ежедневный тайник»"
+            val key = "Ежедневный тайник · ключ"
             val output = locale.renderPadded("key.received", player("ru-RU"),
                 mapOf("amount" to "1", "key" to key))
             val plain = PlainTextComponentSerializer.plainText().serialize(output)
@@ -164,6 +165,8 @@ class CrateChatNoticeTest : FunSpec({
 
             rows.size shouldBe 3
             plain shouldContain "Сундуки RusCrafting"
+            plain shouldContain "Ключ от кейса «Ежедневный тайник»."
+            plain.contains("Ежедневный тайник · ключ") shouldBe false
             plain.contains("Используйте его у подходящего сундука.") shouldBe false
             rows[2].contains("\uE531") shouldBe true
             val runs = output.coloredText().toList()
@@ -172,9 +175,68 @@ class CrateChatNoticeTest : FunSpec({
             goldText shouldContain "Ежедневный тайник"
             val whiteText = runs.filter { it.second == TextColor.color(0xFFFFFF) }.joinToString("") { it.first }
             whiteText shouldContain "Вы получили ключ:"
+            whiteText shouldContain "Ключ от кейса «»"
 
             val custom = CrateChatNotice.render(null, Component.text("Custom accent", TextColor.color(0x70F0A5)))
             custom.coloredText().single { it.first == "Custom accent" }.second shouldBe TextColor.color(0x70F0A5)
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("key receipt localizes only the two known crate-key name formats and keeps unknown values literal") {
+        val root = Files.createTempDirectory("ecia-chat-key-name-formats-")
+        try {
+            val locale = EciaLocale(root, emptyMap())
+            val plain = PlainTextComponentSerializer.plainText()
+            val cases = listOf(
+                Triple("ru-RU", "Ключ от кейса «Ежедневный тайник»", "Ключ от кейса «Ежедневный тайник»."),
+                Triple("ru-RU", "Ежедневный тайник · ключ", "Ключ от кейса «Ежедневный тайник»."),
+                Triple("en-US", "Ежедневный тайник · ключ", "Crate key “Ежедневный тайник”."),
+            )
+
+            cases.forEach { (localeTag, keyName, expected) ->
+                val output = locale.renderPadded("key.received", player(localeTag), mapOf("amount" to "1", "key" to keyName))
+                plain.serialize(output) shouldContain expected
+                val colored = output.coloredText().toList()
+                colored.filter { it.second == TextColor.color(0xFFD66A) }.joinToString("") { it.first }
+                    .shouldContain("Ежедневный тайник")
+                colored.filter { it.second == TextColor.color(0xFFFFFF) }.joinToString("") { it.first }
+                    .shouldContain(if (localeTag == "ru-RU") "Ключ от кейса «»" else "Crate key “”")
+            }
+
+            val unknown = locale.renderWithLocale(
+                "key.received", "ru-RU", mapOf("amount" to "1", "key" to "<gold> emerald_key"),
+            )
+            plain.serialize(unknown) shouldBe "Вы получили ключ: 1 ×\n<gold> emerald_key."
+            unknown.coloredText().toList().single { it.first == "<gold> emerald_key" }.second shouldBe
+                TextColor.color(0xFFD66A)
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("expired periodic key notices fit two body rows under the colored crate heading") {
+        val root = Files.createTempDirectory("ecia-chat-periodic-expired-")
+        try {
+            val locale = EciaLocale(root, emptyMap())
+            listOf("ru-RU" to "Сундуки RusCrafting", "en-US" to "RusCrafting Crates").forEach { (tag, heading) ->
+                val output = locale.renderPadded("key.periodic-expired", player(tag), emptyMap())
+                val rows = PlainTextComponentSerializer.plainText().serialize(output).trim('\n').split('\n')
+                rows.size shouldBe 3
+                rows[0] shouldContain heading
+                rows[1].isNotBlank() shouldBe true
+                rows[2].isNotBlank() shouldBe true
+                val plain = PlainTextComponentSerializer.plainText().serialize(output)
+                if (tag == "ru-RU") {
+                    plain shouldContain "Ключ просрочен и удалён."
+                    plain shouldContain "Сундук остался закрыт."
+                } else {
+                    plain shouldContain "Expired key removed."
+                    plain shouldContain "The crate stays closed."
+                }
+                output.coloredText().any { it.first.contains(heading) && it.second == TextColor.color(0xFFD66A) } shouldBe true
+            }
         } finally {
             root.toFile().deleteRecursively()
         }

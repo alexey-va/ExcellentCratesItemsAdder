@@ -72,16 +72,42 @@ public final class OpeningInventoryTransactions {
     }
 
     public Optional<InventoryMutationWitness> periodicKeyDelivery(Player player, UUID grantId, ItemStack key) {
+        return periodicKeyDelivery(player, grantId, key, ignored -> false);
+    }
+
+    /**
+     * Plan a one-key delivery while atomically reclaiming only caller-approved
+     * expired keys. Reclaimed slots and the new key share one before/after
+     * witness, so an uncertain native save can be reconciled as a single write.
+     */
+    public Optional<InventoryMutationWitness> periodicKeyDelivery(Player player, UUID grantId, ItemStack key,
+            Predicate<ItemStack> replaceExpired) {
         if (key.getAmount() != 1) throw new IllegalArgumentException("One periodic key per window required");
-        return delivery(player, grantId, new ItemStack[]{key}, InventoryMutationWitness.Kind.PERIODIC_KEY_DELIVERY);
+        return delivery(player, grantId, new ItemStack[]{key}, InventoryMutationWitness.Kind.PERIODIC_KEY_DELIVERY,
+                Objects.requireNonNull(replaceExpired), true);
     }
 
     private Optional<InventoryMutationWitness> delivery(Player player, UUID openingId, ItemStack[] rewards,
             InventoryMutationWitness.Kind kind) {
+        return delivery(player, openingId, rewards, kind, ignored -> false, false);
+    }
+
+    private Optional<InventoryMutationWitness> delivery(Player player, UUID openingId, ItemStack[] rewards,
+            InventoryMutationWitness.Kind kind, Predicate<ItemStack> replaceExpired, boolean allowReclaimedOffhand) {
         requirePlayer(player);
         if (rewards.length == 0) throw new IllegalArgumentException("Empty reward");
         ItemStack[] before = player.getInventory().getContents();
         ItemStack[] after = clones(before);
+        boolean reclaimedOffhand = false;
+        for (int slot = 0; slot < 36; slot++) {
+            ItemStack existing = after[slot];
+            if (existing != null && !existing.isEmpty() && replaceExpired.test(existing)) after[slot] = null;
+        }
+        if (after.length > 40 && after[40] != null && !after[40].isEmpty()
+                && replaceExpired.test(after[40])) {
+            after[40] = null;
+            reclaimedOffhand = true;
+        }
         for (ItemStack reward : rewards) {
             if (reward == null || reward.isEmpty() || reward.getAmount() <= 0) {
                 throw new IllegalArgumentException("Empty reward stack");
@@ -100,6 +126,12 @@ public final class OpeningInventoryTransactions {
                 int inserted = Math.min(remaining, maximum);
                 after[slot] = reward.clone();
                 after[slot].setAmount(inserted);
+                remaining -= inserted;
+            }
+            if (remaining > 0 && allowReclaimedOffhand && reclaimedOffhand) {
+                int inserted = Math.min(remaining, maximum);
+                after[40] = reward.clone();
+                after[40].setAmount(inserted);
                 remaining -= inserted;
             }
             if (remaining > 0) return Optional.empty();

@@ -56,11 +56,14 @@ class PeriodicKeyIssuerTest {
             for (int slot = 0; slot < 36; slot++) {
                 player.getInventory().setItem(slot, new ItemStack(Material.STONE, 64));
             }
+            ItemStack offhand = new ItemStack(Material.DIRT);
+            player.getInventory().setItem(40, offhand);
             UUID id = PeriodicVirtualOpening.openingId(player.getUniqueId(), CRATE, window.period(), window);
 
             assertEquals(PeriodicKeyIssuer.Result.FULL, grant(fixture.issuer(), player, window));
             assertTrue(grants.get(id).isEmpty(), "A full inventory must not persist a grant plan");
             assertTrue(periodicKeys(player).isEmpty(), "A full inventory must not receive a dropped or partial key");
+            assertEquals(offhand, player.getInventory().getItem(40), "An unrelated offhand item is not an overflow slot");
 
             player.getInventory().clear();
             assertEquals(PeriodicKeyIssuer.Result.DELIVERED, grant(fixture.issuer(), player, window));
@@ -72,6 +75,92 @@ class PeriodicKeyIssuerTest {
                     window.start(), window.nextReset()), keys.getFirst());
             assertEquals(PeriodicKeyGrant.State.DELIVERED, grants.get(id).orElseThrow().state());
             assertEquals(1, nativeSaves.get());
+        }
+    }
+
+    @Test
+    void fullInventoryRenewsByReplacingOnlyTheOwnersExpiredKeyForTheSameCaseAndCadence() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            Player player = runtime.addPlayer("PeriodicKeys");
+            MutableClock clock = new MutableClock(Instant.parse("2026-09-26T12:00:00Z"), ZoneId.of("UTC"));
+            PeriodicKeyLedger grants = new PeriodicKeyLedger(directory);
+            OpeningLedger openings = new OpeningLedger(new DurableOpeningStore(directory), clock);
+            AtomicInteger nativeSaves = new AtomicInteger();
+            IssuerFixture fixture = fixture(grants, openings, clock, p -> nativeSaves.incrementAndGet());
+            fixture.issuer().playerDataLoaded(player);
+
+            PeriodicVirtualOpening.Window oldDaily = window(
+                    Clock.fixed(Instant.parse("2026-09-25T12:00:00Z"), ZoneId.of("UTC")),
+                    PeriodicVirtualOpening.Period.DAILY);
+            PeriodicVirtualOpening.Window currentDaily = window(clock, PeriodicVirtualOpening.Period.DAILY);
+            PeriodicVirtualOpening.Window currentWeekly = window(clock, PeriodicVirtualOpening.Period.WEEKLY);
+            UUID foreignOwner = UUID.randomUUID();
+            ItemStack replaceable = PeriodicPhysicalKey.stamp(new ItemStack(Material.TRIPWIRE_HOOK),
+                    player.getUniqueId(), CRATE, KEY_ID, oldDaily);
+            ItemStack foreign = PeriodicPhysicalKey.stamp(new ItemStack(Material.TRIPWIRE_HOOK),
+                    foreignOwner, CRATE, KEY_ID, oldDaily);
+            ItemStack otherCase = PeriodicPhysicalKey.stamp(new ItemStack(Material.TRIPWIRE_HOOK),
+                    player.getUniqueId(), OTHER_CRATE, KEY_ID, oldDaily);
+            ItemStack weekly = PeriodicPhysicalKey.stamp(new ItemStack(Material.TRIPWIRE_HOOK),
+                    player.getUniqueId(), CRATE, KEY_ID, currentWeekly);
+            UUID foreignId = PeriodicPhysicalKey.identify(foreign).orElseThrow().id();
+
+            for (int slot = 0; slot < 36; slot++) player.getInventory().setItem(slot, new ItemStack(Material.STONE, 64));
+            player.getInventory().setItem(4, replaceable);
+            player.getInventory().setItem(5, foreign);
+            player.getInventory().setItem(6, otherCase);
+            player.getInventory().setItem(7, weekly);
+
+            assertEquals(PeriodicKeyIssuer.Result.DELIVERED, grant(fixture.issuer(), player, currentDaily));
+
+            List<PeriodicPhysicalKey.Identity> keys = periodicKeys(player);
+            assertEquals(4, keys.size(), "Only the exact expired owner/case/daily key should be replaced");
+            assertTrue(keys.stream().anyMatch(key -> key.id().equals(foreignId)));
+            assertTrue(keys.stream().anyMatch(key -> key.crateId().equals(OTHER_CRATE)));
+            assertTrue(keys.stream().anyMatch(key -> key.period() == PeriodicVirtualOpening.Period.WEEKLY));
+            assertTrue(keys.stream().anyMatch(key -> key.id().equals(PeriodicVirtualOpening.openingId(
+                    player.getUniqueId(), CRATE, currentDaily.period(), currentDaily))));
+            assertFalse(keys.stream().anyMatch(key -> key.id().equals(PeriodicVirtualOpening.openingId(
+                    player.getUniqueId(), CRATE, oldDaily.period(), oldDaily))));
+
+            assertEquals(PeriodicKeyIssuer.Result.ALREADY_DELIVERED, grant(fixture.issuer(), player, currentDaily));
+            assertEquals(1, nativeSaves.get(), "The periodic receipt makes renewal idempotent");
+        }
+    }
+
+    @Test
+    void fullInventoryCanRenewAnExpiredMatchingKeyInOffhandWithoutTouchingArmor() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            Player player = runtime.addPlayer("PeriodicKeys");
+            MutableClock clock = new MutableClock(Instant.parse("2026-09-26T12:00:00Z"), ZoneId.of("UTC"));
+            PeriodicKeyLedger grants = new PeriodicKeyLedger(directory);
+            OpeningLedger openings = new OpeningLedger(new DurableOpeningStore(directory), clock);
+            IssuerFixture fixture = fixture(grants, openings, clock, p -> { });
+            fixture.issuer().playerDataLoaded(player);
+            PeriodicVirtualOpening.Window oldDaily = window(
+                    Clock.fixed(Instant.parse("2026-09-25T12:00:00Z"), ZoneId.of("UTC")),
+                    PeriodicVirtualOpening.Period.DAILY);
+            PeriodicVirtualOpening.Window currentDaily = window(clock, PeriodicVirtualOpening.Period.DAILY);
+            ItemStack[] armor = {
+                    new ItemStack(Material.LEATHER_BOOTS),
+                    new ItemStack(Material.LEATHER_LEGGINGS),
+                    new ItemStack(Material.LEATHER_CHESTPLATE),
+                    new ItemStack(Material.LEATHER_HELMET)
+            };
+            for (int slot = 0; slot < 36; slot++) player.getInventory().setItem(slot, new ItemStack(Material.STONE, 64));
+            for (int i = 0; i < armor.length; i++) player.getInventory().setItem(36 + i, armor[i]);
+            ItemStack expired = PeriodicPhysicalKey.stamp(new ItemStack(Material.TRIPWIRE_HOOK),
+                    player.getUniqueId(), CRATE, KEY_ID, oldDaily);
+            player.getInventory().setItem(40, expired);
+
+            assertEquals(PeriodicKeyIssuer.Result.DELIVERED, grant(fixture.issuer(), player, currentDaily));
+
+            assertTrue(PeriodicPhysicalKey.valid(player.getInventory().getItem(40), player.getUniqueId(), CRATE,
+                    PeriodicVirtualOpening.Period.DAILY, MOSCOW, clock.instant()),
+                    "When storage is full, the current key replaces the reclaimed offhand key in place");
+            assertArrayEquals(armor, Arrays.copyOfRange(player.getInventory().getContents(), 36, 40),
+                    "Armor slots are not part of periodic-key delivery");
+            assertEquals(1, periodicKeys(player).size());
         }
     }
 

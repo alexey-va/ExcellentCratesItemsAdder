@@ -31,8 +31,10 @@ class EciaLocale(
         renderer.validate(LocaleRequirements(REQUIRED_KEYS, emptySet()))
     }
 
-    fun render(path: String, sender: CommandSender?, values: Map<String, String>): Component =
-        renderer.render(path, localeTag(sender), literalValues(values))
+    fun render(path: String, sender: CommandSender?, values: Map<String, String>): Component {
+        val tag = localeTag(sender)
+        return renderer.render(path, tag, renderedValues(path, tag, values))
+    }
 
     /** Chat presentation shared by player and administrator messages. */
     fun renderPadded(path: String, sender: CommandSender?, values: Map<String, String>): Component {
@@ -62,7 +64,22 @@ class EciaLocale(
 
     /** Explicit locale-tag entry point for non-Bukkit callers and tests. */
     fun renderWithLocale(path: String, localeTag: String, values: Map<String, String>): Component =
-        renderer.render(path, localeTag, literalValues(values))
+        renderer.render(path, localeTag, renderedValues(path, localeTag, values))
+
+    private fun renderedValues(path: String, localeTag: String, values: Map<String, String>): Map<String, Component> {
+        val rendered = literalValues(values).toMutableMap()
+        if (path == "key.received") {
+            val crateName = values["key"]?.let(::crateNameFromKeyDisplayName)
+            if (crateName != null) {
+                rendered["key"] = renderer.render(
+                    "key.received-name",
+                    localeTag,
+                    literalValues(mapOf("crate" to crateName)),
+                )
+            }
+        }
+        return rendered
+    }
 
     private fun literalValues(values: Map<String, String>): Map<String, Component> =
         values.mapValues { (key, value) ->
@@ -228,6 +245,9 @@ class EciaLocale(
         private val HIGHLIGHTED_VALUES = setOf(
             "crate", "key", "amount", "next_reset", "daily", "weekly", "owner", "date",
         )
+        private const val KEY_CASE_PREFIX = "Ключ от кейса «"
+        private const val KEY_CASE_SUFFIX = "»"
+        private const val KEY_DISPLAY_SUFFIX = " · ключ"
         private const val OLD_PROTECTED_DEFAULT = "<red>Этот кейс защищён."
         private const val NEW_PROTECTED_DEFAULT = "<red>Этот сундук защищён."
         private const val OLD_NOTICE_HEADING = "Сундучки RusCrafting"
@@ -256,6 +276,7 @@ class EciaLocale(
         private val PLAYER_NOTICE_KEYS = setOf(
             "no-permission",
             "key.received",
+            "key.periodic-expired",
             "key.periodic-received-one",
             "key.periodic-received-both",
             "managed.unavailable",
@@ -289,6 +310,7 @@ class EciaLocale(
             "key.unknown",
             "key.dispatch-failed",
             "key.sent",
+            "key.received-name",
             "key.periodic-owner",
             "key.periodic-expires",
             "key.next-daily",
@@ -314,5 +336,16 @@ class EciaLocale(
                     else -> value
                 }
             }
+
+        /** Only recognize the literal names emitted by our physical-key configs. */
+        private fun crateNameFromKeyDisplayName(value: String): String? {
+            val caseName = when {
+                value.startsWith(KEY_CASE_PREFIX) && value.endsWith(KEY_CASE_SUFFIX) ->
+                    value.substring(KEY_CASE_PREFIX.length, value.length - KEY_CASE_SUFFIX.length)
+                value.endsWith(KEY_DISPLAY_SUFFIX) -> value.removeSuffix(KEY_DISPLAY_SUFFIX)
+                else -> return null
+            }
+            return caseName.takeIf(String::isNotBlank)
+        }
     }
 }

@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** Immutable season-specific reward configuration captured by an opening. */
+/** Reward configuration recorded for one opening; new openings read the current native pool. */
 public record PoolSnapshot(
         String crateId,
         String seasonId,

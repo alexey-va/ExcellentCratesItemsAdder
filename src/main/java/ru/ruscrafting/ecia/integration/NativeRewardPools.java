@@ -47,42 +47,51 @@ public final class NativeRewardPools {
         }
         Map<String, PoolSnapshot> installed = new java.util.HashMap<>();
         for (var configured : settings.cases().values()) {
-            Crate crate;
-            try {
-                crate = requireCrate(configured.crateId());
-                validateCrate(crate);
-            } catch (RuntimeException failure) {
-                issueSink.accept("crate=" + configured.crateId() + " reason=" + failure.getMessage());
-                continue;
-            }
-
-            List<RewardDefinition> rewards = new ArrayList<>();
-            Set<String> ids = new HashSet<>();
-            for (Reward reward : crate.getRewards().stream()
-                    .sorted(Comparator.comparing(Reward::getId)).toList()) {
-                if (!ids.add(reward.getId())) {
-                    issueSink.accept(issue(crate, reward.getId(), "duplicate native reward"));
-                    continue;
-                }
-                try {
-                    rewards.add(compileReward(reward));
-                } catch (RuntimeException failure) {
-                    issueSink.accept(issue(crate, reward.getId(), failure.getMessage()));
-                }
-            }
-            if (rewards.isEmpty()) {
-                issueSink.accept("crate=" + crate.getId() + " reason=no valid rewards remain; managed case disabled");
-                continue;
-            }
-            int bundleSize = Math.min(configured.bundleSize(), rewards.size());
-            if (bundleSize != configured.bundleSize()) {
-                issueSink.accept("crate=" + crate.getId() + " reason=bundle size "
-                        + configured.bundleSize() + " reduced to " + bundleSize + " for current rewards");
-            }
-            installed.put(crate.getId(), currentPool(crate.getId(), rewards,
-                    configured.choiceCount(), configured.maxRerolls(), bundleSize));
+            PoolSnapshot pool = loadCurrent(configured);
+            if (pool != null) installed.put(configured.crateId(), pool);
         }
         return Map.copyOf(installed);
+    }
+
+    /** Re-read the native reward list for each new opening or preview; existing receipts stay intact. */
+    public PoolSnapshot loadCurrent(ManagedCratesSettings.CaseSettings configured) {
+        if (Config.CRATE_REVERSE_CLICK_ACTIONS.get()) {
+            throw new IllegalStateException("Managed crates require native right-click opening");
+        }
+        Crate crate;
+        try {
+            crate = requireCrate(configured.crateId());
+            validateCrate(crate);
+        } catch (RuntimeException failure) {
+            issueSink.accept("crate=" + configured.crateId() + " reason=" + failure.getMessage());
+            return null;
+        }
+
+        List<RewardDefinition> rewards = new ArrayList<>();
+        Set<String> ids = new HashSet<>();
+        for (Reward reward : crate.getRewards().stream()
+                .sorted(Comparator.comparing(Reward::getId)).toList()) {
+            if (!ids.add(reward.getId())) {
+                issueSink.accept(issue(crate, reward.getId(), "duplicate native reward"));
+                continue;
+            }
+            try {
+                rewards.add(compileReward(reward));
+            } catch (RuntimeException failure) {
+                issueSink.accept(issue(crate, reward.getId(), failure.getMessage()));
+            }
+        }
+        if (rewards.isEmpty()) {
+            issueSink.accept("crate=" + crate.getId() + " reason=no valid rewards remain; managed case disabled");
+            return null;
+        }
+        int bundleSize = Math.min(configured.bundleSize(), rewards.size());
+        if (bundleSize != configured.bundleSize()) {
+            issueSink.accept("crate=" + crate.getId() + " reason=bundle size "
+                    + configured.bundleSize() + " reduced to " + bundleSize + " for current rewards");
+        }
+        return currentPool(crate.getId(), rewards,
+                configured.choiceCount(), configured.maxRerolls(), bundleSize);
     }
 
     static PoolSnapshot currentPool(String crateId, List<RewardDefinition> rewards,
@@ -103,19 +112,19 @@ public final class NativeRewardPools {
                 || !reward.getIgnoredPermissions().isEmpty()) {
             throw new IllegalStateException("unsupported reward rules");
         }
-        String delivery = materialize(reward, command.getCommands().getFirst());
+        String delivery = deliveryReference(reward, command.getCommands().getFirst());
         return new RewardDefinition(reward.getId(), reward.getWeight(), delivery,
                 payload.items(new ItemStack[]{reward.getPreviewItem()}));
     }
 
-    private String materialize(Reward reward, String command) {
+    private String deliveryReference(Reward reward, String command) {
         String[] words = command.trim().split("\\s+");
         if (isArcRewardIssue(words)) {
-            return provider.freeze(words[2], words[3], reward.getId());
+            return provider.catalogReward(words[2], words[3], reward.getId());
         }
         if (words.length == 6 && words[0].equals("excellentcrates") && words[1].equals("key")
                 && words[2].equals("give") && (words[3].equals("%player_name%") || words[3].equals("%player%"))) {
-            return provider.freezeNative(keys.create(words[4], Integer.parseInt(words[5])), reward.getId());
+            return provider.nativeReward(keys.create(words[4], Integer.parseInt(words[5])), reward.getId());
         }
         throw new IllegalStateException("reward has no typed materializer");
     }

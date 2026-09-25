@@ -65,9 +65,11 @@ public final class PeriodicKeyIssuer {
                 requireCurrent(player, session);
                 if (!within(window)) return new Plan(null, Result.SKIPPED);
                 if (!allowed.getAsBoolean()) return new Plan(null, Result.RETRY);
-                // Only after unresolved openings have been ruled out: their inventory preimages stay intact.
-                removeExpiredKeys(player);
-                var witness = inventory.periodicKeyDelivery(player, id, item.get());
+                // Replace only expired keys for this owner/case/cadence in the
+                // same durable inventory mutation as the new grant.
+                var replaceExpired = (java.util.function.Predicate<ItemStack>) candidate ->
+                        PeriodicPhysicalKey.expiredFor(candidate, playerId, crateId, window.period(), clock.instant());
+                var witness = inventory.periodicKeyDelivery(player, id, item.get(), replaceExpired);
                 return new Plan(witness.map(payload::write).orElse(null), Result.FULL);
             }).thenCompose(plan -> {
                 if (plan.witness() == null) return CompletableFuture.completedFuture(plan.noPlan());
@@ -118,13 +120,6 @@ public final class PeriodicKeyIssuer {
 
     private boolean within(PeriodicVirtualOpening.Window window) {
         return !clock.instant().isBefore(window.start()) && clock.instant().isBefore(window.nextReset());
-    }
-    private void removeExpiredKeys(Player player) {
-        ItemStack[] contents = player.getInventory().getContents();
-        for (int slot = 0; slot < contents.length; slot++) {
-            var key = PeriodicPhysicalKey.identify(contents[slot]).orElse(null);
-            if (key != null && !clock.instant().isBefore(key.expiry())) player.getInventory().setItem(slot, null);
-        }
     }
     private void requireCurrent(Player player, long session) {
         if (!current.test(player, session)) throw new IllegalStateException("Player session changed during periodic key delivery");
