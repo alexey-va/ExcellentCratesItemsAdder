@@ -42,6 +42,8 @@ The thirteen ordinary player chat notices use a white body with gold crate/key
 names, amounts and reset dates. Key receipts omit `notice.heading`; other notices
 show it only when the wrapped body leaves room within three rows. Longer custom
 values keep every word. The large key remains anchored to the third row.
+Self-grants omit the separate request-sent chat confirmation in both commands
+and dialogs; the recipient still receives the actual key-delivery notice.
 `CrateChatNotice` wraps resolved literal values, places the text column
 35 logical pixels from the left edge (8 outer + 27 icon column), and sends the
 whole framed notice as one component. The key is `arc:crate_key_large`, U+E531:

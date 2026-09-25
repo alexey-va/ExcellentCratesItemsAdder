@@ -530,6 +530,9 @@ internal class ArcCrateCommand(
         && furniture.at(block).isEmpty
 
     private fun message(sender: CommandSender, key: String, values: Map<String, String> = emptyMap()) {
+        if (key == "key.sent" && sender is Player && sender.name.equals(values["player"], ignoreCase = true)) {
+            return
+        }
         sender.sendMessage(plugin.runtime().locale().renderPadded(key, sender, values))
     }
 
