@@ -18,6 +18,7 @@ internal class HuskSyncReadiness(
     private val synchronized: (Player) -> Unit,
 ) : Listener, AutoCloseable {
     private val token = tasks.token()
+    private var closed = false
 
     init {
         plugin.server.pluginManager.registerEvents(this, plugin)
@@ -29,10 +30,21 @@ internal class HuskSyncReadiness(
     fun onSyncComplete(event: BukkitSyncCompleteEvent) {
         val player = (event.user as BukkitUser).player
         // HuskSync fires completion before releasing its inventory lock.
-        tasks.runSync(token) {
-            if (player.isOnline && isReady(player)) synchronized(player)
+        tasks.runSync(token) { awaitUnlock(player) }
+    }
+
+    private fun awaitUnlock(player: Player) {
+        if (closed || !player.isOnline) return
+        if (isReady(player)) {
+            synchronized(player)
+        } else {
+            // The provider releases the lock asynchronously after dispatching the event.
+            tasks.runLater(token, 20L) { awaitUnlock(player) }
         }
     }
 
-    override fun close() = HandlerList.unregisterAll(this)
+    override fun close() {
+        closed = true
+        HandlerList.unregisterAll(this)
+    }
 }
