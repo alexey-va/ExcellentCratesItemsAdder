@@ -14,7 +14,7 @@ import ru.arc.text.TextLayoutResult
 /** Three-row, player-only chat notice composition for managed crate feedback. */
 internal object CrateChatNotice {
     private const val WRAP_WIDTH = 253
-    private const val OUTER_PREFIX = "  "
+    private const val OUTER_INSET = 2
     private const val SPACING_CODE_POINT = 0xF0F01
     private const val KEY_GLYPH = "\uE531"
     private val gold = TextColor.color(0xFFD66A)
@@ -62,17 +62,17 @@ internal object CrateChatNotice {
         return body.replaceText(replacement)
     }
 
-    private fun outerPrefix(): Component = Component.text(OUTER_PREFIX, white)
+    fun outerPrefix(): Component = spacing.padding(OUTER_INSET).color(white)
         .decoration(TextDecoration.BOLD, false)
 
-    private fun columnIndent(): Component = spacing.padding(27)
+    private fun columnIndent(): Component = spacing.padding(26)
         .color(white)
         .decoration(TextDecoration.BOLD, false)
 
     private fun glyphColumn(): Component = Component.text(KEY_GLYPH, white)
         .font(Key.key("minecraft:default"))
         .decoration(TextDecoration.BOLD, false)
-        .append(spacing.padding(4).color(white).decoration(TextDecoration.BOLD, false))
+        .append(spacing.padding(3).color(white).decoration(TextDecoration.BOLD, false))
 
     private fun normalize(component: Component): Component = component
         .decoration(TextDecoration.BOLD, false)

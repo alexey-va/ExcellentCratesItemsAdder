@@ -38,18 +38,17 @@ each case and its native rewards. `menus.yml` contains six-row history and
 pool screens. Names and presentation are configurable;
 model 11001 is rejected in every menu template. Russian and English chat text
 is in `lang/`; existing protection messages in `config.yml` remain authoritative.
-The thirteen ordinary player chat notices use a white body with gold crate/key
-names, amounts and reset dates. Key receipts omit `notice.heading`; other notices
-show it only when the wrapped body leaves room within three rows. Longer custom
+The fifteen ordinary player chat notices use a white body with gold crate/key
+names, amounts and reset dates. Notices keep `notice.heading` when the wrapped body leaves room within three rows. Longer custom
 values keep every word. The large key remains anchored to the third row.
 Self-grants omit the separate request-sent chat confirmation in both commands
 and dialogs; the recipient still receives the actual key-delivery notice.
 `CrateChatNotice` wraps resolved literal values, places the text column
-35 logical pixels from the left edge (8 outer + 27 icon column), and sends the
+28 logical pixels from the left edge (2 outer + 23 icon + 3 gap), and sends the
 whole framed notice as one component. The key is `arc:crate_key_large`, U+E531:
 54×54 native pixels, provider height 27 / ascent 26 / advance 23. Install and
 publish that ItemsAdder glyph before activating this version. Compact protection
-actionbars and administrator messages keep their existing presentation.
+actionbars keep their existing presentation. Other player chat also uses the 2px inset; console output retains ordinary spaces.
 
 `CrateChatNoticeTest` exports actual rendered components to
 `build/reports/crate-chat-notices.json`. `scripts/preview-crate-chat.py` renders

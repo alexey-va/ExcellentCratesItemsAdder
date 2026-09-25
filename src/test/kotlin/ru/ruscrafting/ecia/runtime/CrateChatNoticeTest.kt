@@ -59,7 +59,7 @@ class CrateChatNoticeTest : FunSpec({
                     plain.endsWith("\n") shouldBe true
                     plain.endsWith("\n\n") shouldBe false
                     visibleRows.size shouldBe 3
-                    visibleRows.all { it.startsWith("  ") } shouldBe true
+                    visibleRows.all { !it.startsWith(" ") } shouldBe true
                     if (path in setOf("key.received", "key.periodic-received-one", "key.periodic-received-both")) {
                         val expectedHeading = if (localeTag == "ru-RU") "Сундуки RusCrafting" else "RusCrafting Crates"
                         plain shouldContain expectedHeading
@@ -90,10 +90,10 @@ class CrateChatNoticeTest : FunSpec({
 
             val spacing = PixelSpacing(Key.key("minecraft:default"), 0xF0F01)
             val plain = PlainTextComponentSerializer.plainText()
-            val fullColumn = plain.serialize(spacing.padding(27))
-            val glyphColumn = "\uE531" + plain.serialize(spacing.padding(4))
+            val fullColumn = plain.serialize(spacing.padding(26))
+            val glyphColumn = "\uE531" + plain.serialize(spacing.padding(3))
             plain.serialize(output).trim('\n').split('\n').forEachIndexed { index, row ->
-                row.startsWith("  " + if (index == 2) glyphColumn else fullColumn) shouldBe true
+                row.startsWith(plain.serialize(spacing.padding(2)) + if (index == 2) glyphColumn else fullColumn) shouldBe true
             }
         } finally {
             root.toFile().deleteRecursively()
@@ -120,7 +120,7 @@ class CrateChatNoticeTest : FunSpec({
             recovered shouldContain "emerald_key"
             (0..24).forEach { index -> recovered shouldContain "segment_$index" }
             plain.contains("Используйте его у подходящего сундука.") shouldBe false
-            bodyRows.all { it.startsWith("  ") } shouldBe true
+            bodyRows.all { !it.startsWith(" ") } shouldBe true
         } finally {
             root.toFile().deleteRecursively()
         }

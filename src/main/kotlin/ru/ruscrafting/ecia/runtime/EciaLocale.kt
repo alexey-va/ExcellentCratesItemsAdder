@@ -43,7 +43,7 @@ class EciaLocale(
             )
         }
         return Component.newline()
-            .append(Component.text(CHAT_INDENT))
+            .append(chatIndent(sender))
             .append(render(path, sender, values))
             .append(Component.newline())
     }
@@ -53,9 +53,12 @@ class EciaLocale(
         lines.foldIndexed(Component.newline()) { index, result, (path, values) ->
             result
                 .append(if (index == 0) Component.empty() else Component.newline())
-                .append(Component.text(CHAT_INDENT))
+                .append(chatIndent(sender))
                 .append(render(path, sender, values))
         }.append(Component.newline())
+
+    private fun chatIndent(sender: CommandSender?): Component =
+        if (sender is Player) CrateChatNotice.outerPrefix() else Component.text(CHAT_INDENT)
 
     /** Explicit locale-tag entry point for non-Bukkit callers and tests. */
     fun renderWithLocale(path: String, localeTag: String, values: Map<String, String>): Component =
