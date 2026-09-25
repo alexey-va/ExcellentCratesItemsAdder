@@ -1,6 +1,7 @@
 package ru.ruscrafting.ecia.integration
 
 import org.bukkit.Location
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.command.CommandSender
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
@@ -25,6 +26,7 @@ import ru.ruscrafting.ecia.inventory.OpeningInventoryTransactions
 import ru.ruscrafting.ecia.journal.DurableOpeningStore
 import ru.ruscrafting.ecia.journal.OpeningLedger
 import ru.ruscrafting.ecia.journal.OpeningRecord
+import ru.ruscrafting.ecia.journal.PeriodicKeyLedger
 import ru.ruscrafting.ecia.roll.PoolSnapshot
 import ru.ruscrafting.ecia.roll.WeightedOfferGenerator
 import ru.ruscrafting.ecia.screens.EciaMenuActions
@@ -33,13 +35,10 @@ import ru.ruscrafting.ecia.screens.EciaMenuScreens
 import su.nightexpress.excellentcrates.CratesAPI
 import java.time.Clock
 import java.time.Instant
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.atomic.AtomicReference
 import java.util.random.RandomGenerator
 
 /** Owns managed openings and their player-facing entry points. */
@@ -81,7 +80,7 @@ class ManagedCratesService(
     private val inFlight = mutableSetOf<UUID>()
     private val playerSessions = mutableMapOf<UUID, Long>()
     private val activePlayers = mutableMapOf<UUID, Player>()
-    private val claimedVirtualOpeningIds = AtomicReference<Set<UUID>>(emptySet())
+    private var periodicKeys: PeriodicKeysService? = null
     @Volatile private var storageHealthy = false
     @Volatile private var pendingOpeningCount = 0
     private var pendingConfiguration: Configuration? = null
@@ -130,14 +129,15 @@ class ManagedCratesService(
         settings = candidate.settings
         pendingConfiguration = candidate
         if (ledger != null) {
-            install(candidate, generation, claimedVirtualOpeningIds.get(), storageHealthy)
+            install(candidate, generation, storageHealthy)
             return
         }
         if (ledgerLoadInProgress) return
         ledgerLoadInProgress = true
         asyncStorage {
             val opened = OpeningLedger(DurableOpeningStore(root), Clock.systemUTC())
-            LoadedLedger(opened, opened.virtualOpeningIds(),
+            val grants = PeriodicKeyLedger(root)
+            LoadedLedger(opened, grants, grants.deliveredIds(),
                 opened.snapshot().count { it.pending() }, opened.available())
         }.whenCompleteSync(lifecycleTasks, lifecycleToken) { loaded, failure ->
             ledgerLoadInProgress = false
@@ -147,19 +147,33 @@ class ManagedCratesService(
             }
             val value = loaded ?: return@whenCompleteSync
             ledger = value.ledger
-            claimedVirtualOpeningIds.set(value.claimedVirtualIds)
+            val periodicInventory = OpeningInventoryTransactions(payload)
+            val periodicIssuer = PeriodicKeyIssuer(value.periodicKeys, value.ledger, payload, periodicInventory,
+                Clock.systemUTC(), storageExecutor, paperExecutor, this::isCurrentSession)
+            periodicKeys = PeriodicKeysService(plugin, keys, periodicIssuer, value.periodicKeys, storageExecutor,
+                object : PeriodicKeysService.PlayerAccess {
+                    override fun acquire(player: Player): Long? {
+                        if (!ready || !storageHealthy || roulette.isRolling(player.uniqueId)
+                            || activePlayers[player.uniqueId] !== player || !inFlight.add(player.uniqueId)) return null
+                        return session(player.uniqueId)
+                    }
+                    override fun current(player: Player, session: Long) = isCurrentSession(player, session)
+                    override fun release(player: Player, session: Long) {
+                        if (isCurrentSession(player, session)) inFlight.remove(player.uniqueId)
+                    }
+                }, value.deliveredIds)
             storageHealthy = value.available
             runtime.updateRecoveryBacklog(value.pendingCount)
             pendingOpeningCount = value.pendingCount
             val latest = pendingConfiguration
             if (!closed && latest != null) {
-                install(latest, reloadGeneration, value.claimedVirtualIds, value.available)
+                install(latest, reloadGeneration, value.available)
                 recoverOnlinePlayersAfterInitialLedgerLoad()
             }
         }
     }
 
-    private fun install(candidate: Configuration, generation: Long, claimedIds: Set<UUID>, available: Boolean) {
+    private fun install(candidate: Configuration, generation: Long, available: Boolean) {
         if (closed || generation != reloadGeneration) return
         val activeLedger = checkNotNull(ledger)
         runtime.installMenu(candidate.menuConfiguration)
@@ -171,7 +185,6 @@ class ManagedCratesService(
         pools = candidate.pools
         settings = candidate.settings
         storageHealthy = available
-        val installedClaimedIds = claimedVirtualOpeningIds.updateAndGet { current -> current + claimedIds }
         ambientEffects.setRewards(candidate.pools.mapValues { (_, pool) ->
             pool.rewards().mapNotNull { reward ->
                 runCatching {
@@ -182,7 +195,7 @@ class ManagedCratesService(
         })
         keyGlow.configure(if (candidate.settings.enabled) candidate.settings.cases else emptyMap(),
             candidate.settings.freeOpeningZone())
-        keyGlow.setVirtualOpeningCache(installedClaimedIds, available)
+        periodicKeys?.configure(candidate.settings, candidate.pools.keys)
         ready = candidate.settings.enabled && available
         configurationFailed = false
         updateHealth()
@@ -240,23 +253,14 @@ class ManagedCratesService(
             current.openPhysical(player, session, pool, keys.matches(cost.keyId()), cost.amount())
                 .thenApply { opening -> opening.orElse(null) }
         }
-        val attempt = current.pending(playerId).thenCompose { pending ->
-            if (pending.isPresent) return@thenCompose CompletableFuture.completedFuture(pending.get())
-            if (window == null) return@thenCompose physicalAttempt()
-
-            // Prefer an available virtual entitlement; a physical key remains an
-            // additional opening after this calendar period has already been used.
-            current.openVirtual(playerId, pool, period, window).thenCompose { virtual ->
-                if (virtual.record().keyWitness().startsWith("virtual:v1:")) {
-                    publishVirtualOpening(virtual.record().id())
-                }
-                if (virtual.result() == ManagedOpeningEngine.VirtualResult.PERIOD_ALREADY_USED) {
-                    physicalAttempt()
-                } else {
-                    CompletableFuture.completedFuture(virtual.record())
-                }
+        val matcher = periodicKeys?.matches(player, crateId, period)
+        val attempt = if (window != null && matcher != null && cost.amount() == 1) {
+            val id = PeriodicVirtualOpening.openingId(playerId, crateId, period, window)
+            val exactKey = matcher.and { item -> PeriodicPhysicalKey.identify(item).map { it.id() == id }.orElse(false) }
+            current.openPeriodicKey(player, session, pool, exactKey, id).thenCompose { opening ->
+                if (opening.isPresent) CompletableFuture.completedFuture(opening.get()) else physicalAttempt()
             }
-        }
+        } else physicalAttempt()
         observe(player, session, attempt) { record ->
             if (record != null) {
                 if (record.stage() == OpeningRecord.Stage.MAIL) finishSelection(player, record)
@@ -345,6 +349,7 @@ class ManagedCratesService(
         current.playerDataLoaded(player, session).thenCompose { current.pending(id) }.also { future ->
             observe(player, session, future) { pending ->
                 if (pending.isPresent) message(player, "managed.pending")
+                periodicKeys?.playerDataLoaded(player)
             }
         }
     }
@@ -353,6 +358,7 @@ class ManagedCratesService(
     fun onQuit(event: PlayerQuitEvent) {
         val id = event.player.uniqueId
         roulette.cancel(id)
+        periodicKeys?.playerLeft(event.player)
         inventory.playerLeft(id)
         inFlight.remove(id)
         playerSessions[id] = (playerSessions[id] ?: 0L) + 1L
@@ -375,19 +381,9 @@ class ManagedCratesService(
 
     private fun messageNoKeyUntilReset(player: Player, period: PeriodicVirtualOpening.Period) {
         if (period == PeriodicVirtualOpening.Period.NONE) return message(player, "managed.no-key")
-        val window = PeriodicVirtualOpening.window(period, Instant.now(), settings.freeOpeningZone())
-        val locale = Locale.forLanguageTag(player.locale().toLanguageTag())
-        val reset = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm z", locale)
-            .format(window.nextReset().atZone(settings.freeOpeningZone()))
+        val whenKey = if (period == PeriodicVirtualOpening.Period.DAILY) "key.next-daily" else "key.next-weekly"
+        val reset = PlainTextComponentSerializer.plainText().serialize(runtime.locale().render(whenKey, player, emptyMap()))
         message(player, "managed.no-key-until-reset", mapOf("next_reset" to reset))
-    }
-
-    /** Called after durable reservation on any completion thread; only the cache value crosses to Paper. */
-    private fun publishVirtualOpening(id: UUID) {
-        claimedVirtualOpeningIds.updateAndGet { current -> current + id }
-        lifecycleTasks.runSync(lifecycleToken) {
-            if (!closed) keyGlow.setVirtualOpeningCache(claimedVirtualOpeningIds.get(), storageHealthy)
-        }
     }
 
     private fun <T> observe(player: Player, session: Long, future: CompletableFuture<T>, success: (T) -> Unit) {
@@ -420,7 +416,6 @@ class ManagedCratesService(
         current.available().whenCompleteSync(lifecycleTasks, lifecycleToken) { available, failure ->
             if (failure != null || available == null) return@whenCompleteSync
             storageHealthy = available
-            keyGlow.setVirtualOpeningCache(claimedVirtualOpeningIds.get(), available)
             if (!available) ready = false
         }
     }
@@ -475,6 +470,7 @@ class ManagedCratesService(
         plugin.clearManagedPreviewHandler()
         plugin.clearManagedOpenHandler()
         router?.close()
+        periodicKeys?.close()
         keyGlow.close()
         keys.close()
         HandlerList.unregisterAll(this)
@@ -488,7 +484,8 @@ class ManagedCratesService(
 
     private data class LoadedLedger(
         val ledger: OpeningLedger,
-        val claimedVirtualIds: Set<UUID>,
+        val periodicKeys: PeriodicKeyLedger,
+        val deliveredIds: Set<UUID>,
         val pendingCount: Int,
         val available: Boolean,
     )

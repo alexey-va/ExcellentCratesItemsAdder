@@ -24,6 +24,8 @@ class CrateChatNoticeTest : FunSpec({
     val paths = listOf(
         "no-permission",
         "key.received",
+        "key.periodic-received-one",
+        "key.periodic-received-both",
         "managed.unavailable",
         "managed.busy",
         "managed.vetoed",
@@ -37,7 +39,7 @@ class CrateChatNoticeTest : FunSpec({
         "managed.inventory-full",
     )
 
-    test("renders all 13 Russian and English notices with the same frame and glyph row") {
+    test("renders all 15 Russian and English notices with the same frame and glyph row") {
         val root = Files.createTempDirectory("ecia-chat-notices-")
         try {
             val locale = EciaLocale(root, emptyMap())
@@ -45,7 +47,10 @@ class CrateChatNoticeTest : FunSpec({
 
             listOf("ru-RU", "en-US").forEach { localeTag ->
                 paths.forEach { path ->
-                    val output = locale.renderPadded(path, player(localeTag), values[path].orEmpty())
+                    val nextReset = if (localeTag == "ru-RU") "в полночь" else "at midnight"
+                    val replacements = values[path].orEmpty() +
+                        if (path == "managed.no-key-until-reset") mapOf("next_reset" to nextReset) else emptyMap()
+                    val output = locale.renderPadded(path, player(localeTag), replacements)
                     val plain = PlainTextComponentSerializer.plainText().serialize(output)
                     val visibleRows = plain.trim('\n').split('\n')
 
@@ -55,7 +60,10 @@ class CrateChatNoticeTest : FunSpec({
                     plain.endsWith("\n\n") shouldBe false
                     visibleRows.size shouldBe 3
                     visibleRows.all { it.startsWith("  ") } shouldBe true
-                    if (path == "key.received") plain.contains("RusCrafting") shouldBe false
+                    if (path in setOf("key.received", "key.periodic-received-one", "key.periodic-received-both")) {
+                        val expectedHeading = if (localeTag == "ru-RU") "Сундуки RusCrafting" else "RusCrafting Crates"
+                        plain shouldContain expectedHeading
+                    }
                     visibleRows[2].contains("\uE531") shouldBe true
                     plain.count { it == '\uE531' } shouldBe 1
                 }
@@ -111,7 +119,7 @@ class CrateChatNoticeTest : FunSpec({
             plain shouldContain "<gold>"
             recovered shouldContain "emerald_key"
             (0..24).forEach { index -> recovered shouldContain "segment_$index" }
-            recovered shouldContain "Используйте его у подходящего сундука."
+            plain.contains("Используйте его у подходящего сундука.") shouldBe false
             bodyRows.all { it.startsWith("  ") } shouldBe true
         } finally {
             root.toFile().deleteRecursively()
@@ -129,7 +137,8 @@ class CrateChatNoticeTest : FunSpec({
             val rows = plain.trim('\n').split('\n')
 
             rows.size shouldBe 3
-            plain.contains("RusCrafting") shouldBe false
+            plain shouldContain "Сундуки RusCrafting"
+            plain.contains("Используйте его у подходящего сундука.") shouldBe false
             rows[2].contains("\uE531") shouldBe true
             val runs = output.coloredText().toList()
             val goldText = runs.filter { it.second == TextColor.color(0xFFD66A) }.joinToString("") { it.first }
@@ -137,7 +146,6 @@ class CrateChatNoticeTest : FunSpec({
             goldText shouldContain "Ежедневный тайник"
             val whiteText = runs.filter { it.second == TextColor.color(0xFFFFFF) }.joinToString("") { it.first }
             whiteText shouldContain "Вы получили ключ:"
-            whiteText shouldContain "Используйте его у подходящего сундука."
 
             val custom = CrateChatNotice.render(null, Component.text("Custom accent", TextColor.color(0x70F0A5)))
             custom.coloredText().single { it.first == "Custom accent" }.second shouldBe TextColor.color(0x70F0A5)
@@ -207,7 +215,9 @@ private data class FixtureSample(
 
 private fun noticeValues(): Map<String, Map<String, String>> = mapOf(
     "key.received" to mapOf("amount" to "1", "key" to "Ключ от кейса «Ежедневный тайник»"),
-    "managed.no-key-until-reset" to mapOf("next_reset" to "30.09.2026 00:00 MSK"),
+    "key.periodic-received-one" to mapOf("crate" to "Ежедневный тайник"),
+    "key.periodic-received-both" to mapOf("daily" to "Ежедневный тайник", "weekly" to "Недельная реликвия"),
+    "managed.no-key-until-reset" to mapOf("next_reset" to "в полночь"),
 )
 
 private fun valuesFor(path: String): Map<String, String> = noticeValues()[path].orEmpty()

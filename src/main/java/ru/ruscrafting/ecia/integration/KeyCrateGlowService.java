@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.time.Instant;
 import java.time.ZoneId;
 
 /** Viewer-scoped outline for nearby crates matching the key in the main hand. */
@@ -47,8 +46,6 @@ final class KeyCrateGlowService implements AutoCloseable {
     private List<KeyCrateGlowPlan.Target> targets = List.of();
     private Map<String, ManagedCratesSettings.CaseSettings> cases = Map.of();
     private ZoneId freeOpeningZone = ZoneId.of("Europe/Moscow");
-    private Set<UUID> claimedVirtualOpenings = Set.of();
-    private boolean virtualOpeningCacheReady;
     private boolean closed;
 
     KeyCrateGlowService(ArcExcellentCratesPlugin plugin, NativeSeasonKeys keys,
@@ -75,12 +72,6 @@ final class KeyCrateGlowService implements AutoCloseable {
         this.freeOpeningZone = zone;
         if (closed || !CratesAPI.isLoaded()) return;
         targets = buildTargets();
-        reconcile();
-    }
-
-    void setVirtualOpeningCache(Set<UUID> claimedOpeningIds, boolean ready) {
-        claimedVirtualOpenings = Set.copyOf(claimedOpeningIds);
-        virtualOpeningCacheReady = ready;
         reconcile();
     }
 
@@ -117,18 +108,14 @@ final class KeyCrateGlowService implements AutoCloseable {
         Set<MarkerKey> desired = new HashSet<>();
         for (Player player : plugin.getServer().getOnlinePlayers()) {
             Location location = player.getLocation();
-            NativeSeasonKeys.KeyIdentity key = keys.identify(player.getInventory().getItemInMainHand()).orElse(null);
+            NativeSeasonKeys.KeyIdentity key = keys.identifyForPlayer(player.getInventory().getItemInMainHand(),
+                    player.getUniqueId(), freeOpeningZone, cases).orElse(null);
             if (key != null) {
                 KeyCrateGlowPlan.HeldKey held = new KeyCrateGlowPlan.HeldKey(key.keyId(), key.season());
+                List<KeyCrateGlowPlan.Target> candidates = key.crateId() == null ? targets
+                        : targets.stream().filter(target -> target.crateId().equals(key.crateId())).toList();
                 for (KeyCrateGlowPlan.Target target : KeyCrateGlowPlan.select(held, player.getWorld().getName(),
-                        location.getX(), location.getY(), location.getZ(), range, targets)) {
-                    desired.add(new MarkerKey(player.getUniqueId(), target));
-                }
-            }
-            if (virtualOpeningCacheReady) {
-                Set<String> available = availableVirtualCrates(player.getUniqueId());
-                for (KeyCrateGlowPlan.Target target : KeyCrateGlowPlan.selectVirtual(available, player.getWorld().getName(),
-                        location.getX(), location.getY(), location.getZ(), range, targets)) {
+                        location.getX(), location.getY(), location.getZ(), range, candidates)) {
                     desired.add(new MarkerKey(player.getUniqueId(), target));
                 }
             }
@@ -138,19 +125,6 @@ final class KeyCrateGlowService implements AutoCloseable {
         obsolete.removeAll(desired);
         obsolete.forEach(this::remove);
         desired.stream().filter(key -> !markers.containsKey(key)).forEach(key -> spawn(key, range));
-    }
-
-    private Set<String> availableVirtualCrates(UUID playerId) {
-        Instant now = Instant.now();
-        Set<String> available = new HashSet<>();
-        for (ManagedCratesSettings.CaseSettings configured : cases.values()) {
-            if (configured.freeOpenPeriod() == PeriodicVirtualOpening.Period.NONE) continue;
-            var window = PeriodicVirtualOpening.window(configured.freeOpenPeriod(), now, freeOpeningZone);
-            UUID openingId = PeriodicVirtualOpening.openingId(
-                    playerId, configured.crateId(), configured.freeOpenPeriod(), window);
-            if (!claimedVirtualOpenings.contains(openingId)) available.add(configured.crateId());
-        }
-        return Set.copyOf(available);
     }
 
     private void spawn(MarkerKey key, double range) {
@@ -264,8 +238,6 @@ final class KeyCrateGlowService implements AutoCloseable {
         task.cancel();
         targets = List.of();
         cases = Map.of();
-        claimedVirtualOpenings = Set.of();
-        virtualOpeningCacheReady = false;
         removeAll();
     }
 

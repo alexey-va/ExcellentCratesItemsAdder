@@ -13,10 +13,13 @@ import su.nightexpress.excellentcrates.crate.impl.Crate;
 import su.nightexpress.excellentcrates.key.CrateKey;
 import su.nightexpress.excellentcrates.util.ItemHelper;
 
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Predicate;
 
 /** Native key identity stays intact; managed openings match the native key id. */
@@ -27,7 +30,11 @@ public final class NativeSeasonKeys implements AutoCloseable {
     private final Map<CrateKey, AdaptedItem> originals = new HashMap<>();
 
     public record KeyCost(String keyId, int amount) { }
-    public record KeyIdentity(String keyId, String season) { }
+    public record KeyIdentity(String keyId, String season, String crateId) {
+        public KeyIdentity(String keyId, String season) {
+            this(keyId, season, null);
+        }
+    }
 
     public KeyCost cost(Crate crate) {
         var costs = crate.getCosts();
@@ -65,7 +72,7 @@ public final class NativeSeasonKeys implements AutoCloseable {
 
     public Predicate<ItemStack> matches(String keyId, String season) {
         return item -> {
-            if (item == null || item.isEmpty()) return false;
+            if (item == null || item.isEmpty() || PeriodicPhysicalKey.isMarked(item) || !CratesAPI.isLoaded()) return false;
             CrateKey nativeKey = CratesAPI.getKeyManager().getKeyByItem(item);
             return nativeKey != null && nativeKey.getId().equals(keyId) && season(item).equals(season);
         };
@@ -74,7 +81,7 @@ public final class NativeSeasonKeys implements AutoCloseable {
     /** Current managed cases accept every physical key for the native key id. */
     public Predicate<ItemStack> matches(String keyId) {
         return item -> {
-            if (item == null || item.isEmpty()) return false;
+            if (item == null || item.isEmpty() || PeriodicPhysicalKey.isMarked(item) || !CratesAPI.isLoaded()) return false;
             CrateKey nativeKey = CratesAPI.getKeyManager().getKeyByItem(item);
             return nativeKey != null && !nativeKey.isVirtual() && nativeKey.getId().equals(keyId);
         };
@@ -82,26 +89,65 @@ public final class NativeSeasonKeys implements AutoCloseable {
 
     /** Identifies one physical native key without scanning the rest of the inventory. */
     public Optional<KeyIdentity> identify(ItemStack item) {
-        if (item == null || item.isEmpty()) return Optional.empty();
+        if (item == null || item.isEmpty() || PeriodicPhysicalKey.isMarked(item) || !CratesAPI.isLoaded()) {
+            return Optional.empty();
+        }
         CrateKey nativeKey = CratesAPI.getKeyManager().getKeyByItem(item);
         return nativeKey == null || nativeKey.isVirtual()
                 ? Optional.empty()
-                : Optional.of(new KeyIdentity(nativeKey.getId(), season(item)));
+                : Optional.of(new KeyIdentity(nativeKey.getId(), season(item), null));
+    }
+
+    /** Identifies an ordinary key or this player's valid automatic key for a configured managed case. */
+    public Optional<KeyIdentity> identifyForPlayer(ItemStack item, UUID playerId, ZoneId zone,
+            Map<String, ManagedCratesSettings.CaseSettings> configuredCases) {
+        return identifyForPlayer(item, playerId, zone, configuredCases, Instant.now());
+    }
+
+    /** Clock-injected form keeps period-bound glow matching deterministic in tests. */
+    public Optional<KeyIdentity> identifyForPlayer(ItemStack item, UUID playerId, ZoneId zone,
+            Map<String, ManagedCratesSettings.CaseSettings> configuredCases, Instant now) {
+        Objects.requireNonNull(configuredCases);
+        if (!PeriodicPhysicalKey.isMarked(item)) return identify(item);
+        PeriodicPhysicalKey.Identity identity = PeriodicPhysicalKey.identify(item).orElse(null);
+        if (identity == null || !CratesAPI.isLoaded()) return Optional.empty();
+        ManagedCratesSettings.CaseSettings configured = configuredCases.get(identity.crateId());
+        if (configured == null || configured.freeOpenPeriod() != identity.period()
+                || !PeriodicPhysicalKey.valid(item, playerId, identity.crateId(), identity.period(), zone, now)) {
+            return Optional.empty();
+        }
+        Crate crate = CratesAPI.getCrateManager().getCrateById(identity.crateId());
+        if (crate == null) return Optional.empty();
+        KeyCost configuredCost;
+        try {
+            configuredCost = cost(crate);
+        } catch (IllegalStateException unsupported) {
+            return Optional.empty();
+        }
+        return configuredCost.keyId().equals(identity.keyId())
+                ? Optional.of(new KeyIdentity(identity.keyId(), season(item), identity.crateId()))
+                : Optional.empty();
     }
 
     /** Prefer the held key, then the first matching inventory key; never combine seasons. */
     public Optional<String> selectedSeason(Player player, KeyCost cost) {
         ItemStack held = player.getInventory().getItemInMainHand();
-        CrateKey heldKey = CratesAPI.getKeyManager().getKeyByItem(held);
-        if (heldKey != null && heldKey.getId().equals(cost.keyId())) return Optional.of(season(held));
+        if (!CratesAPI.isLoaded()) return Optional.empty();
+        if (!PeriodicPhysicalKey.isMarked(held)) {
+            CrateKey heldKey = CratesAPI.getKeyManager().getKeyByItem(held);
+            if (heldKey != null && heldKey.getId().equals(cost.keyId())) return Optional.of(season(held));
+        }
         for (ItemStack item : player.getInventory().getStorageContents()) {
-            if (item == null || item.isEmpty()) continue;
+            if (item == null || item.isEmpty() || PeriodicPhysicalKey.isMarked(item)) continue;
             CrateKey nativeKey = CratesAPI.getKeyManager().getKeyByItem(item);
             if (nativeKey != null && nativeKey.getId().equals(cost.keyId())) return Optional.of(season(item));
         }
         ItemStack offHand = player.getInventory().getItemInOffHand();
-        CrateKey offHandKey = CratesAPI.getKeyManager().getKeyByItem(offHand);
-        return offHandKey != null && offHandKey.getId().equals(cost.keyId()) ? Optional.of(season(offHand)) : Optional.empty();
+        if (!PeriodicPhysicalKey.isMarked(offHand)) {
+            CrateKey offHandKey = CratesAPI.getKeyManager().getKeyByItem(offHand);
+            if (offHandKey != null && offHandKey.getId().equals(cost.keyId())) return Optional.of(season(offHand));
+        }
+        return Optional.empty();
     }
 
     public ItemStack create(String keyId, String season, int amount) {

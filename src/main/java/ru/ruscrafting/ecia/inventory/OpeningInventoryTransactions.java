@@ -33,6 +33,7 @@ public final class OpeningInventoryTransactions {
     private final Map<UUID, UUID> livePlans = new HashMap<>();
     private final NamespacedKey debitReceipt = Objects.requireNonNull(NamespacedKey.fromString("ecia:last_key_debit"));
     private final NamespacedKey deliveryReceipt = Objects.requireNonNull(NamespacedKey.fromString("ecia:last_reward_delivery"));
+    private final NamespacedKey periodicReceipt = Objects.requireNonNull(NamespacedKey.fromString("ecia:last_periodic_key_delivery"));
 
     public OpeningInventoryTransactions(NativeItemPayload payload) {
         this(payload, NativePaperPlayerDataPersistence.INSTANCE, Bukkit::isPrimaryThread);
@@ -67,6 +68,16 @@ public final class OpeningInventoryTransactions {
 
     /** Awards use storage slots only. Any overflow keeps the whole award in mail. */
     public Optional<InventoryMutationWitness> delivery(Player player, UUID openingId, ItemStack[] rewards) {
+        return delivery(player, openingId, rewards, InventoryMutationWitness.Kind.REWARD_DELIVERY);
+    }
+
+    public Optional<InventoryMutationWitness> periodicKeyDelivery(Player player, UUID grantId, ItemStack key) {
+        if (key.getAmount() != 1) throw new IllegalArgumentException("One periodic key per window required");
+        return delivery(player, grantId, new ItemStack[]{key}, InventoryMutationWitness.Kind.PERIODIC_KEY_DELIVERY);
+    }
+
+    private Optional<InventoryMutationWitness> delivery(Player player, UUID openingId, ItemStack[] rewards,
+            InventoryMutationWitness.Kind kind) {
         requirePlayer(player);
         if (rewards.length == 0) throw new IllegalArgumentException("Empty reward");
         ItemStack[] before = player.getInventory().getContents();
@@ -93,7 +104,7 @@ public final class OpeningInventoryTransactions {
             }
             if (remaining > 0) return Optional.empty();
         }
-        return Optional.of(witness(player, openingId, InventoryMutationWitness.Kind.REWARD_DELIVERY, before, after));
+        return Optional.of(witness(player, openingId, kind, before, after));
     }
 
     public Outcome inspect(Player player, InventoryMutationWitness witness) {
@@ -159,7 +170,11 @@ public final class OpeningInventoryTransactions {
     }
 
     private NamespacedKey receiptKey(InventoryMutationWitness.Kind kind) {
-        return kind == InventoryMutationWitness.Kind.KEY_DEBIT ? debitReceipt : deliveryReceipt;
+        return switch (kind) {
+            case KEY_DEBIT -> debitReceipt;
+            case REWARD_DELIVERY -> deliveryReceipt;
+            case PERIODIC_KEY_DELIVERY -> periodicReceipt;
+        };
     }
 
     private void requirePlayer(Player player) {

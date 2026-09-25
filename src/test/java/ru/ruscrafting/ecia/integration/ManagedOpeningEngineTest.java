@@ -31,6 +31,53 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ManagedOpeningEngineTest {
+    @Test void copiedPeriodicKeyCannotBuyAnotherRollButOrdinaryKeysStillWork() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            var ledger = new OpeningLedger(new MemoryStore(), Clock.systemUTC());
+            var codec = new NativeItemPayload();
+            var inventory = new OpeningInventoryTransactions(codec, p -> {}, () -> true);
+            var prize = new RewardDefinition("prize", 1, "frozen", "preview");
+            var pool = new PoolSnapshot("daily", "launch", List.of(prize), 1, 0, 1);
+            var engine = engine(ledger, inventory, codec, definition -> new ItemStack[]{new ItemStack(Material.DIAMOND)});
+            var periodId = UUID.randomUUID();
+            player.getInventory().setItem(0, new ItemStack(Material.TRIPWIRE_HOOK, 2));
+            var opened = engine.openPeriodicKey(player, 1L, pool,
+                    item -> item != null && item.getType() == Material.TRIPWIRE_HOOK, periodId).join().orElseThrow();
+            var selected = engine.select(player, opened.id(), opened.revision(), "prize").join();
+            assertEquals(OpeningRecord.Stage.DELIVERED, engine.claim(player, 1L, selected.id(), selected.revision()).join().stage());
+            assertTrue(engine.openPeriodicKey(player, 1L, pool, item -> true, periodId).join().isEmpty());
+            assertEquals(1, player.getInventory().getItem(0).getAmount());
+            assertTrue(engine.openPhysical(player, 1L, pool,
+                    item -> item != null && item.getType() == Material.TRIPWIRE_HOOK, 1).join().isPresent());
+            assertEquals(2, ledger.snapshot().size());
+        }
+    }
+
+    @Test void periodicKeyExpiringDuringReservationIsNotDebitedAndRetryKeepsFrozenReward() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            var ledger = new OpeningLedger(new MemoryStore(), Clock.systemUTC());
+            var codec = new NativeItemPayload();
+            var inventory = new OpeningInventoryTransactions(codec, p -> {}, () -> true);
+            var prize = new RewardDefinition("prize", 1, "frozen", "preview");
+            var pool = new PoolSnapshot("daily", "launch", List.of(prize), 1, 0, 1);
+            var engine = engine(ledger, inventory, codec, definition -> new ItemStack[]{new ItemStack(Material.DIAMOND)});
+            var periodId = UUID.randomUUID();
+            var checks = new AtomicInteger();
+            player.getInventory().setItem(0, new ItemStack(Material.TRIPWIRE_HOOK));
+            var aborted = engine.openPeriodicKey(player, 1L, pool, item -> item != null && !item.isEmpty()
+                    && checks.getAndIncrement() == 0, periodId).join().orElseThrow();
+            assertEquals(OpeningRecord.Stage.ABORTED, aborted.stage());
+            assertEquals(1, player.getInventory().getItem(0).getAmount());
+            var retry = engine.openPeriodicKey(player, 1L, pool,
+                    item -> item != null && item.getType() == Material.TRIPWIRE_HOOK, periodId).join().orElseThrow();
+            assertEquals(OpeningRecord.Stage.CHOOSING, retry.stage());
+            assertEquals(aborted.offers(), retry.offers());
+            assertEquals(1, ledger.snapshot().size());
+        }
+    }
+
     @Test void manualResumeContinuesOneUnconfirmedKeyDebitWithoutDebitingAgain() {
         try (var runtime = MockBukkitTestRuntime.Companion.open()) {
             var player = runtime.addPlayer("CrateQA");

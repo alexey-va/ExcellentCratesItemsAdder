@@ -18,7 +18,15 @@ key:
   unknown: "<#ffb56b>Physical key <white><key></white> was not found."
   dispatch-failed: "<#ffb56b>ARC could not send the request. Nothing was issued."
   sent: "<#a6efcf>Request sent: <white><amount> × <key></white> for <white><player></white> on <white><server></white>."
-  received: "You received a key: <amount> × <key>.\nUse it at the matching crate."
+  received: "You received a key: <amount> × <key>."
+  periodic-received-one: "Key received: <crate>."
+  periodic-received-both: "Keys received: <daily>\n<weekly>"
+  periodic-owner: "Owner: <owner>"
+  periodic-expires: "Valid until <date>"
+  next-daily: "at midnight"
+  next-weekly: "on Monday at midnight"
+  expires-daily: "midnight"
+  expires-weekly: "midnight on Monday"
 placement:
   no-target: '<#ffcc80>Look at the face next to which the crate should be placed.'
   occupied: '<#ffb56b>That spot is occupied. Choose an empty location.'
@@ -31,7 +39,7 @@ managed:
   busy: "Your current opening is still in progress.\nWait for it to finish, then try again."
   vetoed: "The server did not allow this opening.\nTry again later."
   no-key: "This crate needs a matching key.\nGet a key before opening it."
-  no-key-until-reset: "You have used this free opening.\nThe next one is available at:\n<next_reset>"
+  no-key-until-reset: "Your next free key is available<newline><next_reset>."
   native-command: "Use a key at this crate's pedestal.\nLook at the crate and right-click."
   key-not-consumed: "The opening was cancelled.\nYour key was not used."
   review: "The opening result is still being checked.\nReturn to the crate a little later."

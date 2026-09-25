@@ -7,7 +7,7 @@ import java.util.UUID;
 /** Exact native inventory images and the preceding player-data receipt. */
 public record InventoryMutationWitness(UUID openingId, UUID playerId, Kind kind,
         List<String> before, List<String> after, String previousReceipt) {
-    public enum Kind { KEY_DEBIT, REWARD_DELIVERY }
+    public enum Kind { KEY_DEBIT, REWARD_DELIVERY, PERIODIC_KEY_DELIVERY }
 
     public InventoryMutationWitness {
         Objects.requireNonNull(openingId);

@@ -15,6 +15,8 @@ import ru.ruscrafting.ecia.KeyGrantRequest
 import ru.ruscrafting.ecia.SerializedKeyDelivery
 import su.nightexpress.excellentcrates.key.CrateKey
 import java.util.UUID
+import java.time.Instant
+import java.time.ZoneId
 
 class NativeSeasonKeysTest : FunSpec({
     test("addon-issued key uses configured name and preserves native metadata through network delivery") {
@@ -78,6 +80,32 @@ class NativeSeasonKeysTest : FunSpec({
             issued.itemMeta.persistentDataContainer.has(itemsAdderId, PersistentDataType.STRING) shouldBe true
             issued.itemMeta.persistentDataContainer.has(seasonId, PersistentDataType.STRING) shouldBe false
             issued.itemMeta.customModelData shouldBe 12236
+        }
+    }
+
+    test("automatic periodic keys keep their ItemsAdder model but cannot match as paid native keys") {
+        MockBukkitTestRuntime.open().use {
+            val itemsAdderId = NamespacedKey("itemsadder", "vinland_animated_weapon_key")
+            val excellentCratesId = NamespacedKey.fromString("excellentcrates:key_id")!!
+            val template = ItemStack(Material.PAPER)
+            template.editMeta { meta ->
+                meta.setCustomModelData(12236)
+                meta.persistentDataContainer.set(itemsAdderId, PersistentDataType.STRING, "vinland_animated_weapon-key")
+                meta.persistentDataContainer.set(excellentCratesId, PersistentDataType.STRING, "daily")
+            }
+            val playerId = UUID.fromString("fba2d42c-4b2d-4809-b66b-91e38f04aed0")
+            val now = Instant.parse("2026-09-25T12:00:00Z")
+            val window = PeriodicVirtualOpening.window(
+                PeriodicVirtualOpening.Period.DAILY, now, ZoneId.of("Europe/Moscow"))
+            val key = PeriodicPhysicalKey.stamp(template, playerId, "case_daily", "daily", window)
+
+            PeriodicPhysicalKey.isMarked(key) shouldBe true
+            PeriodicPhysicalKey.identify(key).orElseThrow().playerId() shouldBe playerId
+            key.itemMeta.persistentDataContainer.has(excellentCratesId, PersistentDataType.STRING) shouldBe false
+            key.itemMeta.persistentDataContainer.get(itemsAdderId, PersistentDataType.STRING) shouldBe
+                "vinland_animated_weapon-key"
+            key.itemMeta.customModelData shouldBe 12236
+            NativeSeasonKeys().matches("daily").test(key) shouldBe false
         }
     }
 })

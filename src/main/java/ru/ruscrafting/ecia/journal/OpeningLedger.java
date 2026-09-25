@@ -62,6 +62,27 @@ public final class OpeningLedger {
                 offers, 0, "", keyWitness, "", "", ""));
     }
 
+    /** A physical calendar key uses the old quota identity, so copies cannot buy a second roll. */
+    public synchronized boolean canSpendPeriodicKey(UUID id) {
+        OpeningRecord old = records.get(id);
+        return old == null || old.stage() == Stage.ABORTED && !old.keyWitness().startsWith("virtual:v1:");
+    }
+
+    public synchronized boolean contains(UUID id) { return records.containsKey(id); }
+
+    public synchronized OpeningRecord reservePeriodicKey(UUID id, UUID player, PoolSnapshot pool,
+            Supplier<List<RewardDefinition>> offers, String keyWitness) {
+        if (!canSpendPeriodicKey(id)) throw new IllegalStateException("Calendar key already spent");
+        OpeningRecord old = records.get(id);
+        if (old == null) return reserve(id, player, pool, offers.get(), keyWitness);
+        if (!old.playerId().equals(player) || !old.pool().crateId().equals(pool.crateId())
+                || active(player).isPresent()) throw new IllegalStateException("Calendar key identity conflict");
+        // A proven failed debit may retry, but retains its already frozen reward.
+        return save(new OpeningRecord(id, player, old.pool(), old.createdAt(),
+                Math.max(clock.millis(), old.updatedAt()), Math.addExact(old.revision(), 1), Stage.RESERVED,
+                old.offers(), old.rerollsUsed(), "", keyWitness, "", "", ""));
+    }
+
     /**
      * Atomically consumes one local calendar entitlement and freezes its offers.
      * The stable period id is retained forever in this journal; no native virtual

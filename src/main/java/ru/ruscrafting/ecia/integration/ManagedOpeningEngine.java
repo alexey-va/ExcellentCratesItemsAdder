@@ -69,29 +69,50 @@ public final class ManagedOpeningEngine {
      */
     public CompletableFuture<Optional<OpeningRecord>> openPhysical(Player player, long session, PoolSnapshot pool,
             Predicate<ItemStack> matchingKey, int keyAmount) {
+        return openPhysical(player, session, pool, matchingKey, keyAmount, null);
+    }
+
+    public CompletableFuture<Optional<OpeningRecord>> openPeriodicKey(Player player, long session, PoolSnapshot pool,
+            Predicate<ItemStack> matchingKey, UUID periodId) {
+        return openPhysical(player, session, pool, matchingKey, 1, Objects.requireNonNull(periodId));
+    }
+
+    private CompletableFuture<Optional<OpeningRecord>> openPhysical(Player player, long session, PoolSnapshot pool,
+            Predicate<ItemStack> matchingKey, int keyAmount, UUID periodId) {
         UUID playerId = player.getUniqueId();
-        return storage(() -> ledger.pending(playerId)).thenCompose(pending -> {
+        return storage(() -> new PhysicalStart(ledger.pending(playerId),
+                periodId == null || ledger.canSpendPeriodicKey(periodId))).thenCompose(start -> {
+            var pending = start.pending();
             // Resume any durable opening (including claimable MAIL) before a new
             // physical debit. MAIL is intentionally not considered active by the
             // ledger, but it must still win over another key spend.
             if (pending.isPresent()) return CompletableFuture.completedFuture(pending);
+            if (!start.available()) return CompletableFuture.completedFuture(Optional.empty());
             return paper(() -> {
                 requireCurrent(player, session);
-                return inventory.debit(player, UUID.randomUUID(), matchingKey, keyAmount)
+                return inventory.debit(player, periodId == null ? UUID.randomUUID() : periodId, matchingKey, keyAmount)
                         .map(witness -> new DebitPlan(witness.openingId(), payload.write(witness)));
             })
                     .thenCompose(plan -> plan.isEmpty()
                             ? CompletableFuture.completedFuture(Optional.empty())
-                            : storage(() -> ledger.reserve(plan.get().openingId(), playerId, pool,
-                                    generateOne(pool).rewards(), plan.get().witness()))
+                            : storage(() -> periodId == null
+                                    ? ledger.reserve(plan.get().openingId(), playerId, pool,
+                                            generateOne(pool).rewards(), plan.get().witness())
+                                    : ledger.reservePeriodicKey(periodId, playerId, pool,
+                                            () -> generateOne(pool).rewards(), plan.get().witness()))
                                     .thenCompose(record -> paper(() -> {
                                                 requireCurrent(player, session);
+                                                if (periodId != null && java.util.Arrays.stream(player.getInventory().getContents())
+                                                        .filter(Objects::nonNull).filter(item -> !item.isEmpty())
+                                                        .noneMatch(matchingKey)) return OpeningInventoryTransactions.Outcome.NOT_APPLIED;
                                                 return inventory.apply(player,
                                                         payload.read(record.keyWitness(), InventoryMutationWitness.class));
                                             })
                                             .thenCompose(outcome -> storage(() -> Optional.of(settleDebit(record, playerId, outcome))))));
         });
     }
+
+    private record PhysicalStart(Optional<OpeningRecord> pending, boolean available) { }
 
     /**
      * The stable opening id is the local calendar entitlement and frozen-roll

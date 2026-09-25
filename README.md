@@ -105,19 +105,38 @@ remain usable after a reload without a separate season migration.
 
 ## Managed openings
 
-One physical key or available virtual attempt performs one weighted roll and buys one configured reward
+One physical key performs one weighted roll and buys one configured reward
 bundle. The reel only visualizes the result already written to the durable
 journal; it never rolls again while moving or when the item is delivered.
 
 An individual case can set `free-open-period: daily` or `weekly` in
 `features.yml`. Calendar windows use `free-open-time-zone` (default
 `Europe/Moscow`); weeks reset on Monday. One attempt is available per player and
-window, missed windows do not accumulate, and no inventory item is created.
-The available virtual attempt is used before an extra physical key. Nearby
-cases are highlighted for that player even with an empty hand. The durable
-opening ID is the claim, so a reconnect or restart cannot reroll a spent window.
+window. At login and calendar rollover the addon issues one physical key when a
+storage slot is available; a full inventory leaves the entitlement unclaimed and
+retries within five seconds after space appears. Missed periods do not accumulate.
+Auto-keys are personal and expire at their period boundary; the next inventory
+reconciliation removes expired copies. Their native appearance is preserved, but
+the native ExcellentCrates key marker is replaced with the addon's period identity
+so another native/unmanaged opener cannot ignore expiry. Ordinary admin/paid keys
+keep their existing behavior. Holding an actual valid key highlights its case.
+
+`PeriodicKeysService` owns the online schedule and daily notification gate;
+`PeriodicKeyIssuer` persists a capacity-checked inventory witness before granting.
+`periodic-keys/` and `periodic-key-notices/` use arc-core's durable record journal.
+One notification per player per local calendar day combines the received daily
+and weekly keys. The notice restores the “Сундуки RusCrafting” heading and omits
+the final use instruction. Reset/expiry text uses “в полночь” for daily keys and
+“в понедельник, в полночь” for weekly keys, without numeric timestamps.
+A native save with an unknown outcome requires fresh
+player-data reconciliation; it never blindly reissues a key. Previously spent
+virtual-opening IDs remain spent for their existing day/week, including after
+restart. Spending an auto-key uses that same identity, so a copied item cannot
+buy another roll. No reward pool, chance or quantity changes with this migration.
 Enable this policy only on the single backend that owns case openings: local
 journals are not a distributed quota across independent server directories.
+The configured authority is the spawn server; no second issuing backend should
+be enabled. Include both periodic directories in the same backup as `openings/`.
 
 Players open and preview a crate directly at its pedestal; `ecia.use` is granted
 by default and crate-specific native permissions still apply. Rewards enter the inventory as real items, including
@@ -130,7 +149,7 @@ right-click a crate again to retry delivery.
 Every reload reads the currently loaded native reward list and rebuilds the
 managed pool from it. A bad reward is reported at error level and omitted from
 that case; the other rewards remain usable. There is no immutable season pool
-and no reward drift gate. Physical keys are matched by the native key id, so
+and no reward drift gate. Ordinary physical keys are matched by the native key id, so
 legacy `ecia:season` metadata is ignored for new openings.
 
 The addon durably records an opening before key debit and records the exact
@@ -188,6 +207,12 @@ player receipt first. Journal corruption stops managed opening until repaired;
 protection remains an independent listener.
 
 ## Building
+
+Focused calendar-key and durable-delivery regression checks:
+
+```bash
+./gradlew test --tests ru.ruscrafting.ecia.integration.PeriodicKeyIssuerTest --tests ru.ruscrafting.ecia.integration.PeriodicPhysicalKeyTest --tests ru.ruscrafting.ecia.integration.ManagedOpeningEngineTest --tests ru.ruscrafting.ecia.runtime.CrateChatNoticeTest --tests ru.ruscrafting.ecia.runtime.EciaLocaleTest
+```
 
 ```bash
 ./gradlew test shadowJar

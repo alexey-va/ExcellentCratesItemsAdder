@@ -11,9 +11,9 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Calendar windows for the local, single-authority virtual case entitlements.
- * The stable opening id is also the durable claim: no separate key balance or
- * inventory item is issued. This is not replicated across independent plugin
+ * Calendar windows and legacy-stable identities for local, personal case entitlements.
+ * Physical auto-key grants reuse these identities to prevent a second grant in
+ * a window already consumed by the former virtual flow. This is not replicated across independent plugin
  * data directories; only one ExcellentCrates-authoritative server may enable
  * these windows for a player/case pair.
  */

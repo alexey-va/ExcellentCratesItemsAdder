@@ -38,7 +38,7 @@ class EciaLocale(
     fun renderPadded(path: String, sender: CommandSender?, values: Map<String, String>): Component {
         if (sender is Player && path in PLAYER_NOTICE_KEYS) {
             return CrateChatNotice.render(
-                heading = if (path == "key.received") null else render(NOTICE_HEADING, sender, emptyMap()),
+                heading = render(NOTICE_HEADING, sender, emptyMap()),
                 body = render(path, sender, values),
             )
         }
@@ -102,9 +102,27 @@ class EciaLocale(
         russian.mergeMissingFromBundled("lang/ru.yml")
         migrateDefaultValue(
             russian,
+            NOTICE_HEADING,
+            OLD_NOTICE_HEADING,
+            NEW_NOTICE_HEADING,
+        )
+        migrateDefaultValue(
+            russian,
             "protected",
             OLD_PROTECTED_DEFAULT,
             NEW_PROTECTED_DEFAULT,
+        )
+        migrateDefaultValue(
+            russian,
+            "managed.no-key-until-reset",
+            OLD_NO_KEY_RESET_RU,
+            NEW_NO_KEY_RESET_RU,
+        )
+        migrateDefaultValue(
+            russian,
+            "key.received",
+            OLD_KEY_RECEIVED_RU,
+            NEW_KEY_RECEIVED_RU,
         )
         migrateRemovedCommand(russian, mapOf(
             "protected" to NEW_PROTECTED_DEFAULT,
@@ -119,6 +137,18 @@ class EciaLocale(
         )
         val english = Config(dataRoot, "lang/en.yml")
         english.mergeMissingFromBundled("lang/en.yml")
+        migrateDefaultValue(
+            english,
+            "managed.no-key-until-reset",
+            OLD_NO_KEY_RESET_EN,
+            NEW_NO_KEY_RESET_EN,
+        )
+        migrateDefaultValue(
+            english,
+            "key.received",
+            OLD_KEY_RECEIVED_EN,
+            NEW_KEY_RECEIVED_EN,
+        )
         migrateRemovedCommand(english, mapOf(
             "protected" to "<red>This crate is protected.",
             "managed.native-command" to "<#ffd567>Use the key on this crate pedestal. The addon tracks keys and rewards.",
@@ -188,13 +218,33 @@ class EciaLocale(
     companion object {
         private const val CHAT_INDENT = "   "
         private const val NOTICE_HEADING = "notice.heading"
-        private val HIGHLIGHTED_VALUES = setOf("crate", "key", "amount", "next_reset")
+        private val HIGHLIGHTED_VALUES = setOf(
+            "crate", "key", "amount", "next_reset", "daily", "weekly", "owner", "date",
+        )
         private const val OLD_PROTECTED_DEFAULT = "<red>Этот кейс защищён."
         private const val NEW_PROTECTED_DEFAULT = "<red>Этот сундук защищён."
+        private const val OLD_NOTICE_HEADING = "Сундучки RusCrafting"
+        private const val NEW_NOTICE_HEADING = "Сундуки RusCrafting"
+        private const val OLD_NO_KEY_RESET_RU =
+            "Бесплатная попытка уже использована.\nСледующая попытка будет доступна:\n<next_reset>"
+        private const val NEW_NO_KEY_RESET_RU =
+            "Новый бесплатный ключ будет доступен<newline><next_reset>."
+        private const val OLD_NO_KEY_RESET_EN =
+            "You have used this free opening.\nThe next one is available at:\n<next_reset>"
+        private const val NEW_NO_KEY_RESET_EN =
+            "Your next free key is available<newline><next_reset>."
+        private const val OLD_KEY_RECEIVED_RU =
+            "Вы получили ключ: <amount> × <key>.\nИспользуйте его у подходящего сундука."
+        private const val NEW_KEY_RECEIVED_RU = "Вы получили ключ: <amount> × <key>."
+        private const val OLD_KEY_RECEIVED_EN =
+            "You received a key: <amount> × <key>.\nUse it at the matching crate."
+        private const val NEW_KEY_RECEIVED_EN = "You received a key: <amount> × <key>."
         private val HTML_ENTITY = Regex("&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]+);", RegexOption.IGNORE_CASE)
         private val PLAYER_NOTICE_KEYS = setOf(
             "no-permission",
             "key.received",
+            "key.periodic-received-one",
+            "key.periodic-received-both",
             "managed.unavailable",
             "managed.busy",
             "managed.vetoed",
@@ -208,7 +258,7 @@ class EciaLocale(
             "managed.inventory-full",
         )
 
-        /** Keys used by the currently shipped protection and administration flow. */
+        /** Paths used by crate notices, administration and issued-key lore. */
         @JvmField
         val REQUIRED_KEYS: Set<String> = PLAYER_NOTICE_KEYS + setOf(
             NOTICE_HEADING,
@@ -226,6 +276,12 @@ class EciaLocale(
             "key.unknown",
             "key.dispatch-failed",
             "key.sent",
+            "key.periodic-owner",
+            "key.periodic-expires",
+            "key.next-daily",
+            "key.next-weekly",
+            "key.expires-daily",
+            "key.expires-weekly",
             "placement.no-target",
             "placement.occupied",
             "placement.unavailable",
@@ -236,7 +292,13 @@ class EciaLocale(
 
         private fun migrateKnownLegacyDefaults(messages: Map<String, String>): Map<String, String> =
             messages.mapValues { (path, value) ->
-                if (path == "protected" && value == OLD_PROTECTED_DEFAULT) NEW_PROTECTED_DEFAULT else value
+                when {
+                    path == "protected" && value == OLD_PROTECTED_DEFAULT -> NEW_PROTECTED_DEFAULT
+                    path == NOTICE_HEADING && value == OLD_NOTICE_HEADING -> NEW_NOTICE_HEADING
+                    path == "managed.no-key-until-reset" && value == OLD_NO_KEY_RESET_RU -> NEW_NO_KEY_RESET_RU
+                    path == "key.received" && value == OLD_KEY_RECEIVED_RU -> NEW_KEY_RECEIVED_RU
+                    else -> value
+                }
             }
     }
 }
