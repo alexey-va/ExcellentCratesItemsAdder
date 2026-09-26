@@ -117,8 +117,13 @@ class CrateChatNoticeTest : FunSpec({
 
             val spacing = PixelSpacing(Key.key("minecraft:default"), 0xF0F01)
             val plain = PlainTextComponentSerializer.plainText()
-            val fullColumn = plain.serialize(spacing.padding(26))
-            val glyphColumn = "\uE531" + plain.serialize(spacing.padding(3))
+            val keyGlyphAdvance = 15
+            val keyTextGap = 3
+            val textInset = keyGlyphAdvance + keyTextGap
+            textInset shouldBe 18
+            plain.serialize(CrateChatNotice.outerPrefix()) shouldBe ""
+            val fullColumn = plain.serialize(spacing.padding(textInset))
+            val glyphColumn = "\uE531" + plain.serialize(spacing.padding(keyTextGap))
             plain.serialize(output).trim('\n').split('\n').forEachIndexed { index, row ->
                 row.startsWith(if (index == 2) glyphColumn else fullColumn) shouldBe true
             }
