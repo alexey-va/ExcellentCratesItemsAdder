@@ -18,8 +18,8 @@ internal object CrateChatNotice {
     private const val SPACING_CODE_POINT = 0xF0F01
     private const val KEY_GLYPH = "\uE531"
     private const val KEY_GLYPH_ADVANCE = 15
-    private const val KEY_TEXT_GAP = 3
-    private const val COLUMN_TEXT_INSET = KEY_GLYPH_ADVANCE + KEY_TEXT_GAP
+    private const val TEXT_COLUMN_INSET = 31
+    private const val KEY_TEXT_GAP = TEXT_COLUMN_INSET - KEY_GLYPH_ADVANCE
     private val gold = TextColor.color(0xFFD66A)
     private val white = TextColor.color(0xFFFFFF)
     private val spacing = PixelSpacing(Key.key("minecraft:default"), SPACING_CODE_POINT)
@@ -68,7 +68,7 @@ internal object CrateChatNotice {
     fun outerPrefix(): Component = spacing.padding(OUTER_INSET).color(white)
         .decoration(TextDecoration.BOLD, false)
 
-    private fun columnIndent(): Component = spacing.padding(COLUMN_TEXT_INSET)
+    private fun columnIndent(): Component = spacing.padding(TEXT_COLUMN_INSET)
         .color(white)
         .decoration(TextDecoration.BOLD, false)
 
