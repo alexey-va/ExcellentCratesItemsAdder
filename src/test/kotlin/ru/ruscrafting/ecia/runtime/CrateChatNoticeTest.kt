@@ -119,11 +119,13 @@ class CrateChatNoticeTest : FunSpec({
             val plain = PlainTextComponentSerializer.plainText()
             val keyGlyphAdvance = 15
             val textColumn = 31
-            val keyTextGap = textColumn - keyGlyphAdvance
-            keyTextGap shouldBe 16
+            val keyLeftInset = 6
+            val keyTextGap = textColumn - keyLeftInset - keyGlyphAdvance
+            keyTextGap shouldBe 10
             plain.serialize(CrateChatNotice.outerPrefix()) shouldBe ""
             val fullColumn = plain.serialize(spacing.padding(textColumn))
-            val glyphColumn = "\uE531" + plain.serialize(spacing.padding(keyTextGap))
+            val glyphColumn = plain.serialize(spacing.padding(keyLeftInset)) + "\uE531" +
+                plain.serialize(spacing.padding(keyTextGap))
             plain.serialize(output).trim('\n').split('\n').forEachIndexed { index, row ->
                 row.startsWith(if (index == 2) glyphColumn else fullColumn) shouldBe true
             }

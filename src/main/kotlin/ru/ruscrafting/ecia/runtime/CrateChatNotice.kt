@@ -18,8 +18,10 @@ internal object CrateChatNotice {
     private const val SPACING_CODE_POINT = 0xF0F01
     private const val KEY_GLYPH = "\uE531"
     private const val KEY_GLYPH_ADVANCE = 15
+    private const val ICON_COLUMN_WIDTH = 28
     private const val TEXT_COLUMN_INSET = 31
-    private const val KEY_TEXT_GAP = TEXT_COLUMN_INSET - KEY_GLYPH_ADVANCE
+    private const val KEY_LEFT_INSET = (ICON_COLUMN_WIDTH - KEY_GLYPH_ADVANCE) / 2
+    private const val KEY_TEXT_GAP = TEXT_COLUMN_INSET - KEY_LEFT_INSET - KEY_GLYPH_ADVANCE
     private val gold = TextColor.color(0xFFD66A)
     private val white = TextColor.color(0xFFFFFF)
     private val spacing = PixelSpacing(Key.key("minecraft:default"), SPACING_CODE_POINT)
@@ -72,9 +74,12 @@ internal object CrateChatNotice {
         .color(white)
         .decoration(TextDecoration.BOLD, false)
 
-    private fun glyphColumn(): Component = Component.text(KEY_GLYPH, white)
-        .font(Key.key("minecraft:default"))
+    private fun glyphColumn(): Component = spacing.padding(KEY_LEFT_INSET)
+        .color(white)
         .decoration(TextDecoration.BOLD, false)
+        .append(Component.text(KEY_GLYPH, white)
+        .font(Key.key("minecraft:default"))
+        .decoration(TextDecoration.BOLD, false))
         .append(spacing.padding(KEY_TEXT_GAP).color(white).decoration(TextDecoration.BOLD, false))
 
     private fun normalize(component: Component): Component = component
