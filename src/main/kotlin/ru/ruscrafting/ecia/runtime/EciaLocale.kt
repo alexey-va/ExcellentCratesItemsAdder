@@ -93,6 +93,9 @@ class EciaLocale(
 
     /** Reload both catalog files and the legacy Russian overlay atomically. */
     @Synchronized
+    fun reload() = reload(legacyMessages)
+
+    @Synchronized
     fun reload(legacyMessages: Map<String, String>) {
         synchronizeFiles()
         val migratedLegacyMessages = migrateKnownLegacyDefaults(legacyMessages)

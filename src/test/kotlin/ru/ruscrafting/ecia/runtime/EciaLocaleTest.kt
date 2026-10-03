@@ -11,6 +11,27 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import java.nio.file.Files
 
 class EciaLocaleTest : FunSpec({
+    test("all key shop amounts use the white premium token glyph in both locales after reload") {
+        val root = Files.createTempDirectory("ecia-currency-glyph-")
+        try {
+            val locale = EciaLocale(root, emptyMap())
+            locale.reload()
+            for (language in listOf("ru-RU", "en-US")) {
+                for (key in listOf("offer", "confirm-body", "buy", "delivered")) {
+                    val component = locale.renderWithLocale("key-shop.$key", language,
+                        mapOf("crate" to "Daily", "price" to "3"))
+                    val plain = PlainTextComponentSerializer.plainText().serialize(component)
+                    plain shouldContain "3 "
+                    plain.contains("жет.") shouldBe false
+                    plain.contains("3 tokens") shouldBe false
+                    component.textAndColorRuns().single { "" in it.first }.second shouldBe TextColor.color(0xFFFFFF)
+                }
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     test("merges bundled locales and migrates only the exact legacy protected default") {
         val root = Files.createTempDirectory("ecia-locale-")
         try {

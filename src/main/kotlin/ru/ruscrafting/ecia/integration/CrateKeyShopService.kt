@@ -82,7 +82,9 @@ class CrateKeyShopService(
         asyncStorage {
             val defaults = plugin.getResource(CONFIG_RESOURCE)?.bufferedReader()?.use { it.readText() }
                 ?: throw IllegalStateException("Bundled $CONFIG_RESOURCE is missing")
-            KeyShopSettings.load(File(plugin.dataFolder, CONFIG_RESOURCE), defaults)
+            KeyShopSettings.load(File(plugin.dataFolder, CONFIG_RESOURCE), defaults).also {
+                locale.reload()
+            }
         }.whenCompleteSync(tasks, taskToken) { loaded, failure ->
             if (closed || generation != reloadGeneration) return@whenCompleteSync
             if (failure != null || loaded == null) {
