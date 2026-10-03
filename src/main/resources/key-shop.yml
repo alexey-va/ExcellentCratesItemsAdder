@@ -1,0 +1,17 @@
+# Enable only on the backend that owns the spawn key merchant.
+enabled: false
+world: rc_origin_spawn
+anchor:
+  x: -8.5
+  y: 70.0
+  z: -3.5
+max-distance: 6.0
+# Whole premium tokens for one ordinary physical key; free periodic keys are separate.
+offers:
+  case_daily: 3
+  case_weekly: 9
+  case_rank_artisan: 12
+  case_rank_knight: 15
+  case_furniture: 30
+  case_collections: 45
+  case_mounts: 60

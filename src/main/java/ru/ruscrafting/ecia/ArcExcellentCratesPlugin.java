@@ -8,6 +8,7 @@ import ru.ruscrafting.ecia.runtime.EciaRuntime;
 import ru.ruscrafting.ecia.integration.CrateOpeningEffects;
 import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess;
 import ru.ruscrafting.ecia.integration.ManagedCratesService;
+import ru.ruscrafting.ecia.integration.CrateKeyShopService;
 import ru.arc.paper.display.PaperPacketDisplays;
 
 import java.io.IOException;
@@ -22,6 +23,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
     private CrateProtectionListener protectionListener;
     private EciaRuntime runtime;
     private ManagedCratesService managedCrates;
+    private CrateKeyShopService keyShop;
     private CrateHologramService crateHolograms;
     private CrateAmbientEffectService ambientEffects;
     private PaperPacketDisplays packetDisplays;
@@ -35,6 +37,11 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
         runtime = EciaRuntime.create(this);
         packetDisplays = registerService(new PaperPacketDisplays(this));
         EciaLocale locale = runtime.installLocale(getDataFolder().toPath(), legacyMessages());
+        var shopCommand = java.util.Objects.requireNonNull(getCommand("cratekeys"));
+        shopCommand.setExecutor((sender, command, label, arguments) -> {
+            sender.sendMessage(locale.renderPadded("key-shop.unavailable", sender, Map.of()));
+            return true;
+        });
         Path configuredDirectory = Path.of(getConfig().getString(
                 "excellent-crates-directory",
                 "plugins/ExcellentCrates/crates"
@@ -73,6 +80,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
                 visualEditor = registerService(new CrateVisualEditor(this, visualSettings, furniture, anchor -> {
                     if (crateHolograms != null) crateHolograms.refresh(anchor);
                     if (ambientEffects != null) ambientEffects.refresh();
+                    if (keyShop != null) keyShop.reload();
                 }, () -> {
                     int registrySize = registry.reload();
                     runtime.updateRegistrySize(registrySize);
@@ -86,6 +94,14 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
                 }));
                 managedCrates = registerService(new ManagedCratesService(
                         this, visualSettings, openingEffects, ambientEffects, packetDisplays, furniture));
+                if (getServer().getPluginManager().isPluginEnabled("RedisEconomy")) {
+                    try {
+                        keyShop = registerService(new CrateKeyShopService(this));
+                    } catch (RuntimeException | LinkageError failure) {
+                        getLogger().log(java.util.logging.Level.SEVERE,
+                                "Crate key shop could not start", failure);
+                    }
+                }
             } catch (RuntimeException | LinkageError failure) {
                 runtime.error("Managed crate service is unavailable; furniture protection remains active: {}", failure.toString());
             }

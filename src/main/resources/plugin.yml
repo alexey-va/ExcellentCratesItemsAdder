@@ -6,15 +6,19 @@ api-version: "1.21"
 description: RusCrafting crate integration with protected anchors, display visuals, and durable delivery recovery.
 authors: [alexey-va]
 depend: [packetevents]
-softdepend: [ExcellentCrates, ItemsAdder, ARC, HuskSync]
+softdepend: [ExcellentCrates, ItemsAdder, ARC, HuskSync, RedisEconomy]
 commands:
+  cratekeys:
+    description: Opens the spawn key merchant's shop.
+    usage: /cratekeys
+    permission: ecia.use
   arc-crate:
     description: Opens the ArcExcellentCrates administrator center.
     usage: /arc-crate
     permission: ecia.admin
 permissions:
   ecia.use:
-    description: Allows opening managed crate pedestals.
+    description: Allows opening managed crate pedestals and the key merchant.
     default: true
   ecia.admin:
     description: Allows crate placement, visual editing, and network key grants.

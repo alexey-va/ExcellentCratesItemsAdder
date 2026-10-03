@@ -83,6 +83,34 @@ class NativeSeasonKeysTest : FunSpec({
         }
     }
 
+    test("paid keys clone the current native template and retain season and ItemsAdder metadata") {
+        MockBukkitTestRuntime.open().use {
+            val itemsAdderId = NamespacedKey("itemsadder", "crate_key")
+            val excellentCratesId = NamespacedKey.fromString("excellentcrates:key_id")!!
+            val seasonId = NamespacedKey.fromString("ecia:season")!!
+            val native = ItemStack(Material.PAPER)
+            native.editMeta { meta ->
+                meta.setCustomModelData(15501)
+                meta.persistentDataContainer.set(itemsAdderId, PersistentDataType.STRING, "crate_key")
+                meta.persistentDataContainer.set(excellentCratesId, PersistentDataType.STRING, "daily")
+                meta.persistentDataContainer.set(seasonId, PersistentDataType.STRING, "default")
+            }
+            val before = native.serializeAsBytes()
+            val key = mockk<CrateKey>()
+            every { key.itemStack } returns native
+            every { key.name } returns "<#fff4a3>Ключ от кейса «Ежедневный тайник»"
+
+            val issued = NativeSeasonKeys.copyCurrentTemplate(key, 1)
+
+            issued.amount shouldBe 1
+            issued.itemMeta.persistentDataContainer.get(itemsAdderId, PersistentDataType.STRING) shouldBe "crate_key"
+            issued.itemMeta.persistentDataContainer.get(excellentCratesId, PersistentDataType.STRING) shouldBe "daily"
+            issued.itemMeta.persistentDataContainer.get(seasonId, PersistentDataType.STRING) shouldBe "default"
+            issued.itemMeta.customModelData shouldBe 15501
+            native.serializeAsBytes().contentEquals(before) shouldBe true
+        }
+    }
+
     test("automatic periodic keys keep their ItemsAdder model but cannot match as paid native keys") {
         MockBukkitTestRuntime.open().use {
             val itemsAdderId = NamespacedKey("itemsadder", "vinland_animated_weapon_key")

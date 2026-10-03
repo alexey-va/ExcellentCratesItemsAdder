@@ -295,6 +295,12 @@ class EciaLocale(
         /** Paths used by crate notices, administration and issued-key lore. */
         @JvmField
         val REQUIRED_KEYS: Set<String> = PLAYER_NOTICE_KEYS + setOf(
+            "key-shop.disabled", "key-shop.unavailable", "key-shop.outside", "key-shop.ready",
+            "key-shop.title", "key-shop.body", "key-shop.offer", "key-shop.confirm-title",
+            "key-shop.confirm-body", "key-shop.buy", "key-shop.back", "key-shop.close",
+            "key-shop.processing", "key-shop.delivered", "key-shop.no-space", "key-shop.payment-failed",
+            "key-shop.review", "key-shop.reloaded", "key-shop.reload-invalid",
+            "key-shop.price-changed", "key-shop.complete-title",
             NOTICE_HEADING,
             "protected",
             "command.player-only",

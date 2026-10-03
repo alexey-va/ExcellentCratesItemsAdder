@@ -11,6 +11,7 @@ left clicks, and provides animated weighted rolls with durable recovery.
 - ExcellentCrates **6.6.1**, NightCore **2.16.4**
 - ItemsAdder 4.x (deployment target: 4.0.18)
 - ARC 1.4.64 or later with `ArcItemMaterializer` for managed reward pools
+- RedisEconomy 4.5.13 for the optional premium-token key merchant
 
 ExcellentCrates and ItemsAdder are not bundled. The managed interaction adapter
 targets the verified ExcellentCrates 6.6.1 listener contract and rejects an
@@ -32,6 +33,21 @@ actual chest. The per-anchor editor can remove one installed chest after an
 explicit confirmation without deleting its reward pool or keys. The target is
 the empty block adjacent to the face under the crosshair. The native namespaced
 ExcellentCrates command remains available without forking ExcellentCrates.
+
+`/cratekeys` opens the spawn merchant's native Paper dialog for ordinary
+physical keys. `key-shop.yml` ships disabled; its `world`, `anchor`,
+`max-distance`, and seven `offers` prices form the complete operator surface.
+Prices are positive whole premium tokens. `/cratekeys reload` requires
+`ecia.admin`, refreshes the settings, and invalidates old offers. Players need
+`ecia.use` and must remain near the merchant to confirm a purchase. The shop
+copies the current native key template, keeping its identity and model; it
+does not issue or change owner-bound periodic keys.
+
+Each sale records its payment and delivery barriers under `key-shop-sales/`.
+An unresolved payment or inventory result blocks further purchases by that
+UUID and requires manual review; the shop never blindly retries a withdrawal,
+reissues a key, or promises an unconfirmed refund. Keep that journal with the
+plugin data during recovery.
 
 `features.yml` ships disabled. Enable managed openings only after configuring
 each case and its native rewards. `menus.yml` contains six-row history and

@@ -161,6 +161,12 @@ public final class NativeSeasonKeys implements AutoCloseable {
         return createKeyStack(key(keyId), amount, null);
     }
 
+    /** Clone the current native template without changing its existing season or provider metadata. */
+    public ItemStack createFromCurrentTemplate(String keyId, int amount) {
+        if (amount < 1 || amount > 64) throw new IllegalArgumentException("Key stack amount outside 1..64");
+        return copyCurrentTemplate(key(keyId), amount);
+    }
+
     /** Builds an addon-issued copy without replacing its native metadata or ItemsAdder model data. */
     static ItemStack createKeyStack(CrateKey key, int amount, String season) {
         if (amount < 1 || amount > 64) throw new IllegalArgumentException("Key stack amount outside 1..64");
@@ -170,6 +176,14 @@ public final class NativeSeasonKeys implements AutoCloseable {
             if (season == null) meta.getPersistentDataContainer().remove(SEASON);
             else meta.getPersistentDataContainer().set(SEASON, PersistentDataType.STRING, season);
         });
+        item.setAmount(amount);
+        return item;
+    }
+
+    static ItemStack copyCurrentTemplate(CrateKey key, int amount) {
+        if (amount < 1 || amount > 64) throw new IllegalArgumentException("Key stack amount outside 1..64");
+        ItemStack item = key.getItemStack().clone();
+        applyConfiguredName(item, key.getName());
         item.setAmount(amount);
         return item;
     }

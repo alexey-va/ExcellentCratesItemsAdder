@@ -7,16 +7,22 @@ plugins {
 }
 
 group = "ru.ruscrafting"
-version = "0.14.31"
+version = "0.14.32"
 
 repositories {
     mavenCentral()
     maven("https://repo.rus-crafting.ru/grocermc/") {
-        content { includeGroup("ru.ruscrafting.arc") }
+        content {
+            includeGroup("ru.ruscrafting.arc")
+            includeGroup("ru.ruscrafting.thirdparty")
+        }
     }
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://repo.codemc.io/repository/maven-public/")
     maven("https://repo.nightexpressdev.com/releases/")
+    maven("https://jitpack.io") {
+        content { includeGroup("com.github.MilkBowl") }
+    }
     maven("https://repo.william278.net/releases/") {
         content { includeGroup("net.william278.husksync") }
     }
@@ -50,6 +56,9 @@ dependencies {
     compileOnly("su.nightexpress.excellentcrates:ExcellentCrates:6.6.1")
     compileOnly("su.nightexpress.nightcore:main:2.16.4")
     compileOnly("net.william278.husksync:husksync-bukkit:3.8.7+1.21.8")
+    // Verified mirror API; production RedisEconomy 4.5.13 keeps these signatures.
+    compileOnly("ru.ruscrafting.thirdparty:rediseconomy:4.5.12")
+    compileOnly("com.github.MilkBowl:VaultAPI:1.7") { isTransitive = false }
 
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -63,6 +72,8 @@ dependencies {
     testImplementation("ru.ruscrafting.arc:arc-core-paper-api:2.7.13")
     testImplementation("su.nightexpress.excellentcrates:ExcellentCrates:6.6.1")
     testImplementation("su.nightexpress.nightcore:main:2.16.4")
+    testImplementation("ru.ruscrafting.thirdparty:rediseconomy:4.5.12")
+    testImplementation("com.github.MilkBowl:VaultAPI:1.7") { isTransitive = false }
 }
 
 java {
