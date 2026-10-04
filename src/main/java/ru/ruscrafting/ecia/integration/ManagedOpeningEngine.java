@@ -21,6 +21,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.BiPredicate;
+import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -47,11 +48,21 @@ public final class ManagedOpeningEngine {
     private final Executor storageExecutor;
     private final Executor paperExecutor;
     private final BiPredicate<Player, Long> currentPlayer;
+    private final BiConsumer<String, OpeningRecord> activityObserver;
 
     public ManagedOpeningEngine(OpeningLedger ledger, WeightedOfferGenerator random,
             OpeningInventoryTransactions inventory, NativeItemPayload payload,
             java.util.function.Function<RewardDefinition, ItemStack[]> materialize,
             Executor storageExecutor, Executor paperExecutor, BiPredicate<Player, Long> currentPlayer) {
+        this(ledger, random, inventory, payload, materialize, storageExecutor, paperExecutor, currentPlayer,
+                (event, record) -> { });
+    }
+
+    public ManagedOpeningEngine(OpeningLedger ledger, WeightedOfferGenerator random,
+            OpeningInventoryTransactions inventory, NativeItemPayload payload,
+            java.util.function.Function<RewardDefinition, ItemStack[]> materialize,
+            Executor storageExecutor, Executor paperExecutor, BiPredicate<Player, Long> currentPlayer,
+            BiConsumer<String, OpeningRecord> activityObserver) {
         this.ledger = Objects.requireNonNull(ledger);
         this.random = Objects.requireNonNull(random);
         this.inventory = Objects.requireNonNull(inventory);
@@ -60,6 +71,7 @@ public final class ManagedOpeningEngine {
         this.storageExecutor = Objects.requireNonNull(storageExecutor);
         this.paperExecutor = Objects.requireNonNull(paperExecutor);
         this.currentPlayer = Objects.requireNonNull(currentPlayer);
+        this.activityObserver = Objects.requireNonNull(activityObserver);
     }
 
     /**
@@ -127,6 +139,7 @@ public final class ManagedOpeningEngine {
                 () -> generateOne(pool).rewards(), witness)).thenApply(reservation -> {
             OpeningRecord record = reservation.record();
             if (reservation.status() == OpeningLedger.VirtualReservationStatus.CREATED) {
+                observeActivity("opened", record);
                 return new VirtualOpening(VirtualResult.OPENED, record);
             }
             if (reservation.status() == OpeningLedger.VirtualReservationStatus.BLOCKED_BY_ACTIVE) {
@@ -144,13 +157,19 @@ public final class ManagedOpeningEngine {
                 throw new IllegalStateException("Opening changed; refresh the menu");
             }
             OfferSet rolled = rerollOffers(current);
-            return ledger.reroll(id, playerId, revision, rolled.rewards());
+            OpeningRecord rerolled = ledger.reroll(id, playerId, revision, rolled.rewards());
+            observeActivity("rerolled", rerolled);
+            return rerolled;
         });
     }
 
     public CompletableFuture<OpeningRecord> select(Player player, UUID id, long revision, String rewardId) {
         UUID playerId = player.getUniqueId();
-        return storage(() -> ledger.select(id, playerId, revision, rewardId));
+        return storage(() -> {
+            OpeningRecord selected = ledger.select(id, playerId, revision, rewardId);
+            observeActivity("selected", selected);
+            return selected;
+        });
     }
 
     /** Materialization never grants; native provider bytes are durable before inventory mutation. */
@@ -235,8 +254,12 @@ public final class ManagedOpeningEngine {
             }
             CompletableFuture<OpeningRecord> marked = active.get().stage() == OpeningRecord.Stage.REVIEW
                     ? CompletableFuture.completedFuture(active.get())
-                    : storage(() -> ledger.review(active.get().id(), playerId, active.get().revision(),
-                            "interrupted-native-side-effect"));
+                    : storage(() -> {
+                        OpeningRecord reviewed = ledger.review(active.get().id(), playerId, active.get().revision(),
+                                "interrupted-native-side-effect");
+                        observeActivity("recovery_required", reviewed);
+                        return reviewed;
+                    });
             return marked.thenCompose(record -> paper(() -> {
                 requireCurrent(player, session);
                 return inspect(player, record);
@@ -244,10 +267,14 @@ public final class ManagedOpeningEngine {
                 if (outcome == OpeningInventoryTransactions.Outcome.UNKNOWN) {
                     return CompletableFuture.completedFuture(Optional.of(record));
                 }
-                return storage(() -> Optional.of(ledger.reconciled(record.id(), playerId, record.revision(),
-                        outcome == OpeningInventoryTransactions.Outcome.APPLIED,
-                        outcome == OpeningInventoryTransactions.Outcome.APPLIED
-                                ? "native-receipt-confirmed" : "native-preimage-confirmed")));
+                return storage(() -> {
+                    OpeningRecord reconciled = ledger.reconciled(record.id(), playerId, record.revision(),
+                            outcome == OpeningInventoryTransactions.Outcome.APPLIED,
+                            outcome == OpeningInventoryTransactions.Outcome.APPLIED
+                                    ? "native-receipt-confirmed" : "native-preimage-confirmed");
+                    observeActivity("recovered", reconciled);
+                    return Optional.of(reconciled);
+                });
             }));
         });
     }
@@ -308,20 +335,43 @@ public final class ManagedOpeningEngine {
     }
 
     private OpeningRecord settleDebit(OpeningRecord record, UUID playerId, OpeningInventoryTransactions.Outcome outcome) {
-        return switch (outcome) {
+        OpeningRecord settled = switch (outcome) {
             case APPLIED -> ledger.debitConfirmed(record.id(), playerId, record.revision());
             case NOT_APPLIED -> ledger.debitRejected(record.id(), playerId, record.revision(), "native-inventory-unchanged");
             case UNKNOWN -> ledger.review(record.id(), playerId, record.revision(), "native-key-debit-unconfirmed");
         };
+        observeActivity(switch (settled.stage()) {
+            case CHOOSING -> "opened";
+            case ABORTED -> "open_failed";
+            case REVIEW -> "recovery_required";
+            default -> "";
+        }, settled);
+        return settled;
     }
 
     private OpeningRecord settleDelivery(OpeningRecord record, UUID playerId,
             OpeningInventoryTransactions.Outcome outcome) {
-        return switch (outcome) {
+        OpeningRecord settled = switch (outcome) {
             case APPLIED -> ledger.deliveryConfirmed(record.id(), playerId, record.revision());
             case NOT_APPLIED -> ledger.deliveryNotApplied(record.id(), playerId, record.revision(), "native-inventory-unchanged");
             case UNKNOWN -> ledger.review(record.id(), playerId, record.revision(), "native-reward-delivery-unconfirmed");
         };
+        observeActivity(switch (settled.stage()) {
+            case DELIVERED -> "claimed";
+            case MAIL -> "mail_pending";
+            case REVIEW -> "recovery_required";
+            default -> "";
+        }, settled);
+        return settled;
+    }
+
+    private void observeActivity(String event, OpeningRecord record) {
+        if (event.isEmpty()) return;
+        try {
+            activityObserver.accept(event, record);
+        } catch (Throwable ignored) {
+            // Telemetry is optional and must never change the durable gameplay result.
+        }
     }
 
     private <T> CompletableFuture<T> storage(Supplier<T> action) {

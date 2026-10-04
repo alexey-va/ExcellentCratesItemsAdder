@@ -181,6 +181,9 @@ class CrateKeyShopService(
             }
             records.filter(Purchase::blocksFurtherPurchases).forEach { record ->
                 blockedPlayers += record.playerId()
+                ArcActivityTelemetryBridge.keyPurchase(
+                    "recovery_required", record, "${record.state().name.lowercase(Locale.ROOT)}_recovery",
+                )
                 runtime.error(
                     "Key sale requires manual review: id={}, player={}, state={}",
                     record.id(), record.playerId(), record.state(),
@@ -299,6 +302,7 @@ class CrateKeyShopService(
                 return@whenCompleteSync
             }
             context.purchase = prepared
+            ArcActivityTelemetryBridge.keyPurchase("started", prepared, "prepared")
             afterPrepared(context)
         }
     }
@@ -438,12 +442,21 @@ class CrateKeyShopService(
             if (failure != null || saved == null) {
                 runtime.error("Key sale journal barrier failed: id={}, from={}, to={}, error={}",
                     current.id(), current.state(), next, failure?.toString() ?: "empty write")
+                ArcActivityTelemetryBridge.keyPurchase(
+                    "unknown", current, "${next.name.lowercase(Locale.ROOT)}_barrier", "journal_barrier_failed",
+                )
                 message(context.player, "key-shop.review")
                 // A failed barrier leaves the previous durable state unresolved; never retry its side effect.
                 finish(context, clearBlock = false)
                 return@whenCompleteSync
             }
             context.purchase = saved
+            when (saved.state()) {
+                State.DELIVERED -> ArcActivityTelemetryBridge.keyPurchase("delivered", saved, "delivered")
+                State.CANCELLED -> ArcActivityTelemetryBridge.keyPurchase("cancelled", saved, "cancelled")
+                State.REVIEW -> ArcActivityTelemetryBridge.keyPurchase("review", saved, "review")
+                else -> Unit
+            }
             onSuccess()
         }
     }

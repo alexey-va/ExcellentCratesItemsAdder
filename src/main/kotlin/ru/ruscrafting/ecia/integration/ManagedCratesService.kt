@@ -186,9 +186,9 @@ class ManagedCratesService(
         runtime.installMenu(candidate.menuConfiguration)
         screens = EciaMenuScreens(candidate.menuConfiguration, payload)
         engine = ManagedOpeningEngine(activeLedger, WeightedOfferGenerator(RandomGenerator.getDefault()),
-            inventory, payload, rewards::materialize, storageExecutor, paperExecutor) { player, session ->
-            isCurrentSession(player, session)
-        }
+            inventory, payload, rewards::materialize, storageExecutor, paperExecutor,
+            { player, session -> isCurrentSession(player, session) },
+            ArcActivityTelemetryBridge::openingTransition)
         pools = candidate.pools
         settings = candidate.settings
         storageHealthy = available

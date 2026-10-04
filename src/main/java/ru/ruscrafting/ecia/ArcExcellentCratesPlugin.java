@@ -9,6 +9,7 @@ import ru.ruscrafting.ecia.integration.CrateOpeningEffects;
 import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess;
 import ru.ruscrafting.ecia.integration.ManagedCratesService;
 import ru.ruscrafting.ecia.integration.CrateKeyShopService;
+import ru.ruscrafting.ecia.integration.ArcActivityTelemetryBridge;
 import ru.arc.paper.display.PaperPacketDisplays;
 
 import java.io.IOException;
@@ -32,6 +33,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        ArcActivityTelemetryBridge.INSTANCE.install();
         migrateLegacyDataFolder();
         saveDefaultConfig();
         runtime = EciaRuntime.create(this);
