@@ -37,7 +37,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
         migrateLegacyDataFolder();
         saveDefaultConfig();
         runtime = EciaRuntime.create(this);
-        packetDisplays = registerService(new PaperPacketDisplays(this));
+        packetDisplays = registerService(new PaperPacketDisplays(this, "crate-visuals"));
         EciaLocale locale = runtime.installLocale(getDataFolder().toPath(), legacyMessages());
         var shopCommand = java.util.Objects.requireNonNull(getCommand("cratekeys"));
         shopCommand.setExecutor((sender, command, label, arguments) -> {
