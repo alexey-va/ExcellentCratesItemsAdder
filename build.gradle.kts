@@ -125,7 +125,6 @@ tasks {
         archiveClassifier.set("")
         mergeServiceFiles()
         exclude("META-INF/DEPENDENCIES", "META-INF/LICENSE", "META-INF/NOTICE")
-        exclude("net/kyori/adventure/**")
         exclude("ru/arc/paper/api/**")
         exclude("ru/arc/paper/packet/PaperVisualPacketRuntime*.class")
         relocate("com.github.stefvanschie.inventoryframework", "ru.ruscrafting.ecia.libs.inventoryframework")
