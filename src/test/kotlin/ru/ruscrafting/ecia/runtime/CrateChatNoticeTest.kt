@@ -40,7 +40,7 @@ class CrateChatNoticeTest : FunSpec({
         "managed.inventory-full",
     )
 
-    test("renders all 16 Russian and English notices with the same frame and glyph row") {
+    test("renders all 16 notices in Russian for Russian and English clients") {
         val root = Files.createTempDirectory("ecia-chat-notices-")
         try {
             val locale = EciaLocale(root, emptyMap())
@@ -48,9 +48,8 @@ class CrateChatNoticeTest : FunSpec({
 
             listOf("ru-RU", "en-US").forEach { localeTag ->
                 paths.forEach { path ->
-                    val nextReset = if (localeTag == "ru-RU") "в полночь" else "at midnight"
                     val replacements = values[path].orEmpty() +
-                        if (path == "managed.no-key-until-reset") mapOf("next_reset" to nextReset) else emptyMap()
+                        if (path == "managed.no-key-until-reset") mapOf("next_reset" to "в полночь") else emptyMap()
                     val output = locale.renderPadded(path, player(localeTag), replacements)
                     val plain = PlainTextComponentSerializer.plainText().serialize(output)
                     val visibleRows = plain.trim('\n').split('\n')
@@ -65,13 +64,42 @@ class CrateChatNoticeTest : FunSpec({
                     } } shouldBe true
                     visibleRows.all { !it.startsWith(" ") } shouldBe true
                     if (path in setOf("key.received", "key.periodic-expired", "key.periodic-received-one", "key.periodic-received-both")) {
-                        val expectedHeading = if (localeTag == "ru-RU") "Сундуки RusCrafting" else "RusCrafting Crates"
-                        plain shouldContain expectedHeading
+                        plain shouldContain "Сундуки RusCrafting"
                     }
                     visibleRows[2].contains("\uE531") shouldBe true
                     plain.count { it == '\uE531' } shouldBe 1
                 }
             }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("sender render APIs stay Russian for English and other client locales, including overlay reload") {
+        val root = Files.createTempDirectory("ecia-chat-notice-fixed-russian-")
+        try {
+            val locale = EciaLocale(root, emptyMap())
+            val plain = PlainTextComponentSerializer.plainText()
+            val englishPlayer = player("en-US")
+            val germanPlayer = player("de-DE")
+
+            plain.serialize(locale.render("command.usage", englishPlayer, emptyMap())) shouldBe
+                "Использование: /arc-crate, /arc-crate place или /arc-crate key игрок ключ [количество] [сервер]."
+            plain.serialize(locale.renderPadded("command.usage", englishPlayer, emptyMap())) shouldContain
+                "Использование: /arc-crate"
+            val block = plain.serialize(locale.renderBlock(germanPlayer, listOf("managed.busy" to emptyMap())))
+            block shouldContain "Текущее открытие ещё не завершено."
+            block.contains("The current opening") shouldBe false
+
+            locale.reload(mapOf("managed.busy" to "<gold>Русский оверлей."))
+            plain.serialize(locale.render("managed.busy", englishPlayer, emptyMap())) shouldBe "Русский оверлей."
+            plain.serialize(locale.renderPadded("managed.busy", germanPlayer, emptyMap())) shouldContain "Русский оверлей."
+            plain.serialize(locale.renderBlock(englishPlayer, listOf("managed.busy" to emptyMap()))) shouldContain
+                "Русский оверлей."
+
+            locale.reload(emptyMap())
+            plain.serialize(locale.render("managed.busy", englishPlayer, emptyMap())) shouldBe
+                "Текущее открытие ещё не завершено.\nДождитесь его окончания и попробуйте снова."
         } finally {
             root.toFile().deleteRecursively()
         }
@@ -199,7 +227,7 @@ class CrateChatNoticeTest : FunSpec({
             val cases = listOf(
                 Triple("ru-RU", "Ключ от кейса «Ежедневный тайник»", "Ключ от кейса «Ежедневный тайник»."),
                 Triple("ru-RU", "Ежедневный тайник · ключ", "Ключ от кейса «Ежедневный тайник»."),
-                Triple("en-US", "Ежедневный тайник · ключ", "Crate key “Ежедневный тайник”."),
+                Triple("en-US", "Ежедневный тайник · ключ", "Ключ от кейса «Ежедневный тайник»."),
             )
 
             cases.forEach { (localeTag, keyName, expected) ->
@@ -209,7 +237,7 @@ class CrateChatNoticeTest : FunSpec({
                 colored.filter { it.second == TextColor.color(0xFFD66A) }.joinToString("") { it.first }
                     .shouldContain("Ежедневный тайник")
                 colored.filter { it.second == TextColor.color(0xFFFFFF) }.joinToString("") { it.first }
-                    .shouldContain(if (localeTag == "ru-RU") "Ключ от кейса «»" else "Crate key “”")
+                    .shouldContain("Ключ от кейса «»")
             }
 
             val unknown = locale.renderWithLocale(
@@ -223,26 +251,23 @@ class CrateChatNoticeTest : FunSpec({
         }
     }
 
-    test("expired periodic key notices fit two body rows under the colored crate heading") {
+    test("expired periodic key notices fit two Russian body rows for both client locales") {
         val root = Files.createTempDirectory("ecia-chat-periodic-expired-")
         try {
             val locale = EciaLocale(root, emptyMap())
-            listOf("ru-RU" to "Сундуки RusCrafting", "en-US" to "RusCrafting Crates").forEach { (tag, heading) ->
+            listOf("ru-RU", "en-US").forEach { tag ->
                 val output = locale.renderPadded("key.periodic-expired", player(tag), emptyMap())
                 val rows = PlainTextComponentSerializer.plainText().serialize(output).trim('\n').split('\n')
                 rows.size shouldBe 3
-                rows[0] shouldContain heading
+                rows[0] shouldContain "Сундуки RusCrafting"
                 rows[1].isNotBlank() shouldBe true
                 rows[2].isNotBlank() shouldBe true
                 val plain = PlainTextComponentSerializer.plainText().serialize(output)
-                if (tag == "ru-RU") {
-                    plain shouldContain "Ключ просрочен и удалён."
-                    plain shouldContain "Сундук остался закрыт."
-                } else {
-                    plain shouldContain "Expired key removed."
-                    plain shouldContain "The crate stays closed."
-                }
-                output.coloredText().any { it.first.contains(heading) && it.second == TextColor.color(0xFFD66A) } shouldBe true
+                plain shouldContain "Ключ просрочен и удалён."
+                plain shouldContain "Сундук остался закрыт."
+                output.coloredText().any {
+                    it.first.contains("Сундуки RusCrafting") && it.second == TextColor.color(0xFFD66A)
+                } shouldBe true
             }
         } finally {
             root.toFile().deleteRecursively()

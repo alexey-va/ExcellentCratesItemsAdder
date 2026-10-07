@@ -111,24 +111,20 @@ internal class ArcCrateCommand(
     private fun openRoot(player: Player) {
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.admin",
-            title = text(if (english(player)) "Crate control" else "Управление кейсами", NamedTextColor.GOLD, true),
+            title = text("Управление кейсами", NamedTextColor.GOLD, true),
             body = listOf(PaperDialogBody(text(
-                if (english(player)) {
-                    "Place a new crate where you are looking, or grant a physical key on a selected server.\nShift + left-click an existing crate for detailed visual settings."
-                } else {
-                    "Установите новый кейс в точку прицела или выдайте физический ключ на выбранном сервере.\nShift + ЛКМ по установленному кейсу — тонкая настройка визуала."
-                },
+                "Установите новый кейс в точку прицела или выдайте физический ключ на выбранном сервере.\nShift + ЛКМ по установленному кейсу — тонкая настройка визуала.",
                 NamedTextColor.WHITE,
             ), 468)),
             buttons = listOf(
-                button("admin_place", if (english(player)) "Place a crate ›" else "Установить кейс ›", NamedTextColor.GREEN) {
+                button("admin_place", "Установить кейс ›", NamedTextColor.GREEN) {
                     beginPlacement(it.player)
                 },
-                button("admin_keys", if (english(player)) "Grant a key ›" else "Выдать ключ ›", NamedTextColor.GOLD) {
+                button("admin_keys", "Выдать ключ ›", NamedTextColor.GOLD) {
                     openKeys(it.player, 0)
                 },
             ),
-            exitButton = closeButton(player),
+            exitButton = closeButton(),
             columns = 2,
         ))
     }
@@ -163,16 +159,15 @@ internal class ArcCrateCommand(
         }
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.admin.place.pool",
-            title = text(if (english(player)) "Place a crate" else "Установить кейс", NamedTextColor.GOLD, true),
+            title = text("Установить кейс", NamedTextColor.GOLD, true),
             body = listOf(PaperDialogBody(text(
-                if (english(player)) "Target: ${target.world.name} · ${target.x}, ${target.y}, ${target.z}\nChoose a reward pool."
-                else "Точка: ${target.world.name} · ${target.x}, ${target.y}, ${target.z}\nВыберите пул наград.",
+                "Точка: ${target.world.name} · ${target.x}, ${target.y}, ${target.z}\nВыберите пул наград.",
                 NamedTextColor.WHITE,
             ), 420)),
             buttons = crates.mapIndexed { index, crate ->
                 button("pool_$index", crate.id, NamedTextColor.LIGHT_PURPLE) { openModels(it.player, target, crate, 0) }
             },
-            exitButton = backButton(player, "admin_pool_back") { openRoot(it) },
+            exitButton = backButton("admin_pool_back") { openRoot(it) },
             columns = 2,
         ))
     }
@@ -193,29 +188,28 @@ internal class ArcCrateCommand(
         val buttons = choices.mapIndexed { index, model ->
             val companion = (model as? Model.ItemsAdder)?.let { CrateModelPairing.openingModel(it.id, registeredIds) }
             val label = when (model) {
-                is Model.Vanilla -> vanillaName(player, model.material)
+                is Model.Vanilla -> vanillaName(model.material)
                 is Model.ItemsAdder -> model.id + if (companion != null) "  ↗" else ""
             }
             button("model_${page}_$index", label, NamedTextColor.LIGHT_PURPLE, closeBefore = true) {
                 place(it.player, target, crate, model)
             }
         }.toMutableList()
-        if (page > 0) buttons += button("models_previous", if (english(player)) "‹ Previous" else "‹ Назад", NamedTextColor.BLUE) {
+        if (page > 0) buttons += button("models_previous", "‹ Назад", NamedTextColor.BLUE) {
             openModels(it.player, target, crate, page - 1)
         }
-        if (page + 1 < pages) buttons += button("models_next", if (english(player)) "Next ›" else "Дальше ›", NamedTextColor.BLUE) {
+        if (page + 1 < pages) buttons += button("models_next", "Дальше ›", NamedTextColor.BLUE) {
             openModels(it.player, target, crate, page + 1)
         }
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.admin.place.model",
             title = text(crate.id, NamedTextColor.LIGHT_PURPLE, true),
             body = listOf(PaperDialogBody(text(
-                if (english(player)) "Choose a shell · page ${page + 1}/$pages\n↗ means an opening twin was found."
-                else "Выберите корпус · страница ${page + 1}/$pages\n↗ — найдена парная открытая модель.",
+                "Выберите корпус · страница ${page + 1}/$pages\n↗ — найдена парная открытая модель.",
                 NamedTextColor.WHITE,
             ), 420)),
             buttons = buttons,
-            exitButton = backButton(player, "admin_models_back") { openPools(it, target) },
+            exitButton = backButton("admin_models_back") { openPools(it, target) },
             columns = 2,
         ))
     }
@@ -285,22 +279,21 @@ internal class ArcCrateCommand(
                 openGrant(it.player, key.id, null)
             }
         }.toMutableList()
-        if (page > 0) buttons += button("keys_previous", if (english(player)) "‹ Previous" else "‹ Назад", NamedTextColor.BLUE) {
+        if (page > 0) buttons += button("keys_previous", "‹ Назад", NamedTextColor.BLUE) {
             openKeys(it.player, page - 1)
         }
-        if (page + 1 < pages) buttons += button("keys_next", if (english(player)) "Next ›" else "Дальше ›", NamedTextColor.BLUE) {
+        if (page + 1 < pages) buttons += button("keys_next", "Дальше ›", NamedTextColor.BLUE) {
             openKeys(it.player, page + 1)
         }
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.admin.keys",
-            title = text(if (english(player)) "Grant a key" else "Выдать ключ", NamedTextColor.GOLD, true),
+            title = text("Выдать ключ", NamedTextColor.GOLD, true),
             body = listOf(PaperDialogBody(text(
-                if (english(player)) "Choose a physical key · page ${page + 1}/$pages. The next screen asks for player, amount, and destination server."
-                else "Выберите физический ключ · страница ${page + 1}/$pages. Далее укажите игрока, количество и сервер назначения.",
+                "Выберите физический ключ · страница ${page + 1}/$pages. Далее укажите игрока, количество и сервер назначения.",
                 NamedTextColor.WHITE,
             ), 468)),
             buttons = buttons,
-            exitButton = backButton(player, "admin_keys_back") { openRoot(it) },
+            exitButton = backButton("admin_keys_back") { openRoot(it) },
             columns = 2,
         ))
     }
@@ -324,26 +317,25 @@ internal class ArcCrateCommand(
         }
         val body = buildList {
             add(PaperDialogBody(text(
-                if (english(player)) "Key: $keyId\nThe request is sent to exactly one server and waits briefly for the player there."
-                else "Ключ: $keyId\nЗаявка отправляется ровно на один сервер и недолго ждёт игрока именно там.",
+                "Ключ: $keyId\nЗаявка отправляется ровно на один сервер и недолго ждёт игрока именно там.",
                 NamedTextColor.WHITE,
             ), 468))
             error?.let { add(PaperDialogBody(text(it, NamedTextColor.RED), 468)) }
         }
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.admin.key.grant",
-            title = text(if (english(player)) "Key delivery" else "Доставка ключа", NamedTextColor.LIGHT_PURPLE, true),
+            title = text("Доставка ключа", NamedTextColor.LIGHT_PURPLE, true),
             body = body,
             inputs = listOf(PaperDialogTextInput(
                 PLAYER_INPUT,
-                text(if (english(player)) "Player name" else "Ник игрока", NamedTextColor.WHITE),
+                text("Ник игрока", NamedTextColor.WHITE),
                 initial = initialPlayer.take(20),
                 width = 420,
                 maxLength = 20,
             )),
             numberInputs = listOf(PaperDialogNumberRangeInput(
                 AMOUNT_INPUT,
-                text(if (english(player)) "Amount" else "Количество", NamedTextColor.WHITE),
+                text("Количество", NamedTextColor.WHITE),
                 1f,
                 64f,
                 initialAmount.coerceIn(1, 64).toFloat(),
@@ -352,27 +344,26 @@ internal class ArcCrateCommand(
                 "%s: %s",
             )),
             buttons = servers.mapIndexed { index, server ->
-                button("grant_$index", backendLabel(player, server), NamedTextColor.GREEN) { context ->
+                button("grant_$index", backendLabel(server), NamedTextColor.GREEN) { context ->
                     val rawPlayer = context.text(PLAYER_INPUT).orEmpty().trim()
                     val amount = context.number(AMOUNT_INPUT)?.roundToInt() ?: initialAmount
                     val request = KeyGrantRequest.parse(rawPlayer, keyId, amount, server.value, season)
                     if (request == null) {
                         val failure = if (NetworkPlayerName.parseOrNull(rawPlayer) == null) {
-                            if (english(player)) "Enter a valid Minecraft player name." else "Введите корректный ник Minecraft."
+                            "Введите корректный ник Minecraft."
                         } else {
-                            if (english(player)) "Amount must be between 1 and 64." else "Количество должно быть от 1 до 64."
+                            "Количество должно быть от 1 до 64."
                         }
                         openGrant(context.player, keyId, season, rawPlayer, amount, failure)
                     } else if (dispatch(request) == KeyDispatchResult.SENT) {
                         openGrantComplete(context.player, request)
                     } else {
                         openGrant(context.player, keyId, season, rawPlayer, amount,
-                            if (english(player)) "ARC could not send the request. Nothing was issued."
-                            else "ARC не смог отправить заявку. Ничего не выдано.")
+                            "ARC не смог отправить заявку. Ничего не выдано.")
                     }
                 }
             },
-            exitButton = backButton(player, "admin_grant_back") { openKeys(it, 0) },
+            exitButton = backButton("admin_grant_back") { openKeys(it, 0) },
             columns = minOf(servers.size, 2).coerceAtLeast(1),
         ))
     }
@@ -381,24 +372,20 @@ internal class ArcCrateCommand(
         val server = checkNotNull(request.server) { "Dialog grants always select an explicit backend" }
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.admin.key.sent",
-            title = text(if (english(player)) "Request sent" else "Заявка отправлена", NamedTextColor.GREEN, true),
+            title = text("Заявка отправлена", NamedTextColor.GREEN, true),
             body = listOf(PaperDialogBody(text(
-                if (english(player)) {
-                    "${request.amount} × ${request.keyId} → ${request.player.value} · ${server.value}\nThe target server will issue the key when it sees the player. The request is not broadcast or retried automatically."
-                } else {
-                    "${request.amount} × ${request.keyId} → ${request.player.value} · ${server.value}\nЦелевой сервер выдаст ключ, когда увидит игрока. Заявка не рассылается по всей сети и автоматически не повторяется."
-                },
+                "${request.amount} × ${request.keyId} → ${request.player.value} · ${server.value}\nЦелевой сервер выдаст ключ, когда увидит игрока. Заявка не рассылается по всей сети и автоматически не повторяется.",
                 NamedTextColor.WHITE,
             ), 468)),
             buttons = listOf(
-                button("grant_again", if (english(player)) "Grant this key again" else "Выдать такой ещё", NamedTextColor.LIGHT_PURPLE) {
+                button("grant_again", "Выдать такой ещё", NamedTextColor.LIGHT_PURPLE) {
                     openGrant(it.player, request.keyId, request.season, request.player.value, request.amount)
                 },
-                button("grant_other", if (english(player)) "Choose another key" else "Выбрать другой ключ", NamedTextColor.GOLD) {
+                button("grant_other", "Выбрать другой ключ", NamedTextColor.GOLD) {
                     openKeys(it.player, 0)
                 },
             ),
-            exitButton = backButton(player, "admin_sent_back") { openRoot(it) },
+            exitButton = backButton("admin_sent_back") { openRoot(it) },
             columns = 2,
         ))
         message(player, "key.sent", mapOf(
@@ -440,7 +427,7 @@ internal class ArcCrateCommand(
                     "player" to request.player.value,
                     "key" to request.keyId,
                     "amount" to request.amount.toString(),
-                    "server" to (request.server?.value ?: if (sender is Player && english(sender)) "this server" else "этом сервере"),
+                    "server" to (request.server?.value ?: "этом сервере"),
                 ))
             KeyDispatchResult.PLAYER_NOT_HERE -> message(sender, "key.player-not-here", mapOf("player" to request.player.value))
             KeyDispatchResult.FAILED -> message(sender, "key.dispatch-failed")
@@ -550,16 +537,16 @@ internal class ArcCrateCommand(
         onClick = action,
     )
 
-    private fun backButton(player: Player, id: String, action: (Player) -> Unit) = PaperDialogButton(
+    private fun backButton(id: String, action: (Player) -> Unit) = PaperDialogButton(
         PaperDialogActionId.of(id),
-        text(if (english(player)) "‹ Back" else "‹ Назад", NamedTextColor.WHITE),
+        text("‹ Назад", NamedTextColor.WHITE),
         width = 200,
         closeDialogBeforeAction = false,
     ) { action(it.player) }
 
-    private fun closeButton(player: Player) = PaperDialogButton(
+    private fun closeButton() = PaperDialogButton(
         PaperDialogActionId.of("admin_close"),
-        text(if (english(player)) "Close" else "Закрыть", NamedTextColor.WHITE),
+        text("Закрыть", NamedTextColor.WHITE),
         width = 200,
         closeDialogBeforeAction = true,
     ) {}
@@ -569,20 +556,18 @@ internal class ArcCrateCommand(
             .decoration(TextDecoration.ITALIC, false)
             .decoration(TextDecoration.BOLD, bold)
 
-    private fun english(player: Player) = player.locale().language.equals("en", ignoreCase = true)
-
-    private fun vanillaName(player: Player, material: Material): String = when (material) {
-        Material.CHEST -> if (english(player)) "Vanilla chest" else "Ванильный сундук"
-        Material.TRAPPED_CHEST -> if (english(player)) "Trapped chest" else "Сундук-ловушка"
-        Material.BARREL -> if (english(player)) "Vanilla barrel" else "Ванильная бочка"
-        Material.ENDER_CHEST -> if (english(player)) "Ender chest" else "Эндер-сундук"
+    private fun vanillaName(material: Material): String = when (material) {
+        Material.CHEST -> "Ванильный сундук"
+        Material.TRAPPED_CHEST -> "Сундук-ловушка"
+        Material.BARREL -> "Ванильная бочка"
+        Material.ENDER_CHEST -> "Эндер-сундук"
         else -> material.name
     }
 
-    private fun backendLabel(player: Player, server: BackendServerId): String = when (server.value) {
-        "spawn" -> if (english(player)) "Grant on Spawn" else "Выдать на спавне"
-        "survival" -> if (english(player)) "Grant on Survival" else "Выдать на выживании"
-        else -> if (english(player)) "Grant on ${server.value}" else "Выдать на ${server.value}"
+    private fun backendLabel(server: BackendServerId): String = when (server.value) {
+        "spawn" -> "Выдать на спавне"
+        "survival" -> "Выдать на выживании"
+        else -> "Выдать на ${server.value}"
     }
 
     override fun close() {

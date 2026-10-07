@@ -53,7 +53,10 @@ plugin data during recovery.
 each case and its native rewards. `menus.yml` contains six-row history and
 pool screens. Names and presentation are configurable;
 model 11001 is rejected in every menu template. Russian and English chat text
-is in `lang/`; existing protection messages in `config.yml` remain authoritative.
+is in `lang/`; all player and administrator interfaces always use Russian,
+regardless of the Minecraft client language. `EciaLocale` owns message selection;
+`ArcCrateCommand` uses Russian labels for its administrator dialogs. Existing
+protection messages in `config.yml` remain authoritative.
 The sixteen ordinary player chat notices use a white body with gold crate/key
 names, amounts and reset dates. Notices keep `notice.heading` when the wrapped body leaves room within three rows. Longer custom
 values keep every word. The large key remains anchored to the third row.

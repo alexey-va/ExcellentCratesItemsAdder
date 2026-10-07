@@ -13,8 +13,9 @@ import ru.arc.text.LocalizedMiniMessage
 import java.nio.file.Path
 
 /**
- * Localized message boundary for ECIA. New keys are merged into both language
- * files; legacy `config.yml/messages` values remain authoritative for Russian
+ * Russian player-facing message boundary for ECIA, independent of client language.
+ * New keys are merged into both language files; legacy `config.yml/messages`
+ * values remain authoritative for Russian
  * so existing operator customizations survive the migration.
  */
 class EciaLocale(
@@ -32,7 +33,7 @@ class EciaLocale(
     }
 
     fun render(path: String, sender: CommandSender?, values: Map<String, String>): Component {
-        val tag = localeTag(sender)
+        val tag = "ru"
         return renderer.render(path, tag, renderedValues(path, tag, values))
     }
 
@@ -229,9 +230,6 @@ class EciaLocale(
             is Map<*, *> -> value.forEach { (key, entry) -> rejectHtmlEntities(locale, "$path.$key", entry) }
         }
     }
-
-    private fun localeTag(sender: CommandSender?): String =
-        if (sender is Player) sender.locale().toLanguageTag() else "ru"
 
     private class LegacyOverlayCatalog(
         private val modern: LocaleCatalog,
