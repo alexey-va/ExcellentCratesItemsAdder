@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "ru.ruscrafting"
-version = "0.14.35"
+version = "0.14.36"
 
 repositories {
     mavenCentral()
@@ -43,6 +43,7 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib"))
+    implementation(project(":api"))
     implementation("ru.ruscrafting.arc:arc-core:2.7.18")
     implementation("ru.ruscrafting.arc:arc-core-logging:2.7.18")
     implementation("ru.ruscrafting.arc:arc-core-paper:2.7.18")

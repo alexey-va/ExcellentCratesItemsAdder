@@ -2,7 +2,9 @@ package ru.ruscrafting.ecia;
 
 import org.bukkit.entity.Player;
 import org.bukkit.Location;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
+import ru.ruscrafting.ecia.api.CrateLocationService;
 import ru.ruscrafting.ecia.runtime.EciaLocale;
 import ru.ruscrafting.ecia.runtime.EciaRuntime;
 import ru.ruscrafting.ecia.integration.CrateOpeningEffects;
@@ -30,6 +32,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
     private PaperPacketDisplays packetDisplays;
     private CrateVisualSettingsStore visualSettings;
     private CrateVisualEditor visualEditor;
+    private CrateLocationServiceRegistration crateLocationRegistration;
 
     @Override
     public void onEnable() {
@@ -54,6 +57,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
 
         registry = new CrateRegistry(crateDirectory, message -> runtime.warn("{}", message));
         int count = registry.reload();
+        registerCrateLocationService();
         String previewCommand = getConfig().getString(
                 "preview-command",
                 "excellentcrates preview <crate> <player>"
@@ -112,6 +116,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        unregisterCrateLocationService();
         if (protectionListener != null) {
             protectionListener.clearManagedPreviewHandler();
             protectionListener.clearVisualEditorHandler();
@@ -140,6 +145,30 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
     public boolean isCrateLocation(Location location) {
         return registry != null && location != null && location.getWorld() != null
                 && registry.contains(CratePosition.from(location));
+    }
+
+    private void registerCrateLocationService() {
+        crateLocationRegistration = registerService(
+                new CrateLocationServiceRegistration(this, this::isManagedCrateLocation)
+        );
+    }
+
+    private void unregisterCrateLocationService() {
+        if (crateLocationRegistration == null) return;
+        crateLocationRegistration.close();
+        crateLocationRegistration = null;
+    }
+
+    private boolean isManagedCrateLocation(Location location) {
+        if (location == null || location.getWorld() == null) return false;
+
+        boolean firstPartyLocation = isCrateLocation(location);
+        Plugin nativeCrates = getServer().getPluginManager().getPlugin("ExcellentCrates");
+        if (nativeCrates == null) return firstPartyLocation;
+        if (!nativeCrates.isEnabled()) {
+            throw new IllegalStateException("ExcellentCrates is installed but disabled");
+        }
+        return firstPartyLocation || NativeExcellentCratesLocationLookup.isCrateAt(location);
     }
 
     /** Register a managed preview route without coupling protection to domain services. */

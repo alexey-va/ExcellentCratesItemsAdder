@@ -1,5 +1,7 @@
 rootProject.name = "ArcExcellentCrates"
 
+include(":api")
+
 // Public builds resolve the pinned release from Maven. A local checkout is
 // opt-in for ARC development and never becomes a required filesystem path.
 providers.gradleProperty("arcCoreDir").orNull?.let(::file)?.let { arcCoreDir ->
