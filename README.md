@@ -225,6 +225,14 @@ are never broadcast or retried automatically. The direct form is also available
 as `/arc-crate key player key [amount] [server]`. Amount defaults to `1`, and
 omitting the server grants the key on the backend where the command is run.
 
+In the physical ExcellentCrates reward preview, an administrator can left-click
+a displayed reward to issue it once through native `CrateManager.giveReward`.
+The listener is owned by `ArcExcellentCratesPlugin` and lives in
+`integration/NativePreviewRewardGrantService.kt`. It accepts only the current
+native preview slot and displayed item, under `ecia.admin`, with ExcellentCrates
+6.6.1 and nightcore 2.16.4; ambiguous icons and stale or changed previews fail
+closed.
+
 Shift + left-click changes the stationary animation, roulette audience and
 geometry, hologram, or physical vanilla/ItemsAdder shell without moving the
 crate anchor. Twenty-three idle presets range from horizontal orbits and fountains

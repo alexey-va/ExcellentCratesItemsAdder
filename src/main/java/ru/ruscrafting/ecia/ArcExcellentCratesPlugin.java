@@ -3,6 +3,7 @@ package ru.ruscrafting.ecia;
 import org.bukkit.entity.Player;
 import org.bukkit.Location;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.ruscrafting.ecia.api.CrateLocationService;
 import ru.ruscrafting.ecia.runtime.EciaLocale;
@@ -10,6 +11,7 @@ import ru.ruscrafting.ecia.runtime.EciaRuntime;
 import ru.ruscrafting.ecia.integration.CrateOpeningEffects;
 import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess;
 import ru.ruscrafting.ecia.integration.ManagedCratesService;
+import ru.ruscrafting.ecia.integration.NativePreviewRewardGrantService;
 import ru.ruscrafting.ecia.integration.CrateKeyShopService;
 import ru.ruscrafting.ecia.integration.ArcActivityTelemetryBridge;
 import ru.arc.paper.display.PaperPacketDisplays;
@@ -71,6 +73,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
         runtime.updateRegistrySize(count);
         runtime.info("Protecting {} ExcellentCrates furniture position(s).", count);
         NetworkKeyReceiver networkKeyReceiver = registerService(new NetworkKeyReceiver(this));
+        registerNativePreviewRewardGrant();
         if (getServer().getPluginManager().isPluginEnabled("ExcellentCrates")) {
             try {
                 crateHolograms = registerService(new CrateHologramService(this, visualSettings));
@@ -200,6 +203,24 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
             throw new IllegalStateException("ECIA runtime is not enabled");
         }
         return runtime.registerService(service);
+    }
+
+    private void registerNativePreviewRewardGrant() {
+        PluginManager pluginManager = getServer().getPluginManager();
+        Plugin excellentCrates = pluginManager.getPlugin("ExcellentCrates");
+        if (excellentCrates == null || !excellentCrates.isEnabled()) return;
+        Plugin nightCore = pluginManager.getPlugin("nightcore");
+        if (nightCore == null || !nightCore.isEnabled()
+                || !"6.6.1".equals(excellentCrates.getDescription().getVersion())
+                || !"2.16.4".equals(nightCore.getDescription().getVersion())) {
+            runtime.warn("Admin native-preview reward grants disabled: expected ExcellentCrates 6.6.1 and nightcore 2.16.4.");
+            return;
+        }
+        try {
+            registerService(new NativePreviewRewardGrantService(this));
+        } catch (RuntimeException | LinkageError failure) {
+            runtime.warn("Admin native-preview reward grants disabled: {}", failure.toString());
+        }
     }
 
     private Map<String, String> legacyMessages() {
