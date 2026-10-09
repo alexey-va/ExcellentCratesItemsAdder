@@ -21,5 +21,5 @@ permissions:
     description: Allows opening managed crate pedestals and the key merchant.
     default: true
   ecia.admin:
-    description: Allows crate placement, visual editing, network key grants, and native preview reward grants.
+    description: Allows crate placement, visual editing, network key grants, and managed preview reward grants.
     default: op

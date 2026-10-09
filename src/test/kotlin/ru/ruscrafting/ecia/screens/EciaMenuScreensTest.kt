@@ -4,6 +4,11 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+import io.mockk.Runs
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockk
+import io.mockk.verify
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.AfterEach
@@ -26,6 +31,12 @@ import ru.arc.paper.menu.PaperMenuRuntime
 import ru.ruscrafting.ecia.roll.PoolSnapshot
 import ru.ruscrafting.ecia.roll.RewardDefinition
 import ru.ruscrafting.ecia.inventory.NativeItemPayload
+import ru.ruscrafting.ecia.integration.ManagedPoolPreviewRewardGrant
+import su.nightexpress.excellentcrates.api.crate.Reward
+import su.nightexpress.excellentcrates.crate.CrateManager
+import su.nightexpress.excellentcrates.crate.impl.Crate
+import java.util.IdentityHashMap
+import java.util.UUID
 
 class EciaMenuScreensTest {
     private lateinit var paper: MockBukkitTestRuntime
@@ -144,6 +155,107 @@ class EciaMenuScreensTest {
             assertEquals(last.map { it.item }, screens.renderPoolPreview(reversed, page = 1)
                 .regions.getValue(EciaMenuConfiguration.REWARDS).map { it.item })
             assertEquals(rewards, pool.rewards())
+        } finally {
+            runtime.close()
+        }
+    }
+
+    @Test
+    fun managedPreviewClickUsesTheRewardShownOnTheSortedCurrentPageAndOnlyLeftClick() {
+        val configuration = EciaMenuConfiguration.loadResource()
+        val plugin = paper.createSimplePlugin("AdminManagedPoolPreview")
+        val player = paper.addPlayer("ManagedPreviewAdmin")
+        val runtime = PaperMenuRuntime(plugin, BukkitTaskScheduler(plugin), configuration)
+        val rewards = (1..45).map { index -> namedReward("reward-$index", index.toDouble(), "Приз $index", index) }
+        val pool = PoolSnapshot("case_weekly", "current", rewards, 1, 0)
+        val screens = EciaMenuScreens(configuration)
+        val manager = mockk<CrateManager>()
+        val crate = mockk<Crate>()
+        val nativeReward = mockk<Reward>()
+        val replacementReward = mockk<Reward>()
+        var admin = true
+        var currentGeneration = 7L
+        var currentManager = manager
+        var currentNativeReward: Reward = nativeReward
+        val auditAttempts = mutableListOf<Triple<UUID, String, String>>()
+        every { manager.getCrateById("case_weekly") } returns crate
+        every { crate.hasPermission(player) } returns true
+        every { crate.getReward("reward-18") } answers { currentNativeReward }
+        every { nativeReward.id } returns "reward-18"
+        every { nativeReward.crate } returns crate
+        every { replacementReward.id } returns "reward-18"
+        every { replacementReward.crate } returns crate
+        every { manager.giveReward(player, nativeReward) } just Runs
+        val displayedRewards = IdentityHashMap<RewardDefinition, Reward>().apply {
+            put(rewards[17], nativeReward)
+        }
+        val grant = ManagedPoolPreviewRewardGrant(
+            player = player,
+            crateId = "case_weekly",
+            manager = manager,
+            crate = crate,
+            rewardsByDefinition = displayedRewards,
+            generation = currentGeneration,
+            currentManager = { currentManager },
+            currentGeneration = { currentGeneration },
+            isReady = { true },
+            hasAdminPermission = { admin },
+            auditAttempt = { playerId, crateId, rewardId ->
+                auditAttempts += Triple(playerId, crateId, rewardId)
+            },
+        )
+
+        try {
+            val first = screens.openPoolPreview(runtime, player, pool, onRewardClick = grant::grant)
+            assertEquals(45, first.inventory.getItem(0)!!.itemMeta.customModelData)
+
+            paper.server.pluginManager.callEvent(InventoryClickEvent(
+                player.openInventory,
+                InventoryType.SlotType.CONTAINER,
+                35,
+                ClickType.LEFT,
+                InventoryAction.PICKUP_ALL,
+            ))
+
+            val second = runtime.session(player)!!
+            assertEquals(18, second.inventory.getItem(0)!!.itemMeta.customModelData)
+            fun click(click: ClickType) {
+                paper.server.pluginManager.callEvent(InventoryClickEvent(
+                    player.openInventory,
+                    InventoryType.SlotType.CONTAINER,
+                    0,
+                    click,
+                    if (click == ClickType.LEFT) InventoryAction.PICKUP_ALL else InventoryAction.PICKUP_HALF,
+                ))
+            }
+            click(ClickType.RIGHT)
+            assertTrue(auditAttempts.isEmpty(), "Right-click must not issue an admin reward")
+
+            click(ClickType.LEFT)
+
+            assertEquals(listOf(Triple(player.uniqueId, "case_weekly", "reward-18")), auditAttempts)
+            verify(exactly = 1) { manager.giveReward(player, nativeReward) }
+
+            admin = false
+            click(ClickType.LEFT)
+            admin = true
+            currentGeneration++
+            click(ClickType.LEFT)
+            currentGeneration--
+            currentNativeReward = replacementReward
+            click(ClickType.LEFT)
+            currentNativeReward = nativeReward
+            currentManager = mockk(relaxed = true)
+            click(ClickType.LEFT)
+            verify(exactly = 1) { manager.giveReward(player, nativeReward) }
+            assertEquals(1, auditAttempts.size)
+
+            currentManager = manager
+            player.closeInventory()
+            val nonAdmin = screens.openPoolPreview(runtime, player, pool)
+            assertFalse(nonAdmin.inventory.getItem(0) == null)
+            click(ClickType.LEFT)
+            verify(exactly = 1) { manager.giveReward(player, nativeReward) }
         } finally {
             runtime.close()
         }

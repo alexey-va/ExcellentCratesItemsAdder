@@ -18,6 +18,7 @@ import ru.arc.core.LifecycleTaskScope
 import ru.arc.core.whenCompleteSync
 import ru.arc.paper.display.PaperPacketDisplays
 import ru.arc.paper.menu.PaperMenuConfiguration
+import ru.ruscrafting.ecia.ARC_CRATE_ADMIN_PERMISSION
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
 import ru.ruscrafting.ecia.CrateAmbientEffectService
 import ru.ruscrafting.ecia.CrateVisualSettingsStore
@@ -29,13 +30,18 @@ import ru.ruscrafting.ecia.journal.OpeningLedger
 import ru.ruscrafting.ecia.journal.OpeningRecord
 import ru.ruscrafting.ecia.journal.PeriodicKeyLedger
 import ru.ruscrafting.ecia.roll.PoolSnapshot
+import ru.ruscrafting.ecia.roll.RewardDefinition
 import ru.ruscrafting.ecia.roll.WeightedOfferGenerator
 import ru.ruscrafting.ecia.screens.EciaMenuActions
 import ru.ruscrafting.ecia.screens.EciaMenuConfiguration
 import ru.ruscrafting.ecia.screens.EciaMenuScreens
 import su.nightexpress.excellentcrates.CratesAPI
+import su.nightexpress.excellentcrates.api.crate.Reward
+import su.nightexpress.excellentcrates.crate.CrateManager
+import su.nightexpress.excellentcrates.crate.impl.Crate
 import java.time.Clock
 import java.time.Instant
+import java.util.IdentityHashMap
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
@@ -298,10 +304,45 @@ class ManagedCratesService(
 
     fun preview(player: Player, crateId: String) {
         if (!ready) return message(player, "managed.unavailable")
-        val crate = CratesAPI.getCrateManager().getCrateById(crateId) ?: return message(player, "managed.unavailable")
+        val manager = CratesAPI.getCrateManager()
+        val crate = manager.getCrateById(crateId) ?: return message(player, "managed.unavailable")
         if (!crate.hasPermission(player)) return message(player, "no-permission")
         val pool = currentPool(crateId) ?: return message(player, "managed.unavailable")
-        checkNotNull(screens).openPoolPreview(checkNotNull(runtime.menuOrNull()).runtime(), player, pool, EciaMenuActions())
+        if (CratesAPI.getCrateManager() !== manager || manager.getCrateById(crateId) !== crate) {
+            return message(player, "managed.unavailable")
+        }
+        val generation = reloadGeneration
+        val grant = if (player.hasPermission(ARC_CRATE_ADMIN_PERMISSION)) {
+            val displayedRewards = IdentityHashMap<RewardDefinition, Reward>()
+            pool.rewards().forEach { definition ->
+                crate.getReward(definition.id())?.let { displayedRewards[definition] = it }
+            }
+            ManagedPoolPreviewRewardGrant(
+                player = player,
+                crateId = crateId,
+                manager = manager,
+                crate = crate,
+                rewardsByDefinition = displayedRewards,
+                generation = generation,
+                currentManager = { CratesAPI.getCrateManager() },
+                currentGeneration = { reloadGeneration },
+                isReady = { ready && !closed },
+                hasAdminPermission = { player.hasPermission(ARC_CRATE_ADMIN_PERMISSION) },
+                auditAttempt = { playerId, targetCrateId, rewardId ->
+                    plugin.logger.info(
+                        "admin_pool_preview_reward_grant_attempt player_uuid=$playerId " +
+                            "crate_id=$targetCrateId reward_id=$rewardId",
+                    )
+                },
+            )
+        } else null
+        checkNotNull(screens).openPoolPreview(
+            checkNotNull(runtime.menuOrNull()).runtime(),
+            player,
+            pool,
+            EciaMenuActions(),
+            grant?.let { it::grant },
+        )
     }
 
     private fun currentPool(crateId: String): PoolSnapshot? =
@@ -523,6 +564,35 @@ class ManagedCratesService(
         val available: Boolean,
     )
 
+}
+
+internal class ManagedPoolPreviewRewardGrant(
+    private val player: Player,
+    private val crateId: String,
+    private val manager: CrateManager,
+    private val crate: Crate,
+    rewardsByDefinition: IdentityHashMap<RewardDefinition, Reward>,
+    private val generation: Long,
+    private val currentManager: () -> CrateManager,
+    private val currentGeneration: () -> Long,
+    private val isReady: () -> Boolean,
+    private val hasAdminPermission: () -> Boolean,
+    private val auditAttempt: (UUID, String, String) -> Unit,
+) {
+    private val rewardsByDefinition = IdentityHashMap(rewardsByDefinition)
+
+    fun grant(definition: RewardDefinition) {
+        if (!hasAdminPermission() || !isReady() || currentGeneration() != generation) return
+        if (runCatching(currentManager).getOrNull() !== manager) return
+        if (runCatching { manager.getCrateById(crateId) !== crate || !crate.hasPermission(player) }.getOrDefault(true)) return
+        val reward = rewardsByDefinition[definition] ?: return
+        if (runCatching {
+                reward.crate !== crate || reward.id != definition.id() || crate.getReward(reward.id) !== reward
+            }.getOrDefault(true)
+        ) return
+        auditAttempt(player.uniqueId, crateId, reward.id)
+        manager.giveReward(player, reward)
+    }
 }
 
 internal fun reloadManagedCratesAfterServerLoad(

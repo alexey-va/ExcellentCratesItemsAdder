@@ -5,6 +5,7 @@ import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.entity.Player
+import org.bukkit.event.inventory.ClickType
 import org.bukkit.inventory.ItemStack
 import ru.arc.menu.MenuElementId
 import ru.arc.menu.MenuId
@@ -90,12 +91,13 @@ class EciaMenuScreens(
         pool: PoolSnapshot,
         actions: EciaMenuActions = EciaMenuActions(),
         page: Int = 0,
+        onRewardClick: ((RewardDefinition) -> Unit)? = null,
     ): PaperMenuContent {
         require(page >= 0) { "Menu page must not be negative" }
         val nameOrder = Collator.getInstance(Locale.forLanguageTag("ru")).apply {
             strength = Collator.SECONDARY
         }
-        val allEntries = pool.rewards().map { reward ->
+        val sortedRewards = pool.rewards().map { reward ->
             val rendered = preview(
                 reward,
                 "pool-reward",
@@ -106,15 +108,24 @@ class EciaMenuScreens(
                 item = rendered.item,
                 name = PlainTextComponentSerializer.plainText()
                     .serialize(rendered.item.itemMeta.displayName() ?: Component.empty()).trim(),
+                available = rendered.available,
             )
         }.sortedWith(compareByDescending<PoolRewardPreview> { it.reward.weight() }
             .thenComparator { left, right -> nameOrder.compare(left.name, right.name) }
             .thenBy { it.reward.id() })
-            .map { PaperMenuEntry(item = it.item, enabled = false) }
         val capacity = poolPageCapacity()
-        val lastPage = if (allEntries.isEmpty()) 0 else (allEntries.size - 1) / capacity
+        val lastPage = if (sortedRewards.isEmpty()) 0 else (sortedRewards.size - 1) / capacity
         val currentPage = page.coerceAtMost(lastPage)
-        val entries = allEntries.drop(currentPage * capacity).take(capacity)
+        val entries = sortedRewards.drop(currentPage * capacity).take(capacity).map { visible ->
+            PaperMenuEntry(
+                item = visible.item,
+                enabled = visible.available && onRewardClick != null,
+                acceptedClicks = setOf(ClickType.LEFT),
+                onClick = PaperMenuClickHandler { context ->
+                    if (context.event.click == ClickType.LEFT) onRewardClick?.invoke(visible.reward)
+                },
+            )
+        }
         val previous = currentPage > 0
         val next = currentPage < lastPage
         val paginated = lastPage > 0
@@ -151,6 +162,7 @@ class EciaMenuScreens(
         player: Player,
         pool: PoolSnapshot,
         actions: EciaMenuActions = EciaMenuActions(),
+        onRewardClick: ((RewardDefinition) -> Unit)? = null,
     ): PaperMenuSession {
         val capacity = poolPageCapacity()
         val lastPage = if (pool.rewards().isEmpty()) 0 else (pool.rewards().size - 1) / capacity
@@ -165,7 +177,7 @@ class EciaMenuScreens(
                 reopen()
                 actions.page.invoke(id, delta)
             })
-            runtime.open(player, menu) { renderPoolPreview(pool, effective, page) }
+            runtime.open(player, menu) { renderPoolPreview(pool, effective, page, onRewardClick) }
         }
         return reopen()
     }
@@ -337,7 +349,12 @@ class EciaMenuScreens(
             text.replace("<$name>", value)
         }
 
-    private data class PoolRewardPreview(val reward: RewardDefinition, val item: ItemStack, val name: String)
+    private data class PoolRewardPreview(
+        val reward: RewardDefinition,
+        val item: ItemStack,
+        val name: String,
+        val available: Boolean,
+    )
 
     private data class Preview(val item: ItemStack, val available: Boolean)
 }
