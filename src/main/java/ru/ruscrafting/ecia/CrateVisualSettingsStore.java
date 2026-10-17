@@ -13,9 +13,17 @@ import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import kotlin.Unit;
+import ru.arc.persistence.CoalescingAsyncWriter;
 
 /** Per-placed-crate visual geometry with config-backed defaults. */
-public final class CrateVisualSettingsStore {
+public final class CrateVisualSettingsStore implements AutoCloseable {
     private static final String FILE_NAME = "visuals.yml";
     private static final double LEGACY_ROULETTE_Y = 3.65;
     private static final double DEFAULT_ROULETTE_Y = 2.65;
@@ -24,18 +32,31 @@ public final class CrateVisualSettingsStore {
 
     private final Path file;
     private final Configuration config;
-    private final Map<Anchor, Visuals> overrides = new HashMap<>();
+    private final Map<Anchor, Visuals> overrides = new ConcurrentHashMap<>();
+    private final CoalescingAsyncWriter<Unit> writer;
+    private final AtomicBoolean writeFailed = new AtomicBoolean();
+    private final Logger logger;
     private Hologram defaultHologram;
     private Roulette defaultRoulette;
     private Ambient defaultAmbient;
 
-    CrateVisualSettingsStore(ArcExcellentCratesPlugin plugin) {
-        this(plugin.getDataFolder().toPath(), plugin.getConfig());
+    CrateVisualSettingsStore(ArcExcellentCratesPlugin plugin, Executor storage) {
+        this(plugin.getDataFolder().toPath(), plugin.getConfig(), storage, plugin.getLogger());
     }
 
+    /** Standalone worker-only constructor used by offline persistence tests. */
     CrateVisualSettingsStore(Path dataFolder, Configuration config) {
+        this(dataFolder, config, Runnable::run, Logger.getLogger(CrateVisualSettingsStore.class.getName()));
+    }
+
+    CrateVisualSettingsStore(Path dataFolder, Configuration config, Executor storage, Logger logger) {
         this.file = dataFolder.resolve(FILE_NAME);
         this.config = config;
+        this.logger = logger;
+        writer = new CoalescingAsyncWriter<>(ignored -> CompletableFuture.supplyAsync(() -> {
+            persist();
+            return Unit.INSTANCE;
+        }, storage));
         reload();
     }
 
@@ -138,19 +159,34 @@ public final class CrateVisualSettingsStore {
         return new Visuals(defaultHologram, defaultRoulette, defaultAmbient);
     }
 
-    public void save(Anchor anchor, Visuals visuals) {
+    public CompletableFuture<Unit> save(Anchor anchor, Visuals visuals) {
         overrides.put(anchor, visuals);
-        persist();
+        return queueSave();
     }
 
     public void reset(Anchor anchor) {
-        if (overrides.remove(anchor) != null) persist();
+        if (overrides.remove(anchor) != null) queueSave();
     }
+
+    private CompletableFuture<Unit> queueSave() {
+        return writer.submit(Unit.INSTANCE).whenComplete((ignored, failure) -> {
+            if (failure != null && writeFailed.compareAndSet(false, true)) {
+                logger.log(Level.SEVERE, "Could not persist crate visual settings; a later edit will retry the latest snapshot", failure);
+            } else if (failure == null && writeFailed.compareAndSet(true, false)) {
+                logger.info("Crate visual settings persistence recovered");
+            }
+        });
+    }
+
+    @Override public void close() { writer.closeAsync(); }
+
+    /** Worker-only final snapshot after admission is sealed; does not schedule another write. */
+    public void flushLatest() { persist(); }
 
     private void persist() {
         YamlConfiguration yaml = new YamlConfiguration();
         int index = 0;
-        for (Map.Entry<Anchor, Visuals> entry : overrides.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
+        for (Map.Entry<Anchor, Visuals> entry : Map.copyOf(overrides).entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
             Anchor anchor = entry.getKey();
             Visuals visuals = entry.getValue();
             String path = "anchors.a" + index++;

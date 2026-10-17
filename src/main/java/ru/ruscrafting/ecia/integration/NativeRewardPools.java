@@ -18,6 +18,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import ru.arc.core.BudgetedTaskQueue;
 
 /** Builds the managed pool directly from the currently loaded native rewards. */
 public final class NativeRewardPools {
@@ -51,6 +54,61 @@ public final class NativeRewardPools {
             if (pool != null) installed.put(configured.crateId(), pool);
         }
         return Map.copyOf(installed);
+    }
+
+    /** Starts on Paper; each native reward capture shares the runtime tick budget. */
+    public CompletableFuture<Map<String, PoolSnapshot>> installAsync(ManagedCratesSettings settings,
+            BudgetedTaskQueue work, Executor worker) {
+        var configured = settings.cases().values().iterator();
+        List<CompletableFuture<PoolSnapshot>> pending = new ArrayList<>();
+        return work.submit(() -> true, () -> {
+            if (configured.hasNext()) pending.add(loadCurrentAsync(configured.next(), work, worker));
+            return !configured.hasNext();
+        }).thenCompose(ignored -> CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new)))
+                .thenApplyAsync(ignored -> {
+                    Map<String, PoolSnapshot> result = new java.util.HashMap<>();
+                    for (var completed : pending) {
+                        PoolSnapshot pool = completed.getNow(null);
+                        if (pool != null) result.put(pool.crateId(), pool);
+                    }
+                    return Map.copyOf(result);
+                }, worker);
+    }
+
+    public CompletableFuture<PoolSnapshot> loadCurrentAsync(ManagedCratesSettings.CaseSettings configured,
+            BudgetedTaskQueue work, Executor worker) {
+        final Crate crate;
+        try {
+            if (Config.CRATE_REVERSE_CLICK_ACTIONS.get()) throw new IllegalStateException("Managed crates require native right-click opening");
+            crate = requireCrate(configured.crateId());
+            validateCrate(crate);
+        } catch (RuntimeException failure) {
+            issueSink.accept("crate=" + configured.crateId() + " reason=" + failure.getMessage());
+            return CompletableFuture.completedFuture(null);
+        }
+        var nativeRewards = List.copyOf(crate.getRewards()).iterator();
+        List<CapturedReward> captured = new ArrayList<>();
+        Set<String> ids = new HashSet<>();
+        return work.submit(() -> CratesAPI.getCrateManager().getCrateById(crate.getId()) == crate, () -> {
+            if (nativeRewards.hasNext()) {
+                Reward reward = nativeRewards.next();
+                if (!ids.add(reward.getId())) issueSink.accept(issue(crate, reward.getId(), "duplicate native reward"));
+                else try { captured.add(captureReward(reward)); }
+                catch (RuntimeException failure) { issueSink.accept(issue(crate, reward.getId(), failure.getMessage())); }
+            }
+            return !nativeRewards.hasNext();
+        }).thenApplyAsync(ignored -> {
+            if (captured.isEmpty()) {
+                issueSink.accept("crate=" + configured.crateId() + " reason=no valid rewards remain; managed case disabled");
+                return null;
+            }
+            List<RewardDefinition> definitions = captured.stream().map(this::encodeReward)
+                    .sorted(Comparator.comparing(RewardDefinition::id)).toList();
+            int bundle = Math.min(configured.bundleSize(), definitions.size());
+            if (bundle != configured.bundleSize()) issueSink.accept("crate=" + configured.crateId()
+                    + " reason=bundle size " + configured.bundleSize() + " reduced to " + bundle + " for current rewards");
+            return currentPool(configured.crateId(), definitions, configured.choiceCount(), configured.maxRerolls(), bundle);
+        }, worker);
     }
 
     /** Re-read the native reward list for each new opening or preview; existing receipts stay intact. */
@@ -105,6 +163,41 @@ public final class NativeRewardPools {
             throw new IllegalStateException("unsupported native cooldown, milestone or post-open side effects");
         }
     }
+
+    /** Only native bytes and scalar recipe fields cross the worker boundary. */
+    private CapturedReward captureReward(Reward reward) {
+        if (!(reward instanceof CommandReward command) || command.getCommands().size() != 1
+                || reward.getLimits().isEnabled() || !reward.getRequiredPermissions().isEmpty()
+                || !reward.getIgnoredPermissions().isEmpty()) throw new IllegalStateException("unsupported reward rules");
+        String[] words = command.getCommands().getFirst().trim().split("\\s+");
+        String category = "";
+        String entry = "";
+        byte[] delivery = null;
+        if (isArcRewardIssue(words)) {
+            category = words[2]; entry = words[3];
+        } else if (words.length == 6 && words[0].equals("excellentcrates") && words[1].equals("key")
+                && words[2].equals("give") && (words[3].equals("%player_name%") || words[3].equals("%player%"))) {
+            ItemStack item = keys.create(words[4], Integer.parseInt(words[5]));
+            if (item == null || item.isEmpty()) throw new IllegalStateException("Empty native reward");
+            delivery = ru.arc.paper.playerstate.NativePaperItemStackBinaryCodec.INSTANCE.encodeItem(item);
+        } else throw new IllegalStateException("reward has no typed materializer");
+        ItemStack preview = reward.getPreviewItem();
+        byte[] previewBytes = preview == null || preview.isEmpty() ? null
+                : ru.arc.paper.playerstate.NativePaperItemStackBinaryCodec.INSTANCE.encodeItem(preview);
+        return new CapturedReward(reward.getId(), reward.getWeight(), category, entry, delivery, previewBytes);
+    }
+
+    private RewardDefinition encodeReward(CapturedReward captured) {
+        String delivery = captured.delivery() == null
+                ? provider.catalogReward(captured.category(), captured.entry(), captured.id())
+                : payload.write(new CatalogRewardBridge.Recipe(1, CatalogRewardBridge.Provider.NATIVE_ITEMS,
+                    "", "", "", "", List.of(java.util.Base64.getEncoder().encodeToString(captured.delivery())), captured.id()));
+        String preview = payload.write(List.of(captured.preview() == null ? ""
+                : java.util.Base64.getEncoder().encodeToString(captured.preview())));
+        return new RewardDefinition(captured.id(), captured.weight(), delivery, preview);
+    }
+
+    private record CapturedReward(String id, double weight, String category, String entry, byte[] delivery, byte[] preview) { }
 
     private RewardDefinition compileReward(Reward reward) {
         if (!(reward instanceof CommandReward command) || command.getCommands().size() != 1

@@ -5,6 +5,8 @@ import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
+import org.bukkit.plugin.Plugin;
+import su.nightexpress.excellentcrates.crate.CrateManager;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
@@ -21,6 +23,10 @@ import su.nightexpress.excellentcrates.util.pos.WorldPos;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -35,20 +41,29 @@ final class CrateHologramService implements AutoCloseable {
     private final ArcExcellentCratesPlugin plugin;
     private final CrateVisualSettingsStore settings;
     private final NamespacedKey marker;
-    private final Map<Anchor, Faces> displays = new HashMap<>();
-    private final Map<UUID, Map<Anchor, Boolean>> visibleFaces = new HashMap<>();
+    private Map<Anchor, Faces> displays = new ConcurrentHashMap<>();
+    private Map<UUID, Map<Anchor, FaceVisibility>> visibleFaces = new HashMap<>();
+    private Map<Anchor, Restoration> suppressed = new HashMap<>();
     private final BukkitTask reconcileTask;
     private final BukkitTask visibilityTask;
 
     private boolean enabled;
+    private boolean initialized;
+    private boolean closed;
+    private boolean reconcilePending;
+    private boolean visibilityPending;
 
     CrateHologramService(ArcExcellentCratesPlugin plugin, CrateVisualSettingsStore settings) {
         this.plugin = plugin;
         this.settings = settings;
         this.marker = new NamespacedKey(plugin, "case_hologram");
         reloadSettings();
-        removeOrphans();
-        reconcile();
+        CrateAmbientEffectService.cleanLoadedDisplays(plugin, () -> !closed, entity -> {
+            if (entity instanceof TextDisplay && entity.getPersistentDataContainer().has(marker, PersistentDataType.STRING)) entity.remove();
+        }).whenComplete((ignored, failure) -> {
+            if (failure != null) CrateAmbientEffectService.reportWorkFailure(plugin, "hologram orphan cleanup", failure);
+            else if (!closed) { initialized = true; reconcile(); }
+        });
         this.reconcileTask = plugin.getServer().getScheduler().runTaskTimer(plugin, this::reconcile,
                 RECONCILE_TICKS, RECONCILE_TICKS);
         this.visibilityTask = plugin.getServer().getScheduler().runTaskTimer(plugin, this::updateVisibility,
@@ -69,39 +84,55 @@ final class CrateHologramService implements AutoCloseable {
     }
 
     private void reconcile() {
-        if (!CratesAPI.isLoaded()) {
-            removeAll();
-            return;
-        }
+        if (closed || !initialized || reconcilePending) return;
+        reconcilePending = true;
+        var work = new Supplier<Boolean>() {
+            final boolean active = CratesAPI.isLoaded();
+            final boolean replace = active && enabled;
+            final HologramManager manager = active ? CratesAPI.getPlugin().getHologramManager().orElse(null) : null;
+            final Iterator<Crate> crates = active ? CratesAPI.getCrateManager().getCrates().iterator() : Collections.emptyIterator();
+            final Set<Anchor> desired = new HashSet<>();
+            Iterator<WorldPos> positions = Collections.emptyIterator();
+            Iterator<Anchor> stale;
+            Iterator<Anchor> oldSuppressions;
+            Crate crate;
 
-        Map<Anchor, Source> desired = new HashMap<>();
-        for (Crate crate : CratesAPI.getCrateManager().getCrates()) {
-            if (!crate.isHologramEnabled()) continue;
-            for (WorldPos position : crate.getBlockPositions()) {
-                desired.put(Anchor.of(crate, position), new Source(crate, position));
+            @Override public Boolean get() {
+                if (oldSuppressions != null) {
+                    if (!oldSuppressions.hasNext()) return true;
+                    if (!desired.contains(oldSuppressions.next())) oldSuppressions.remove();
+                } else if (stale != null) {
+                    if (!stale.hasNext()) { oldSuppressions = suppressed.keySet().iterator(); return false; }
+                    Anchor anchor = stale.next();
+                    if (!desired.contains(anchor)) remove(anchor);
+                } else if (positions.hasNext()) {
+                    WorldPos position = positions.next();
+                    if (manager != null) {
+                        if (replace) {
+                            manager.disableBlockHologram(crate, position);
+                            suppressed.put(Anchor.of(crate, position), new Restoration(manager, CratesAPI.getPlugin(),
+                                    CratesAPI.getCrateManager(), new Source(crate, position)));
+                        } else {
+                            manager.enableBlockHologram(crate, position);
+                            suppressed.remove(Anchor.of(crate, position));
+                        }
+                    }
+                    if (replace) {
+                        Anchor anchor = Anchor.of(crate, position);
+                        desired.add(anchor);
+                        reconcileDisplay(anchor, new Source(crate, position));
+                    }
+                } else if (crates.hasNext()) {
+                    crate = crates.next();
+                    if (crate.isHologramEnabled()) positions = crate.getBlockPositions().iterator();
+                } else stale = displays.keySet().iterator();
+                return false;
             }
-        }
-
-        if (!enabled) {
-            removeAll();
-            restoreNative();
-            return;
-        }
-
-        suppressNative(desired.values());
-        Set<Anchor> obsolete = new HashSet<>(displays.keySet());
-        obsolete.removeAll(desired.keySet());
-        obsolete.forEach(this::remove);
-        desired.forEach(this::reconcileDisplay);
-        updateVisibility();
-    }
-
-    private void suppressNative(Iterable<Source> sources) {
-        HologramManager manager = CratesAPI.getPlugin().getHologramManager().orElse(null);
-        if (manager == null) return;
-        for (Source source : sources) {
-            manager.disableBlockHologram(source.crate(), source.position());
-        }
+        };
+        plugin.runtime().nativeWork().submit(() -> !closed, work::get).whenComplete((ignored, failure) -> {
+            reconcilePending = false;
+            if (failure != null) CrateAmbientEffectService.reportWorkFailure(plugin, "hologram reconciliation", failure);
+        });
     }
 
     private void reconcileDisplay(Anchor anchor, Source source) {
@@ -115,7 +146,9 @@ final class CrateHologramService implements AutoCloseable {
         if (faces == null) {
             remove(anchor);
             TextDisplay front = spawn(world, source.position(), anchor, "front");
-            TextDisplay back = spawn(world, source.position(), anchor, "back");
+            TextDisplay back;
+            try { back = spawn(world, source.position(), anchor, "back"); }
+            catch (RuntimeException failure) { front.remove(); throw failure; }
             faces = new Faces(front.getUniqueId(), back.getUniqueId());
             displays.put(anchor, faces);
         }
@@ -187,31 +220,52 @@ final class CrateHologramService implements AutoCloseable {
     }
 
     private void updateVisibility() {
-        Set<UUID> online = new HashSet<>();
-        for (Player player : plugin.getServer().getOnlinePlayers()) {
-            online.add(player.getUniqueId());
-            Map<Anchor, Boolean> state = visibleFaces.computeIfAbsent(player.getUniqueId(), ignored -> new HashMap<>());
-            for (Map.Entry<Anchor, Faces> entry : displays.entrySet()) {
-                TextDisplay front = entity(entry.getValue().front());
-                TextDisplay back = entity(entry.getValue().back());
-                if (front == null || back == null || front.getWorld() != player.getWorld()) {
-                    state.remove(entry.getKey());
-                    continue;
-                }
-                Location location = front.getLocation();
-                boolean showFront = frontFaces(location, player.getEyeLocation());
-                Boolean previous = state.put(entry.getKey(), showFront);
-                if (previous != null && previous == showFront) continue;
-                if (showFront) {
-                    player.showEntity(plugin, front);
-                    player.hideEntity(plugin, back);
-                } else {
-                    player.hideEntity(plugin, front);
-                    player.showEntity(plugin, back);
-                }
+        if (closed || !initialized || visibilityPending) return;
+        visibilityPending = true;
+        var work = new Supplier<Boolean>() {
+            final Iterator<? extends Player> players = plugin.getServer().getOnlinePlayers().iterator();
+            Iterator<Map.Entry<Anchor, Faces>> anchors = Collections.emptyIterator();
+            Iterator<Anchor> stale;
+            Iterator<UUID> offline;
+            Player player;
+            Map<Anchor, FaceVisibility> state;
+
+            @Override public Boolean get() {
+                if (offline != null) {
+                    if (!offline.hasNext()) return true;
+                    Player current = plugin.getServer().getPlayer(offline.next());
+                    if (current == null || !current.isOnline()) offline.remove();
+                } else if (stale != null) {
+                    if (stale.hasNext()) {
+                        if (!displays.containsKey(stale.next())) stale.remove();
+                    } else { stale = null; player = null; }
+                } else if (player != null && anchors.hasNext()) {
+                    var entry = anchors.next();
+                    TextDisplay front = entity(entry.getValue().front());
+                    TextDisplay back = entity(entry.getValue().back());
+                    if (!player.isOnline() || front == null || back == null || front.getWorld() != player.getWorld()) {
+                        state.remove(entry.getKey());
+                        return false;
+                    }
+                    boolean showFront = frontFaces(front.getLocation(), player.getEyeLocation());
+                    FaceVisibility next = new FaceVisibility(entry.getValue(), showFront);
+                    if (next.equals(state.put(entry.getKey(), next))) return false;
+                    if (showFront) { player.showEntity(plugin, front); player.hideEntity(plugin, back); }
+                    else { player.hideEntity(plugin, front); player.showEntity(plugin, back); }
+                } else if (player != null) {
+                    stale = state.keySet().iterator();
+                } else if (players.hasNext()) {
+                    player = players.next();
+                    state = visibleFaces.computeIfAbsent(player.getUniqueId(), ignored -> new HashMap<>());
+                    anchors = displays.entrySet().iterator();
+                } else offline = visibleFaces.keySet().iterator();
+                return false;
             }
-        }
-        visibleFaces.keySet().removeIf(id -> !online.contains(id));
+        };
+        plugin.runtime().nativeWork().submit(() -> !closed, work::get).whenComplete((ignored, failure) -> {
+            visibilityPending = false;
+            if (failure != null) CrateAmbientEffectService.reportWorkFailure(plugin, "hologram visibility", failure);
+        });
     }
 
     private void remove(Anchor anchor) {
@@ -221,7 +275,7 @@ final class CrateHologramService implements AutoCloseable {
         var back = plugin.getServer().getEntity(faces.back());
         if (front != null) front.remove();
         if (back != null) back.remove();
-        visibleFaces.values().forEach(state -> state.remove(anchor));
+        // Visibility remembers entity identities; the next bounded sweep forgets removed anchors.
     }
 
     static boolean frontFaces(Location display, Location viewer) {
@@ -232,39 +286,48 @@ final class CrateHologramService implements AutoCloseable {
         return template.replace("%crate_name%", crateName);
     }
 
-    private void removeAll() {
-        Set.copyOf(displays.keySet()).forEach(this::remove);
-    }
-
-    private void removeOrphans() {
-        for (World world : plugin.getServer().getWorlds()) {
-            for (TextDisplay display : world.getEntitiesByClass(TextDisplay.class)) {
-                if (display.getPersistentDataContainer().has(marker, PersistentDataType.STRING)) {
-                    display.remove();
-                }
-            }
-        }
-    }
-
-    private void restoreNative() {
-        if (!CratesAPI.isLoaded()) return;
-        HologramManager manager = CratesAPI.getPlugin().getHologramManager().orElse(null);
-        if (manager == null) return;
-        for (Crate crate : CratesAPI.getCrateManager().getCrates()) {
-            if (!crate.isHologramEnabled()) continue;
-            for (WorldPos position : crate.getBlockPositions()) {
-                manager.enableBlockHologram(crate, position);
-            }
-        }
-    }
-
     @Override
     public void close() {
+        if (closed) return;
+        closed = true;
         reconcileTask.cancel();
         visibilityTask.cancel();
-        removeAll();
-        restoreNative();
+        var server = plugin.getServer();
+        Iterator<Faces> remaining = displays.values().iterator();
+        Iterator<Restoration> restorations = suppressed.values().iterator();
+        displays = new ConcurrentHashMap<>();
+        suppressed = new HashMap<>();
+        visibleFaces = new HashMap<>();
+        var cleanup = new Supplier<Boolean>() {
+            Faces current;
+            @Override public Boolean get() {
+                if (current != null) {
+                    var back = server.getEntity(current.back());
+                    if (back != null) back.remove();
+                    remaining.remove();
+                    current = null;
+                } else if (remaining.hasNext()) {
+                    current = remaining.next();
+                    var front = server.getEntity(current.front());
+                    if (front != null) front.remove();
+                } else if (restorations.hasNext()) {
+                    Restoration restore = restorations.next();
+                    Source source = restore.source();
+                    if (restore.provider().isEnabled() && restore.crates().getCrateById(source.crate().getId()) == source.crate()
+                            && source.position().isChunkLoaded()) {
+                        restore.manager().enableBlockHologram(source.crate(), source.position());
+                    }
+                    restorations.remove();
+                } else return true;
+                return false;
+            }
+        };
+        plugin.runtime().submitNativeCleanup("holograms", cleanup::get);
     }
+
+    private record Restoration(HologramManager manager, Plugin provider, CrateManager crates, Source source) { }
+
+    private record FaceVisibility(Faces entities, boolean front) { }
 
     private record Source(Crate crate, WorldPos position) {
     }

@@ -37,9 +37,11 @@ internal class PeriodicKeysService(
     private val token = tasks.token()
     private var settings = ManagedCratesSettings(false, emptyMap())
     private var loadedCases = emptySet<String>()
-    private val players = mutableMapOf<UUID, Player>()
+    private val players = java.util.concurrent.ConcurrentHashMap<UUID, Player>()
+    private var tickQueued = false
+    private var candidates = emptyList<ManagedCratesSettings.CaseSettings>()
     private val nextCheck = mutableMapOf<UUID, Long>()
-    private val finished = mutableMapOf<UUID, MutableSet<UUID>>()
+    private var finished = mutableMapOf<UUID, MutableSet<UUID>>()
     private val delivered = deliveredIds.toMutableSet()
     private val awaitingReconnect = mutableSetOf<UUID>()
     private var storageFailed = false
@@ -49,7 +51,14 @@ internal class PeriodicKeysService(
     fun configure(settings: ManagedCratesSettings, loadedCases: Set<String>) {
         this.settings = settings
         this.loadedCases = loadedCases.toSet()
-        finished.clear()
+        finished = mutableMapOf()
+        candidates = emptyList()
+        runtime.storage().submit {
+            settings.cases.values.filter { it.freeOpenPeriod() != PeriodicVirtualOpening.Period.NONE && it.crateId() in loadedCases }
+                .sortedWith(compareBy({ it.freeOpenPeriod().ordinal }, { it.crateId() }))
+        }.whenCompleteSync(tasks, token) { prepared, failure ->
+            if (!closed && this.settings === settings && failure == null && prepared != null) candidates = prepared
+        }
     }
 
     fun playerDataLoaded(player: Player) {
@@ -75,21 +84,26 @@ internal class PeriodicKeysService(
     }
 
     private fun tick() {
-        if (closed || storageFailed || !settings.enabled) return
-        for (player in players.values.toList()) {
+        if (closed || storageFailed || !settings.enabled || tickQueued) return
+        tickQueued = true
+        val online = players.values.iterator()
+        runtime.nativeWork().submit({ !closed }) {
+            if (online.hasNext()) checkPlayer(online.next())
+            !online.hasNext()
+        }.whenCompleteSync(tasks, token) { _, _ -> tickQueued = false }
+    }
+
+    private fun checkPlayer(player: Player) {
             val id = player.uniqueId
-            if (!player.isOnline || player.isDead || !player.hasPermission("ecia.use") || id in awaitingReconnect) continue
-            if (clock.millis() < (nextCheck[id] ?: 0)) continue
+            if (!player.isOnline || player.isDead || !player.hasPermission("ecia.use") || id in awaitingReconnect) return
+            if (clock.millis() < (nextCheck[id] ?: 0)) return
             nextCheck[id] = clock.millis() + 5_000
-            val candidates = settings.cases.values.filter {
-                it.freeOpenPeriod() != PeriodicVirtualOpening.Period.NONE && it.crateId() in loadedCases
-            }.sortedWith(compareBy({ it.freeOpenPeriod().ordinal }, { it.crateId() }))
             val done = finished.getOrPut(id) { mutableSetOf() }
             val windows = candidates.associateWith { PeriodicVirtualOpening.window(it.freeOpenPeriod(), clock.instant(), settings.freeOpeningZone()) }
             val currentIds = windows.map { (case, window) -> PeriodicVirtualOpening.openingId(id, case.crateId(), window.period(), window) }.toSet()
             done.retainAll(currentIds)
-            if (currentIds.all { it in done }) continue
-            val session = access.acquire(player) ?: continue
+            if (currentIds.all { it in done }) return
+            val session = access.acquire(player) ?: return
             val received = mutableListOf<Pair<ManagedCratesSettings.CaseSettings, String>>()
             var noticeDay: LocalDate? = null
             var chain = CompletableFuture.completedFuture(true)
@@ -149,7 +163,6 @@ internal class PeriodicKeysService(
                     notify(player, granted)
                 }
             }
-        }
     }
 
     private fun eligible(player: Player, case: ManagedCratesSettings.CaseSettings, window: PeriodicVirtualOpening.Window): Boolean {
@@ -184,13 +197,7 @@ internal class PeriodicKeysService(
         player.sendMessage(runtime.locale().renderPadded(key, player, values))
     }
 
-    private fun <T> onPaper(action: () -> T): CompletableFuture<T> {
-        val result = CompletableFuture<T>()
-        if (tasks.runSync(token) { runCatching(action).fold(result::complete, result::completeExceptionally) } == null) {
-            result.completeExceptionally(IllegalStateException("Periodic key lifecycle closed"))
-        }
-        return result
-    }
+    private fun <T> onPaper(action: () -> T): CompletableFuture<T> = runtime.nativeWork().call({ !closed }, action)
 
     override fun close() {
         closed = true

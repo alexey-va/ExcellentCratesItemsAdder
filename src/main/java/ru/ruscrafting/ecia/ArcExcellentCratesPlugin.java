@@ -13,14 +13,16 @@ import ru.ruscrafting.ecia.integration.ManagedCratesService;
 import ru.ruscrafting.ecia.integration.CrateKeyShopService;
 import ru.ruscrafting.ecia.integration.ArcActivityTelemetryBridge;
 import ru.arc.paper.display.PaperPacketDisplays;
+import ru.arc.paper.api.ArcNativeCleanupService;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 
-public final class ArcExcellentCratesPlugin extends JavaPlugin {
+public class ArcExcellentCratesPlugin extends JavaPlugin {
     private static final String LEGACY_DATA_FOLDER = "ExcellentCratesItemsAdder";
     private CrateRegistry registry;
     private CrateProtectionListener protectionListener;
@@ -33,31 +35,94 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
     private CrateVisualSettingsStore visualSettings;
     private CrateVisualEditor visualEditor;
     private CrateLocationServiceRegistration crateLocationRegistration;
+    private ru.arc.core.LifecycleTaskScope bootstrapTasks;
+    private static final class StorageGeneration {
+        final ru.arc.core.BoundedAsyncExecutor worker = new ru.arc.core.BoundedAsyncExecutor("arc-excellent-crates", 1, 256);
+        final CompletableFuture<kotlin.Unit> drain = new CompletableFuture<>();
+        final ArcNativeCleanupService nativeCleanup;
+        EciaRuntime runtime;
+        CrateVisualSettingsStore visuals;
+        StorageGeneration(ArcNativeCleanupService nativeCleanup) { this.nativeCleanup = nativeCleanup; }
+    }
+    private StorageGeneration generation;
+    private CompletableFuture<kotlin.Unit> predecessor = CompletableFuture.completedFuture(kotlin.Unit.INSTANCE);
+
+    CompletableFuture<kotlin.Unit> drained() { return (generation == null ? predecessor : generation.drain).copy(); }
 
     @Override
     public void onEnable() {
-        ArcActivityTelemetryBridge.INSTANCE.install();
+        var scope = new ru.arc.core.LifecycleTaskScope(new ru.arc.core.BukkitTaskScheduler(this), true);
+        bootstrapTasks = scope;
+        var token = scope.token();
+        predecessor.whenComplete((ignored, failure) -> scope.callSync(token, () -> {
+            if (bootstrapTasks != scope) return kotlin.Unit.INSTANCE;
+            if (failure != null) failStartup("Previous crate generation could not drain", failure);
+            else beginGeneration(scope);
+            return kotlin.Unit.INSTANCE;
+        }));
+    }
+
+    private void beginGeneration(ru.arc.core.LifecycleTaskScope scope) {
+        try {
+            var cleanup = java.util.Objects.requireNonNull(getServer().getServicesManager().load(ArcNativeCleanupService.class),
+                    "Required ARC native cleanup provider is not registered");
+            ArcActivityTelemetryBridge.INSTANCE.install();
+            ru.arc.core.PaperArcRuntime.installScheduling(this);
+            var owner = new StorageGeneration(cleanup);
+            generation = owner;
+            Path worldContainer = getServer().getWorldContainer().toPath();
+            var token = scope.token();
+            owner.worker.submit(() -> prepare(owner, worldContainer)).whenComplete((prepared, failure) ->
+                    scope.callSync(token, () -> {
+                        if (generation != owner || bootstrapTasks != scope) return kotlin.Unit.INSTANCE;
+                        if (failure != null) failStartup("Could not prepare ArcExcellentCrates configuration", failure);
+                        else {
+                            try { finishEnable(owner, prepared); }
+                            catch (RuntimeException | LinkageError startupFailure) {
+                                failStartup("Could not install ArcExcellentCrates runtime", startupFailure);
+                            }
+                        }
+                        return kotlin.Unit.INSTANCE;
+                    }));
+        } catch (RuntimeException | LinkageError failure) { failStartup("Could not start ArcExcellentCrates generation", failure); }
+    }
+
+    private void failStartup(String message, Throwable failure) {
+        getLogger().log(java.util.logging.Level.SEVERE, message, failure);
+        getServer().getPluginManager().disablePlugin(this);
+    }
+
+    private Prepared prepare(StorageGeneration owner, Path worldContainer) {
         migrateLegacyDataFolder();
         saveDefaultConfig();
-        runtime = EciaRuntime.create(this);
-        packetDisplays = registerService(new PaperPacketDisplays(this, "crate-visuals"));
-        EciaLocale locale = runtime.installLocale(getDataFolder().toPath(), legacyMessages());
+        reloadConfig();
+        var logging = new ru.arc.config.Config(getDataFolder().toPath(), "modules/logging.yml");
+        var locale = new EciaLocale(getDataFolder().toPath(), legacyMessages());
+        Path configured = Path.of(getConfig().getString("excellent-crates-directory", "plugins/ExcellentCrates/crates"));
+        Path directory = configured.isAbsolute() ? configured : worldContainer.resolve(configured).normalize();
+        var loadedRegistry = new CrateRegistry(directory, getLogger()::warning);
+        int count = loadedRegistry.reload();
+        var visuals = new CrateVisualSettingsStore(this, owner.worker);
+        owner.visuals = visuals;
+        return new Prepared(logging, locale, loadedRegistry, visuals, count);
+    }
+
+    private void finishEnable(StorageGeneration owner, Prepared prepared) {
+        runtime = EciaRuntime.create(this, prepared.logging(), owner.worker, owner.nativeCleanup);
+        owner.runtime = runtime;
+        var activeRuntime = runtime;
+        packetDisplays = new PaperPacketDisplays(this, "crate-visuals", runtime.nativeWork());
+        var activeDisplays = packetDisplays;
+        runtime.registerService(() -> { activeRuntime.trackNativeCleanup(activeDisplays.closeAsync()); });
+        EciaLocale locale = runtime.installPreparedLocale(prepared.locale());
         var shopCommand = java.util.Objects.requireNonNull(getCommand("cratekeys"));
         shopCommand.setTabCompleter((sender, command, alias, arguments) -> java.util.List.of());
         shopCommand.setExecutor((sender, command, label, arguments) -> {
             sender.sendMessage(locale.renderPadded("key-shop.unavailable", sender, Map.of()));
             return true;
         });
-        Path configuredDirectory = Path.of(getConfig().getString(
-                "excellent-crates-directory",
-                "plugins/ExcellentCrates/crates"
-        ));
-        Path crateDirectory = configuredDirectory.isAbsolute()
-                ? configuredDirectory
-                : getServer().getWorldContainer().toPath().resolve(configuredDirectory).normalize();
-
-        registry = new CrateRegistry(crateDirectory, message -> runtime.warn("{}", message));
-        int count = registry.reload();
+        registry = prepared.registry();
+        int count = prepared.count();
         registerCrateLocationService();
         String previewCommand = getConfig().getString(
                 "preview-command",
@@ -65,10 +130,12 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
         );
         protectionListener = new CrateProtectionListener(registry, runtime, locale.render("protected"), previewCommand);
         getServer().getPluginManager().registerEvents(protectionListener, this);
-        visualSettings = new CrateVisualSettingsStore(this);
+        visualSettings = registerService(prepared.visuals());
+        runtime.registerStorageFlush(visualSettings::flushLatest);
 
         long refreshTicks = Math.max(20L, getConfig().getLong("registry-refresh-ticks", 100L));
-        runtime.scheduleRegistryRefresh(refreshTicks, () -> runtime.updateRegistrySize(registry.reload()));
+        var activeRegistry = registry;
+        runtime.scheduleRegistryRefresh(refreshTicks, () -> activeRuntime.updateRegistrySize(activeRegistry.reload()));
         runtime.updateRegistrySize(count);
         runtime.info("Protecting {} ExcellentCrates furniture position(s).", count);
         NetworkKeyReceiver networkKeyReceiver = registerService(new NetworkKeyReceiver(this));
@@ -89,8 +156,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
                     if (ambientEffects != null) ambientEffects.refresh();
                     if (keyShop != null) keyShop.reload();
                 }, () -> {
-                    int registrySize = registry.reload();
-                    runtime.updateRegistrySize(registrySize);
+                    refreshRegistry();
                 }));
                 protectionListener.setVisualEditorHandler(visualEditor::open);
                 CrateOpeningEffects openingEffects = registerService(new CrateOpeningEffects(furniture, ambientEffects));
@@ -117,17 +183,81 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        unregisterCrateLocationService();
+        var owner = generation;
+        generation = null;
+        if (owner != null) predecessor = owner.drain;
+        var scope = bootstrapTasks;
+        bootstrapTasks = null;
+        var failures = new java.util.ArrayList<Throwable>();
+        attempt(failures, () -> { if (scope != null) scope.close(); });
+        attempt(failures, this::unregisterCrateLocationService);
         if (protectionListener != null) {
-            protectionListener.clearManagedPreviewHandler();
-            protectionListener.clearVisualEditorHandler();
-            protectionListener.clear();
+            attempt(failures, protectionListener::clearManagedPreviewHandler);
+            attempt(failures, protectionListener::clearVisualEditorHandler);
+            attempt(failures, protectionListener::clear);
         }
-        if (runtime != null) {
-            runtime.close();
-            runtime = null;
-        }
+        var active = owner == null ? runtime : owner.runtime;
+        attempt(failures, () -> { if (active != null) active.close(); });
+        runtime = null;
+        if (owner != null) closeStorage(owner, failures);
+        registry = null;
+        protectionListener = null;
+        managedCrates = null;
+        keyShop = null;
+        crateHolograms = null;
+        ambientEffects = null;
+        packetDisplays = null;
+        visualSettings = null;
+        visualEditor = null;
     }
+
+    private void closeStorage(StorageGeneration owner, java.util.List<Throwable> nativeFailures) {
+        CompletableFuture<Void> nativeDrain;
+        try { nativeDrain = owner.runtime == null ? CompletableFuture.completedFuture(null) : owner.runtime.nativeCleanupDrain(); }
+        catch (Throwable failure) { nativeDrain = CompletableFuture.failedFuture(failure); }
+        var persistenceDrain = owner.worker.closeAsync(() -> {
+            var failures = new java.util.ArrayList<>(nativeFailures);
+            attempt(failures, () -> { if (owner.visuals != null) owner.visuals.close(); });
+            attempt(failures, () -> { if (owner.runtime != null) owner.runtime.flushStorage(); });
+            if (!failures.isEmpty()) throw aggregate(failures);
+            return kotlin.Unit.INSTANCE;
+        });
+        var nativeCompletion = nativeDrain;
+        CompletableFuture.allOf(persistenceDrain, nativeCompletion).whenComplete((ignored, ignoredFailure) -> {
+            var failures = new java.util.ArrayList<Throwable>();
+            attempt(failures, persistenceDrain::join);
+            attempt(failures, nativeCompletion::join);
+            if (failures.isEmpty()) owner.drain.complete(kotlin.Unit.INSTANCE);
+            else {
+                var failure = aggregate(failures);
+                owner.drain.completeExceptionally(failure);
+                getLogger().log(java.util.logging.Level.SEVERE, "Could not drain ArcExcellentCrates generation", failure);
+            }
+        });
+    }
+
+    private static void attempt(java.util.List<Throwable> failures, Runnable close) {
+        try { close.run(); } catch (Throwable failure) { failures.add(failure); }
+    }
+
+    private static RuntimeException aggregate(java.util.List<Throwable> failures) {
+        var result = new IllegalStateException("Could not close every ArcExcellentCrates resource", failures.getFirst());
+        failures.stream().skip(1).filter(error -> error != failures.getFirst()).forEach(result::addSuppressed);
+        return result;
+    }
+
+    public void refreshRegistry() {
+        var active = runtime;
+        if (active == null) return;
+        var activeRegistry = registry;
+        active.storage().submit(activeRegistry::reload).whenComplete((size, failure) -> {
+            if (failure != null) getLogger().log(java.util.logging.Level.WARNING, "Could not refresh crate registry", failure);
+            else active.updateRegistrySize(size);
+        });
+    }
+
+    private record Prepared(ru.arc.config.Config logging, EciaLocale locale, CrateRegistry registry,
+                            CrateVisualSettingsStore visuals, int count) { }
 
     /** Shared runtime for later feature-service composition. */
     public EciaRuntime runtime() {

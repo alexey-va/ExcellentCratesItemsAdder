@@ -17,6 +17,8 @@ import org.bukkit.util.Transformation;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin;
+import ru.ruscrafting.ecia.CrateAmbientEffectService;
+import su.nightexpress.excellentcrates.util.pos.WorldPos;
 import su.nightexpress.excellentcrates.CratesAPI;
 import su.nightexpress.excellentcrates.crate.impl.Crate;
 
@@ -27,6 +29,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Iterator;
+import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import java.time.ZoneId;
 
 /** Viewer-scoped outline for nearby crates matching the key in the main hand. */
@@ -41,12 +47,14 @@ final class KeyCrateGlowService implements AutoCloseable {
     private final NativeSeasonKeys keys;
     private final ItemsAdderFurnitureAccess furniture;
     private final NamespacedKey marker;
-    private final Map<MarkerKey, UUID> markers = new HashMap<>();
+    private Map<MarkerKey, UUID> markers = new ConcurrentHashMap<>();
     private final BukkitTask task;
-    private List<KeyCrateGlowPlan.Target> targets = List.of();
     private Map<String, ManagedCratesSettings.CaseSettings> cases = Map.of();
     private ZoneId freeOpeningZone = ZoneId.of("Europe/Moscow");
     private boolean closed;
+    private boolean initialized;
+    private boolean pending;
+    private long generation;
 
     KeyCrateGlowService(ArcExcellentCratesPlugin plugin, NativeSeasonKeys keys,
             ItemsAdderFurnitureAccess furniture) {
@@ -54,7 +62,13 @@ final class KeyCrateGlowService implements AutoCloseable {
         this.keys = keys;
         this.furniture = furniture;
         marker = new NamespacedKey(plugin, "key_crate_glow");
-        removeOrphans();
+        CrateAmbientEffectService.cleanLoadedDisplays(plugin, () -> !closed, entity -> {
+            if ((entity instanceof ItemDisplay || entity instanceof BlockDisplay)
+                    && entity.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) entity.remove();
+        }).whenComplete((ignored, failure) -> {
+            if (failure != null) CrateAmbientEffectService.reportWorkFailure(plugin, "key glow orphan cleanup", failure);
+            else if (!closed) { initialized = true; reconcile(); }
+        });
         long refreshTicks = Math.max(2L,
                 plugin.getConfig().getLong("case-key-glow.refresh-ticks", DEFAULT_REFRESH_TICKS));
         task = plugin.getServer().getScheduler().runTaskTimer(plugin, this::reconcile,
@@ -66,65 +80,77 @@ final class KeyCrateGlowService implements AutoCloseable {
     }
 
     void configure(Map<String, ManagedCratesSettings.CaseSettings> cases, ZoneId zone) {
-        removeAll();
-        targets = List.of();
-        this.cases = Map.copyOf(cases);
+        if (closed) return;
+        this.cases = cases; // Published immutable settings; no native item or entity is retained here.
         this.freeOpeningZone = zone;
-        if (closed || !CratesAPI.isLoaded()) return;
-        targets = buildTargets();
+        generation++;
+        pending = false;
         reconcile();
     }
 
-    private List<KeyCrateGlowPlan.Target> buildTargets() {
-        List<KeyCrateGlowPlan.Target> next = new ArrayList<>();
-        for (ManagedCratesSettings.CaseSettings configured : cases.values()) {
-            Crate crate = CratesAPI.getCrateManager().getCrateById(configured.crateId());
-            if (crate == null) continue;
-            NativeSeasonKeys.KeyCost cost = keys.cost(crate);
-            crate.getBlockPositions().forEach(position -> next.add(new KeyCrateGlowPlan.Target(
-                    crate.getId(), cost.keyId(), NativeSeasonKeys.LEGACY_SEASON, position.getWorldName(),
-                    position.getX(), position.getY(), position.getZ(), configured.freeOpenPeriod())));
-        }
-        return List.copyOf(next);
+    private void reconcile() {
+        if (closed || !initialized || pending) return;
+        pending = true;
+        long expected = generation;
+        var work = new Supplier<Boolean>() {
+            final boolean active = plugin.getConfig().getBoolean("case-key-glow.enabled", true) && CratesAPI.isLoaded();
+            final Iterator<ManagedCratesSettings.CaseSettings> configured = active ? cases.values().iterator() : Collections.emptyIterator();
+            final List<KeyCrateGlowPlan.Target> targets = new ArrayList<>();
+            final Set<MarkerKey> desired = new HashSet<>();
+            final double range = Math.max(1.0D, plugin.getConfig().getDouble("case-key-glow.range", DEFAULT_RANGE));
+            Iterator<WorldPos> positions = Collections.emptyIterator();
+            Iterator<? extends Player> players;
+            Iterator<MarkerKey> stale;
+            Crate crate;
+            ManagedCratesSettings.CaseSettings currentCase;
+            NativeSeasonKeys.KeyCost cost;
+            Player player;
+            int targetIndex;
+
+            @Override public Boolean get() {
+                if (stale != null) {
+                    if (!stale.hasNext()) return true;
+                    MarkerKey key = stale.next();
+                    if (!desired.contains(key)) remove(key);
+                } else if (players != null) {
+                    if (player != null && targetIndex < targets.size()) {
+                        KeyCrateGlowPlan.Target target = targets.get(targetIndex++);
+                        if (!matches(player, target, range)) return false;
+                        MarkerKey key = new MarkerKey(player.getUniqueId(), target);
+                        desired.add(key);
+                        UUID existing = markers.get(key);
+                        Entity entity = existing == null ? null : plugin.getServer().getEntity(existing);
+                        if (entity == null || !entity.isValid()) { remove(key); spawn(key, range); }
+                    } else if (players.hasNext()) { player = players.next(); targetIndex = 0; }
+                    else stale = markers.keySet().iterator();
+                } else if (positions.hasNext()) {
+                    WorldPos position = positions.next();
+                    targets.add(new KeyCrateGlowPlan.Target(crate.getId(), cost.keyId(), NativeSeasonKeys.LEGACY_SEASON,
+                            position.getWorldName(), position.getX(), position.getY(), position.getZ(), currentCase.freeOpenPeriod()));
+                } else if (configured.hasNext()) {
+                    currentCase = configured.next();
+                    crate = CratesAPI.getCrateManager().getCrateById(currentCase.crateId());
+                    if (crate != null) { cost = keys.cost(crate); positions = crate.getBlockPositions().iterator(); }
+                } else players = active && !targets.isEmpty()
+                        ? plugin.getServer().getOnlinePlayers().iterator() : Collections.emptyIterator();
+                return false;
+            }
+        };
+        plugin.runtime().nativeWork().submit(() -> !closed && generation == expected, work::get)
+                .whenComplete((ignored, failure) -> {
+                    if (generation == expected) pending = false;
+                    if (failure != null) CrateAmbientEffectService.reportWorkFailure(plugin, "key glow reconciliation", failure);
+                });
     }
 
-    private void reconcile() {
-        if (closed || !plugin.getConfig().getBoolean("case-key-glow.enabled", true) || !CratesAPI.isLoaded()) {
-            removeAll();
-            return;
-        }
-        // Native editor/reload changes positions without notifying this configure-only addon.
-        targets = buildTargets();
-        if (targets.isEmpty()) {
-            removeAll();
-            return;
-        }
-        markers.entrySet().removeIf(entry -> {
-            Entity entity = plugin.getServer().getEntity(entry.getValue());
-            return entity == null || !entity.isValid();
-        });
-
-        double range = Math.max(1.0D, plugin.getConfig().getDouble("case-key-glow.range", DEFAULT_RANGE));
-        Set<MarkerKey> desired = new HashSet<>();
-        for (Player player : plugin.getServer().getOnlinePlayers()) {
-            Location location = player.getLocation();
-            NativeSeasonKeys.KeyIdentity key = keys.identifyForPlayer(player.getInventory().getItemInMainHand(),
-                    player.getUniqueId(), freeOpeningZone, cases).orElse(null);
-            if (key != null) {
-                KeyCrateGlowPlan.HeldKey held = new KeyCrateGlowPlan.HeldKey(key.keyId(), key.season());
-                List<KeyCrateGlowPlan.Target> candidates = key.crateId() == null ? targets
-                        : targets.stream().filter(target -> target.crateId().equals(key.crateId())).toList();
-                for (KeyCrateGlowPlan.Target target : KeyCrateGlowPlan.select(held, player.getWorld().getName(),
-                        location.getX(), location.getY(), location.getZ(), range, candidates)) {
-                    desired.add(new MarkerKey(player.getUniqueId(), target));
-                }
-            }
-        }
-
-        Set<MarkerKey> obsolete = new HashSet<>(markers.keySet());
-        obsolete.removeAll(desired);
-        obsolete.forEach(this::remove);
-        desired.stream().filter(key -> !markers.containsKey(key)).forEach(key -> spawn(key, range));
+    private boolean matches(Player player, KeyCrateGlowPlan.Target target, double range) {
+        if (!player.isOnline()) return false;
+        NativeSeasonKeys.KeyIdentity key = keys.identifyForPlayer(player.getInventory().getItemInMainHand(),
+                player.getUniqueId(), freeOpeningZone, cases).orElse(null);
+        if (key == null || key.crateId() != null && !key.crateId().equals(target.crateId())) return false;
+        Location location = player.getLocation();
+        return !KeyCrateGlowPlan.select(new KeyCrateGlowPlan.HeldKey(key.keyId(), key.season()),
+                player.getWorld().getName(), location.getX(), location.getY(), location.getZ(), range, List.of(target)).isEmpty();
     }
 
     private void spawn(MarkerKey key, double range) {
@@ -216,29 +242,23 @@ final class KeyCrateGlowService implements AutoCloseable {
         if (entity != null) entity.remove();
     }
 
-    private void removeAll() {
-        Set.copyOf(markers.keySet()).forEach(this::remove);
-    }
-
-    private void removeOrphans() {
-        for (World world : plugin.getServer().getWorlds()) {
-            for (ItemDisplay display : world.getEntitiesByClass(ItemDisplay.class)) {
-                if (display.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) display.remove();
-            }
-            for (BlockDisplay display : world.getEntitiesByClass(BlockDisplay.class)) {
-                if (display.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) display.remove();
-            }
-        }
-    }
-
     @Override
     public void close() {
         if (closed) return;
         closed = true;
+        generation++;
         task.cancel();
-        targets = List.of();
         cases = Map.of();
-        removeAll();
+        var server = plugin.getServer();
+        Iterator<UUID> detached = markers.values().iterator();
+        markers = new ConcurrentHashMap<>();
+        plugin.runtime().submitNativeCleanup("key-glow", () -> {
+            if (!detached.hasNext()) return true;
+            Entity entity = server.getEntity(detached.next());
+            if (entity != null) entity.remove();
+            detached.remove();
+            return false;
+        });
     }
 
     private record MarkerKey(UUID viewer, KeyCrateGlowPlan.Target target) {

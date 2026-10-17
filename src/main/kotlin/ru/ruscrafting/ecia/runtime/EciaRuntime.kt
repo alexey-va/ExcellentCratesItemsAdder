@@ -11,8 +11,12 @@ import ru.arc.logging.paper.PaperLoggingPlatform
 import ru.arc.observability.RuntimeHealthContribution
 import ru.arc.paper.menu.PaperMenuConfiguration
 import ru.arc.paper.runtime.PaperPluginRuntime
+import ru.arc.paper.api.ArcNativeCleanupService
 import java.nio.file.Path
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionStage
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.function.BooleanSupplier
 
 /**
  * Composition root for the addon's shared lifecycle, scheduler and diagnostics.
@@ -23,6 +27,9 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class EciaRuntime private constructor(
     private val plugin: JavaPlugin,
+    loggingConfig: Config,
+    private val storage: ru.arc.core.BoundedAsyncExecutor,
+    private val nativeCleanup: ArcNativeCleanupService,
 ) : AutoCloseable {
     private val registrySize = AtomicInteger()
     private val recoveryBacklog = AtomicInteger()
@@ -30,15 +37,19 @@ class EciaRuntime private constructor(
     private var menuRuntime: EciaMenuRuntime? = null
     private var localeRuntime: EciaLocale? = null
     private var closed = false
+    private val storageFlushes = java.util.concurrent.CopyOnWriteArrayList<Runnable>()
+    private val nativeWork: ru.arc.core.BudgetedTaskQueue
+    private val nativeCleanups = mutableListOf<CompletableFuture<Void>>()
+    private var acceptingNativeCleanup = true
 
     init {
         PaperArcRuntime.installScheduling(plugin)
-        val loggingConfig = Config(plugin.dataFolder.toPath(), "modules/logging.yml")
         ArcLogging.install(
             platform = PaperLoggingPlatform("AEC", "ArcExcellentCrates"),
             configSource = LoggingConfigSource { loggingConfig },
         )
         lifecycle = PaperPluginRuntime(plugin, "arc-excellent-crates")
+        nativeWork = lifecycle.own(ru.arc.core.BudgetedTaskQueue(lifecycle.tasks))
         lifecycle.start("version" to plugin.pluginMeta.version)
         lifecycle.registerHealth("runtime") {
             RuntimeHealthContribution(
@@ -53,6 +64,56 @@ class EciaRuntime private constructor(
 
     /** The canonical lifecycle task scope; all repeating work is owned here. */
     fun tasks() = lifecycle.tasks
+    fun storage() = storage
+    fun registerStorageFlush(flush: Runnable) { storageFlushes += flush }
+    fun nativeWork() = nativeWork
+
+    /** Services submit detached cursors while native shutdown still owns their handles. */
+    fun submitNativeCleanup(owner: String, step: BooleanSupplier): CompletableFuture<Void> {
+        check(acceptingNativeCleanup) { "Crate native cleanup admission is closed" }
+        val submitted = try { nativeCleanup.submit("arc-excellent-crates:$owner", step) }
+            catch (failure: Throwable) { CompletableFuture.failedFuture<Void>(failure) }
+        return trackNativeCleanup(submitted)
+    }
+
+    /** Retains actual transport shutdown as well as detached entity cleanup. */
+    fun trackNativeCleanup(completion: CompletionStage<Void>): CompletableFuture<Void> {
+        check(acceptingNativeCleanup) { "Crate native cleanup admission is closed" }
+        val actual = CompletableFuture<Void>()
+        nativeCleanups += actual
+        completion.whenComplete { _, failure ->
+            if (failure == null) actual.complete(null) else actual.completeExceptionally(failure)
+        }
+        // A service may cancel its observation, never the generation's actual completion.
+        return actual.copy()
+    }
+
+    /** Captured only after all native service closers have submitted their cursors. */
+    fun nativeCleanupDrain(): CompletableFuture<Void> {
+        check(!acceptingNativeCleanup) { "Crate native services are still open" }
+        val pending = nativeCleanups.toList()
+        val result = CompletableFuture<Void>()
+        CompletableFuture.allOf(*pending.toTypedArray()).whenComplete { _, _ ->
+            val failures = pending.mapNotNull { runCatching { it.join() }.exceptionOrNull()?.let { error -> error.cause ?: error } }
+            if (failures.isEmpty()) result.complete(null) else {
+                val failure = failures.first()
+                failures.drop(1).filterNot { it === failure }.forEach(failure::addSuppressed)
+                result.completeExceptionally(failure)
+            }
+        }
+        return result
+    }
+
+    /** Worker-only terminal snapshot, after accepted storage tasks and sealed native admission. */
+    fun flushStorage() {
+        var failure: Throwable? = null
+        storageFlushes.forEach { flush ->
+            try { flush.run() } catch (error: Throwable) {
+                if (failure == null) failure = error else if (failure !== error) failure?.addSuppressed(error)
+            }
+        }
+        failure?.let { throw it }
+    }
 
     /** The canonical lifecycle health snapshot used by ops integrations. */
     fun snapshot() = lifecycle.snapshot()
@@ -67,10 +128,10 @@ class EciaRuntime private constructor(
         recoveryBacklog.set(size)
     }
 
-    /** Install or replace the localized renderer after configuration is loaded. */
-    fun installLocale(dataRoot: Path, legacyMessages: Map<String, String>): EciaLocale {
+    fun installPreparedLocale(locale: EciaLocale): EciaLocale {
         check(!closed) { "ECIA runtime is closed" }
-        return EciaLocale(dataRoot, legacyMessages).also { localeRuntime = it }
+        localeRuntime = locale
+        return locale
     }
 
     fun locale(): EciaLocale = checkNotNull(localeRuntime) { "ECIA locale has not been installed" }
@@ -112,16 +173,25 @@ class EciaRuntime private constructor(
     override fun close() {
         if (closed) return
         closed = true
-        runCatching { menuRuntime?.close() }
-            .onFailure { plugin.logger.log(java.util.logging.Level.WARNING, "Could not close ECIA menus", it) }
+        var failure: Throwable? = null
+        fun attempt(close: () -> Unit) {
+            try { close() } catch (error: Throwable) {
+                if (failure == null) failure = error else if (failure !== error) failure?.addSuppressed(error)
+            }
+        }
+        attempt { nativeWork.close() }
+        attempt { menuRuntime?.close() }
         menuRuntime = null
-        runCatching { lifecycle.close() }
-            .onFailure { plugin.logger.log(java.util.logging.Level.SEVERE, "Could not close ECIA runtime", it) }
+        attempt { lifecycle.close() }
+        acceptingNativeCleanup = false
         Tasks.reset()
+        failure?.let { throw IllegalStateException("Could not close every crate native resource", it) }
     }
 
     companion object {
         @JvmStatic
-        fun create(plugin: JavaPlugin): EciaRuntime = EciaRuntime(plugin)
+        fun create(plugin: JavaPlugin, config: Config, storage: ru.arc.core.BoundedAsyncExecutor,
+                   nativeCleanup: ArcNativeCleanupService): EciaRuntime =
+            EciaRuntime(plugin, config, storage, nativeCleanup)
     }
 }

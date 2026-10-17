@@ -40,13 +40,9 @@ class CrateKeyShopService(
     private val taskToken = tasks.token()
     private var dialogs = PaperDialogRuntime(plugin)
     private val keys = NativeSeasonKeys()
-    private val journal = KeyShopJournal(plugin.dataFolder.toPath())
+    private lateinit var journal: KeyShopJournal
     private val journalLock = Any()
-    private val storageExecutor = Executor { command ->
-        if (tasks.runAsync(taskToken) { command.run() } == null) {
-            throw RejectedExecutionException("Key shop storage lifecycle is closed")
-        }
-    }
+    private val storageExecutor = runtime.storage()
     private val command = checkNotNull(plugin.getCommand(COMMAND)) { "Missing /$COMMAND in plugin.yml" }
     private val inFlight = mutableSetOf<UUID>()
     private val blockedPlayers = mutableSetOf<UUID>()
@@ -171,7 +167,8 @@ class CrateKeyShopService(
         if (journalLoading || journalReady || closed) return
         journalLoading = true
         asyncStorage {
-            synchronized(journalLock) { journal.load() }
+            if (!::journal.isInitialized) journal = KeyShopJournal(plugin.dataFolder.toPath())
+            synchronized(journalLock) { journal.load().let { it.size to it.filter(Purchase::blocksFurtherPurchases) } }
         }.whenCompleteSync(tasks, taskToken) { records, failure ->
             journalLoading = false
             if (closed) return@whenCompleteSync
@@ -179,19 +176,24 @@ class CrateKeyShopService(
                 runtime.error("Key sale recovery journal is unavailable: {}", failure?.toString() ?: "empty read")
                 return@whenCompleteSync
             }
-            records.filter(Purchase::blocksFurtherPurchases).forEach { record ->
-                blockedPlayers += record.playerId()
-                ArcActivityTelemetryBridge.keyPurchase(
-                    "recovery_required", record, "${record.state().name.lowercase(Locale.ROOT)}_recovery",
-                )
-                runtime.error(
-                    "Key sale requires manual review: id={}, player={}, state={}",
-                    record.id(), record.playerId(), record.state(),
-                )
+            val (count, blocked) = records
+            val remaining = blocked.iterator()
+            runtime.nativeWork().submit({ !closed }) {
+                if (remaining.hasNext()) {
+                    val record = remaining.next()
+                    blockedPlayers += record.playerId()
+                    ArcActivityTelemetryBridge.keyPurchase(
+                        "recovery_required", record, "${record.state().name.lowercase(Locale.ROOT)}_recovery",
+                    )
+                    runtime.error("Key sale requires manual review: id={}, player={}, state={}",
+                        record.id(), record.playerId(), record.state())
+                }
+                !remaining.hasNext()
+            }.whenCompleteSync(tasks, taskToken) { _, captureFailure ->
+                if (captureFailure != null || closed) return@whenCompleteSync
+                journalReady = true
+                runtime.info("Key sale recovery journal loaded: records={}, blocked={}", count, blockedPlayers.size)
             }
-            journalReady = true
-            runtime.info("Key sale recovery journal loaded: records={}, blocked={}",
-                records.size, blockedPlayers.size)
         }
     }
 
@@ -547,7 +549,7 @@ class CrateKeyShopService(
     }
 
     private fun <T> asyncStorage(action: () -> T): CompletableFuture<T> =
-        CompletableFuture.supplyAsync(action, storageExecutor)
+        storageExecutor.submit(action)
 
     private fun dialogButton(
         id: String,

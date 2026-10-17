@@ -47,6 +47,7 @@ public final class ManagedOpeningEngine {
     private final java.util.function.Function<RewardDefinition, ItemStack[]> materialize;
     private final Executor storageExecutor;
     private final Executor paperExecutor;
+    private ru.arc.core.BudgetedTaskQueue paperQueue;
     private final BiPredicate<Player, Long> currentPlayer;
     private final BiConsumer<String, OpeningRecord> activityObserver;
 
@@ -72,6 +73,16 @@ public final class ManagedOpeningEngine {
         this.paperExecutor = Objects.requireNonNull(paperExecutor);
         this.currentPlayer = Objects.requireNonNull(currentPlayer);
         this.activityObserver = Objects.requireNonNull(activityObserver);
+    }
+
+    public ManagedOpeningEngine(OpeningLedger ledger, WeightedOfferGenerator random,
+            OpeningInventoryTransactions inventory, NativeItemPayload payload,
+            java.util.function.Function<RewardDefinition, ItemStack[]> materialize,
+            Executor storageExecutor, ru.arc.core.BudgetedTaskQueue paperQueue,
+            BiPredicate<Player, Long> currentPlayer, BiConsumer<String, OpeningRecord> activityObserver) {
+        this(ledger, random, inventory, payload, materialize, storageExecutor,
+                command -> { throw new IllegalStateException("Native queue was not initialized"); }, currentPlayer, activityObserver);
+        this.paperQueue = Objects.requireNonNull(paperQueue);
     }
 
     /**
@@ -379,7 +390,7 @@ public final class ManagedOpeningEngine {
     }
 
     private <T> CompletableFuture<T> paper(Supplier<T> action) {
-        return submit(paperExecutor, action);
+        return paperQueue == null ? submit(paperExecutor, action) : paperQueue.call(() -> true, action::get);
     }
 
     private static <T> CompletableFuture<T> submit(Executor executor, Supplier<T> action) {

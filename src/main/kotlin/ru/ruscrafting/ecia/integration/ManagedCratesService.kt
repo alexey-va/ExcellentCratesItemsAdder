@@ -69,16 +69,7 @@ class ManagedCratesService(
     }
     private val lifecycleTasks = runtime.tasks()
     private val lifecycleToken = lifecycleTasks.token()
-    private val storageExecutor = Executor { command ->
-        if (lifecycleTasks.runAsync(lifecycleToken) { command.run() } == null) {
-            throw RejectedExecutionException("Crate storage lifecycle is closed")
-        }
-    }
-    private val paperExecutor = Executor { command ->
-        if (lifecycleTasks.runSync(lifecycleToken) { command.run() } == null) {
-            throw RejectedExecutionException("Crate Paper lifecycle is closed")
-        }
-    }
+    private val storageExecutor = runtime.storage()
     private var settings = ManagedCratesSettings(false, emptyMap())
     private var configurationFailed = true
     private var pools = emptyMap<String, PoolSnapshot>()
@@ -121,7 +112,7 @@ class ManagedCratesService(
         }
     }
 
-    /** Configuration/native providers load on Paper; the durable opening store loads off-thread once. */
+    /** Files prepare on the worker; native provider capture yields through the runtime tick budget. */
     fun reload() {
         roulette.close()
         ambientEffects.setRewards(emptyMap())
@@ -130,14 +121,25 @@ class ManagedCratesService(
         configurationFailed = true
         pendingConfiguration = null
         val generation = ++reloadGeneration
-        val candidate = runCatching {
-            val nextSettings = readSettings()
-            val menuConfiguration = EciaMenuConfiguration.load(root)
-            val nextPools = if (nextSettings.enabled) rewardPools.install(nextSettings) else emptyMap()
-            Configuration(nextSettings, menuConfiguration, nextPools)
-        }.onFailure { failure ->
-            runtime.error("Managed crate configuration rejected: {}", failure.toString())
-        }.getOrNull() ?: return
+        asyncStorage { readSettings() to EciaMenuConfiguration.load(root) }
+            .whenCompleteSync(lifecycleTasks, lifecycleToken) { prepared, failure ->
+                if (closed || generation != reloadGeneration) return@whenCompleteSync
+                if (failure != null || prepared == null) {
+                    runtime.error("Managed crate configuration rejected: {}", failure?.toString() ?: "empty candidate")
+                    return@whenCompleteSync
+                }
+                val (nextSettings, menus) = prepared
+                val pendingPools = if (nextSettings.enabled) rewardPools.installAsync(nextSettings, runtime.nativeWork(), storageExecutor)
+                    else CompletableFuture.completedFuture(emptyMap())
+                pendingPools.whenCompleteSync(lifecycleTasks, lifecycleToken) { nextPools, poolFailure ->
+                    if (closed || generation != reloadGeneration) return@whenCompleteSync
+                    if (poolFailure != null || nextPools == null) runtime.error("Managed native pools rejected: {}", poolFailure?.toString() ?: "empty pools")
+                    else configurationPrepared(Configuration(nextSettings, menus, nextPools), generation)
+                }
+            }
+    }
+
+    private fun configurationPrepared(candidate: Configuration, generation: Long) {
         settings = candidate.settings
         pendingConfiguration = candidate
         if (ledger != null) {
@@ -161,7 +163,7 @@ class ManagedCratesService(
             ledger = value.ledger
             val periodicInventory = OpeningInventoryTransactions(payload)
             val periodicIssuer = PeriodicKeyIssuer(value.periodicKeys, value.ledger, payload, periodicInventory,
-                Clock.systemUTC(), storageExecutor, paperExecutor, this::isCurrentSession)
+                Clock.systemUTC(), storageExecutor, runtime.nativeWork(), this::isCurrentSession)
             periodicKeys = PeriodicKeysService(plugin, keys, periodicIssuer, value.periodicKeys, storageExecutor,
                 object : PeriodicKeysService.PlayerAccess {
                     override fun acquire(player: Player): Long? {
@@ -181,7 +183,6 @@ class ManagedCratesService(
             val latest = pendingConfiguration
             if (!closed && latest != null) {
                 install(latest, reloadGeneration, value.available)
-                recoverOnlinePlayersAfterInitialLedgerLoad()
             }
         }
     }
@@ -192,27 +193,50 @@ class ManagedCratesService(
         runtime.installMenu(candidate.menuConfiguration)
         screens = EciaMenuScreens(candidate.menuConfiguration, payload)
         engine = ManagedOpeningEngine(activeLedger, WeightedOfferGenerator(RandomGenerator.getDefault()),
-            inventory, payload, rewards::materialize, storageExecutor, paperExecutor,
+            inventory, payload, rewards::materialize, storageExecutor, runtime.nativeWork(),
             { player, session -> isCurrentSession(player, session) },
             ArcActivityTelemetryBridge::openingTransition)
         pools = candidate.pools
         settings = candidate.settings
         storageHealthy = available
-        ambientEffects.setRewards(candidate.pools.mapValues { (_, pool) ->
-            pool.rewards().mapNotNull { reward ->
-                runCatching {
-                    payload.items(reward.previewPayload()).firstOrNull()
-                        ?.takeUnless(ItemStack::isEmpty)?.clone()
-                }.getOrNull()
+        val previews = mutableMapOf<String, List<ItemStack>>()
+        val crates = candidate.pools.iterator()
+        var rewards = emptyList<RewardDefinition>().iterator()
+        var crateId: String? = null
+        var items = mutableListOf<ItemStack>()
+        runtime.nativeWork().submit({ !closed && generation == reloadGeneration }) {
+            if (rewards.hasNext()) {
+                val reward = rewards.next()
+                runCatching { payload.items(reward.previewPayload()).firstOrNull()?.takeUnless(ItemStack::isEmpty)?.clone() }
+                    .getOrNull()?.let(items::add)
+                false
+            } else {
+                crateId?.let { previews[it] = java.util.Collections.unmodifiableList(items) }
+                if (crates.hasNext()) {
+                    val (id, pool) = crates.next()
+                    crateId = id
+                    rewards = pool.rewards().iterator()
+                    items = mutableListOf()
+                    false
+                } else true
             }
-        })
-        keyGlow.configure(if (candidate.settings.enabled) candidate.settings.cases else emptyMap(),
-            candidate.settings.freeOpeningZone())
-        periodicKeys?.configure(candidate.settings, candidate.pools.keys)
-        ready = candidate.settings.enabled && available
-        configurationFailed = false
-        updateHealth()
-        runtime.info("Managed crate services loaded: cases={}, pending={}", pools.size, pendingOpeningCount)
+        }.thenCompose {
+            ambientEffects.setRewards(previews)
+        }.whenCompleteSync(lifecycleTasks, lifecycleToken) { _, failure ->
+            if (closed || generation != reloadGeneration) return@whenCompleteSync
+            if (failure != null) {
+                runtime.error("Managed crate preview preparation failed: {}", failure.toString())
+                return@whenCompleteSync
+            }
+            keyGlow.configure(if (candidate.settings.enabled) candidate.settings.cases else emptyMap(),
+                candidate.settings.freeOpeningZone())
+            periodicKeys?.configure(candidate.settings, candidate.pools.keys)
+            ready = candidate.settings.enabled && available
+            configurationFailed = false
+            recoverOnlinePlayersAfterInitialLedgerLoad()
+            updateHealth()
+            runtime.info("Managed crate services loaded: cases={}, pending={}", pools.size, pendingOpeningCount)
+        }
     }
 
     private fun ensureRouter() {
@@ -263,11 +287,36 @@ class ManagedCratesService(
             }
             return
         }
-        val pool = currentPool(crateId)
-        if (pool == null) {
+        val generation = reloadGeneration
+        currentPoolAsync(crateId).whenCompleteSync(lifecycleTasks, lifecycleToken) { pool, failure ->
+            if (!isCurrentSession(player, session)) return@whenCompleteSync
+            if (failure != null || pool == null || generation != reloadGeneration || !ready) {
+                inFlight.remove(playerId)
+                if (failure != null) runtime.error("Could not capture managed reward pool: crate={}, error={}", crateId, failure.toString())
+                message(player, "managed.unavailable")
+            } else runCatching { openPrepared(player, crateId, anchor, session, pool) }.onFailure {
+                inFlight.remove(playerId)
+                runtime.error("Could not start managed opening: player={}, crate={}, error={}", playerId, crateId, it.toString())
+                message(player, "managed.operation-refused")
+            }
+        }
+        } catch (failure: Throwable) {
             inFlight.remove(player.uniqueId)
+            throw failure
+        }
+    }
+
+    private fun openPrepared(player: Player, crateId: String, anchor: Location?, session: Long, pool: PoolSnapshot) {
+        val playerId = player.uniqueId
+        val crate = CratesAPI.getCrateManager().getCrateById(crateId)
+        if (crate == null || !crate.hasPermission(player) || !player.hasPermission("ecia.use") ||
+            !CratesAPI.plugin().dataManager.isDataLoaded || !CratesAPI.plugin().openingManager.isOpeningAvailable(player)) {
+            inFlight.remove(playerId)
             return message(player, "managed.unavailable")
         }
+        val period = settings.cases[crateId]?.freeOpenPeriod() ?: PeriodicVirtualOpening.Period.NONE
+        val zone = settings.freeOpeningZone()
+        val now = Instant.now()
         if (router?.allowManagedOpen(player, crate) != true) {
             inFlight.remove(player.uniqueId)
             return message(player, "managed.vetoed")
@@ -296,10 +345,6 @@ class ManagedCratesService(
                 messageNoKeyUntilReset(player, period)
             }
         }
-        } catch (failure: Throwable) {
-            inFlight.remove(player.uniqueId)
-            throw failure
-        }
     }
 
     fun preview(player: Player, crateId: String) {
@@ -307,11 +352,22 @@ class ManagedCratesService(
         val manager = CratesAPI.getCrateManager()
         val crate = manager.getCrateById(crateId) ?: return message(player, "managed.unavailable")
         if (!crate.hasPermission(player)) return message(player, "no-permission")
-        val pool = currentPool(crateId) ?: return message(player, "managed.unavailable")
+        val generation = reloadGeneration
+        currentPoolAsync(crateId).whenCompleteSync(lifecycleTasks, lifecycleToken) { pool, failure ->
+            if (!player.isOnline || closed || !ready || generation != reloadGeneration || !crate.hasPermission(player)) return@whenCompleteSync
+            if (failure != null || pool == null) {
+                if (failure != null) runtime.error("Could not capture crate preview pool: crate={}, error={}", crateId, failure.toString())
+                message(player, "managed.unavailable")
+            } else presentPreview(player, crateId, manager, crate, pool, generation)
+        }
+    }
+
+    private fun presentPreview(player: Player, crateId: String,
+        manager: su.nightexpress.excellentcrates.crate.CrateManager,
+        crate: su.nightexpress.excellentcrates.crate.impl.Crate, pool: PoolSnapshot, generation: Long) {
         if (CratesAPI.getCrateManager() !== manager || manager.getCrateById(crateId) !== crate) {
             return message(player, "managed.unavailable")
         }
-        val generation = reloadGeneration
         val grant = if (player.hasPermission(ARC_CRATE_ADMIN_PERMISSION)) {
             val displayedRewards = IdentityHashMap<RewardDefinition, Reward>()
             pool.rewards().forEach { definition ->
@@ -345,8 +401,9 @@ class ManagedCratesService(
         )
     }
 
-    private fun currentPool(crateId: String): PoolSnapshot? =
-        settings.cases[crateId]?.let(rewardPools::loadCurrent)
+    private fun currentPoolAsync(crateId: String): CompletableFuture<PoolSnapshot?> =
+        settings.cases[crateId]?.let { rewardPools.loadCurrentAsync(it, runtime.nativeWork(), storageExecutor) }
+            ?: CompletableFuture.completedFuture(null)
 
     private fun show(player: Player, record: OpeningRecord, anchor: Location? = null) {
         when (record.stage()) {
@@ -399,14 +456,20 @@ class ManagedCratesService(
 
     /** A join can precede asynchronous ledger loading; recover it once installation completes. */
     private fun recoverOnlinePlayersAfterInitialLedgerLoad() {
-        for (player in plugin.server.onlinePlayers) {
-            val id = player.uniqueId
-            val current = activePlayers[id]
-            if (current != null && current !== player) continue
-            activePlayers[id] = player
-            playerSessions.putIfAbsent(id, 1L)
-            recoverJoinedPlayer(player)
-        }
+        val players = plugin.server.onlinePlayers.toTypedArray().iterator()
+        runtime.nativeWork().submit({ !closed }) {
+            if (players.hasNext()) {
+                val player = players.next()
+                val id = player.uniqueId
+                val current = activePlayers[id]
+                if (player.isOnline && (current == null || current === player)) {
+                    activePlayers[id] = player
+                    playerSessions.putIfAbsent(id, 1L)
+                    recoverJoinedPlayer(player)
+                }
+            }
+            !players.hasNext()
+        }.whenComplete { _, failure -> if (failure != null && !closed) runtime.error("Could not finish crate player recovery: {}", failure.toString()) }
     }
 
     private fun recoverJoinedPlayer(player: Player) {
@@ -507,21 +570,7 @@ class ManagedCratesService(
 
     private fun playerDataReady(player: Player): Boolean = dataSync?.isReady(player) != false
 
-    private fun <T> asyncStorage(action: () -> T): CompletableFuture<T> {
-        val result = CompletableFuture<T>()
-        try {
-            storageExecutor.execute {
-                try {
-                    result.complete(action())
-                } catch (failure: Throwable) {
-                    result.completeExceptionally(failure)
-                }
-            }
-        } catch (failure: Throwable) {
-            result.completeExceptionally(failure)
-        }
-        return result
-    }
+    private fun <T> asyncStorage(action: () -> T): CompletableFuture<T> = storageExecutor.submit(action)
 
     private fun guarded(sender: CommandSender, action: () -> Unit) {
         runCatching(action).onFailure { failure ->
@@ -539,7 +588,6 @@ class ManagedCratesService(
         closed = true
         ready = false
         roulette.close()
-        ambientEffects.setRewards(emptyMap())
         plugin.clearManagedPreviewHandler()
         plugin.clearManagedOpenHandler()
         router?.close()

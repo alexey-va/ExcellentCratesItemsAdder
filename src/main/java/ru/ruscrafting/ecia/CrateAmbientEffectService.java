@@ -1,6 +1,9 @@
 package ru.ruscrafting.ecia;
 
 import org.bukkit.Location;
+import org.bukkit.Chunk;
+import kotlin.Unit;
+import ru.arc.core.BudgetedTaskQueue;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.entity.BlockDisplay;
@@ -31,6 +34,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Iterator;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /** Animates packet-only reward previews beside every idle placed crate. */
 public final class CrateAmbientEffectService implements AutoCloseable {
@@ -47,13 +59,19 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     private final NamespacedKey marker;
     private final LegacyAmbientCleanup legacyCleanup;
     private final ItemsAdderFurnitureAccess furniture = ItemsAdderFurnitureAccess.create();
-    private final Map<Anchor, Orbit> orbits = new HashMap<>();
-    private final Set<Anchor> paused = new HashSet<>();
+    private Map<Anchor, Orbit> orbits = new ConcurrentHashMap<>();
+    private Set<Anchor> paused = ConcurrentHashMap.newKeySet();
     private final BukkitTask reconcileTask;
     private final BukkitTask animationTask;
     private Map<String, List<ItemStack>> rewardsByCrate = Map.of();
     private double frame;
     private boolean closed;
+    private boolean initialized;
+    private boolean reconcilePending;
+    private boolean resetPending;
+    private boolean animationPending;
+    private long generation;
+    private long rewardsGeneration;
 
     CrateAmbientEffectService(ArcExcellentCratesPlugin plugin, CrateVisualSettingsStore settings,
                               PaperPacketDisplays packetDisplays) {
@@ -61,9 +79,11 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         this.settings = settings;
         this.packetDisplays = packetDisplays;
         this.marker = new NamespacedKey(plugin, "case_ambient");
-        this.legacyCleanup = new LegacyAmbientCleanup(marker);
-        removeOrphans();
-        reconcile();
+        this.legacyCleanup = new LegacyAmbientCleanup(marker, plugin.runtime().nativeWork(), plugin);
+        cleanLoadedDisplays(plugin, () -> !closed, legacyCleanup::remove).whenComplete((ignored, failure) -> {
+            if (failure != null) reportWorkFailure(plugin, "ambient orphan cleanup", failure);
+            else if (!closed) { initialized = true; reconcile(); }
+        });
         reconcileTask = plugin.getServer().getScheduler().runTaskTimer(plugin, this::reconcile,
                 RECONCILE_TICKS, RECONCILE_TICKS);
         animationTask = plugin.getServer().getScheduler().runTaskTimer(plugin, this::animate,
@@ -71,19 +91,38 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         plugin.getServer().getPluginManager().registerEvents(legacyCleanup, plugin);
     }
 
-    public void setRewards(Map<String, List<ItemStack>> rewards) {
-        if (closed) return;
+    public CompletableFuture<Unit> setRewards(Map<String, List<ItemStack>> rewards) {
+        long expected = ++rewardsGeneration;
         Map<String, List<ItemStack>> copied = new HashMap<>();
-        rewards.forEach((crateId, items) -> {
-            List<ItemStack> usable = items.stream()
-                    .filter(item -> item != null && !item.isEmpty())
-                    .map(ItemStack::clone)
-                    .toList();
-            if (!usable.isEmpty()) copied.put(crateId, usable);
+        var work = new Supplier<Boolean>() {
+            final Iterator<Map.Entry<String, List<ItemStack>>> crates = rewards.entrySet().iterator();
+            Iterator<ItemStack> items = Collections.emptyIterator();
+            List<ItemStack> usable = new ArrayList<>();
+            String crateId;
+            @Override public Boolean get() {
+                if (items.hasNext()) {
+                    ItemStack item = items.next();
+                    if (item != null && !item.isEmpty()) usable.add(item.clone());
+                } else {
+                    if (crateId != null && !usable.isEmpty()) copied.put(crateId, Collections.unmodifiableList(usable));
+                    if (!crates.hasNext()) {
+                        rewardsByCrate = Collections.unmodifiableMap(copied);
+                        refresh();
+                        return true;
+                    }
+                    var crate = crates.next();
+                    crateId = crate.getKey();
+                    items = crate.getValue().iterator();
+                    usable = new ArrayList<>();
+                }
+                return false;
+            }
+        };
+        CompletableFuture<Unit> result = plugin.runtime().nativeWork().submit(() -> !closed && rewardsGeneration == expected, work::get);
+        result.whenComplete((ignored, failure) -> {
+            if (failure != null) reportWorkFailure(plugin, "ambient reward preparation", failure);
         });
-        rewardsByCrate = Map.copyOf(copied);
-        removeAll();
-        reconcile();
+        return result;
     }
 
     public void setOpening(Location location, boolean opening) {
@@ -94,44 +133,74 @@ public final class CrateAmbientEffectService implements AutoCloseable {
 
     void refresh() {
         if (closed) return;
-        removeAll();
-        reconcile();
+        long expected = ++generation;
+        reconcilePending = false;
+        resetPending = true;
+        animationPending = false;
+        Iterator<Anchor> stale = orbits.keySet().iterator();
+        plugin.runtime().nativeWork().submit(() -> !closed && generation == expected, () -> {
+            if (stale.hasNext()) { remove(stale.next()); return false; }
+            return true;
+        }).whenComplete((ignored, failure) -> {
+            if (generation != expected) return;
+            resetPending = false;
+            if (failure != null) reportWorkFailure(plugin, "ambient reset", failure);
+            else reconcile();
+        });
     }
 
     private void reconcile() {
-        if (closed || !plugin.getConfig().getBoolean("case-ambient.enabled", true) || !CratesAPI.isLoaded()) {
-            removeAll();
-            return;
-        }
-        Set<Anchor> desired = new HashSet<>();
-        for (Crate crate : CratesAPI.getCrateManager().getCrates()) {
-            List<ItemStack> rewards = previews(crate);
-            if (rewards.isEmpty()) continue;
-            for (WorldPos position : crate.getBlockPositions()) {
-                Anchor anchor = Anchor.of(position);
-                desired.add(anchor);
-                if (!CrateShellPresence.isPresent(position, furniture)) {
-                    remove(anchor);
-                } else if (!valid(orbits.get(anchor))) {
-                    remove(anchor);
-                    orbits.put(anchor, spawn(position, rewards));
-                }
-            }
-        }
-        Set<Anchor> obsolete = new HashSet<>(orbits.keySet());
-        obsolete.removeAll(desired);
-        obsolete.forEach(this::remove);
-        paused.retainAll(desired);
-    }
+        if (closed || !initialized || resetPending || reconcilePending) return;
+        reconcilePending = true;
+        long expected = generation;
+        var work = new Supplier<Boolean>() {
+            final boolean active = plugin.getConfig().getBoolean("case-ambient.enabled", true) && CratesAPI.isLoaded();
+            final Iterator<Crate> crates = active ? CratesAPI.getCrateManager().getCrates().iterator() : Collections.emptyIterator();
+            final Set<Anchor> desired = new HashSet<>();
+            Iterator<WorldPos> positions = Collections.emptyIterator();
+            Iterator<Reward> previewRewards = Collections.emptyIterator();
+            Iterator<Anchor> stale;
+            Iterator<Anchor> pausedStale;
+            Crate crate;
+            List<ItemStack> rewards = List.of();
+            List<ItemStack> captured = new ArrayList<>();
+            boolean capturing;
 
-    private List<ItemStack> previews(Crate crate) {
-        List<ItemStack> managed = rewardsByCrate.get(crate.getId());
-        if (managed != null && !managed.isEmpty()) return managed;
-        return crate.getRewards().stream()
-                .map(Reward::getPreviewItem)
-                .filter(item -> item != null && !item.isEmpty())
-                .map(ItemStack::clone)
-                .toList();
+            @Override public Boolean get() {
+                if (pausedStale != null) {
+                    if (!pausedStale.hasNext()) return true;
+                    if (!desired.contains(pausedStale.next())) pausedStale.remove();
+                } else if (stale != null) {
+                    if (stale.hasNext()) { Anchor anchor = stale.next(); if (!desired.contains(anchor)) remove(anchor); }
+                    else pausedStale = paused.iterator();
+                } else if (capturing) {
+                    if (previewRewards.hasNext()) {
+                        ItemStack item = previewRewards.next().getPreviewItem();
+                        if (item != null && !item.isEmpty()) captured.add(item.clone());
+                    } else {
+                        rewards = Collections.unmodifiableList(captured);
+                        if (!rewards.isEmpty()) positions = crate.getBlockPositions().iterator();
+                        capturing = false;
+                    }
+                } else if (positions.hasNext()) {
+                    WorldPos position = positions.next();
+                    Anchor anchor = Anchor.of(position);
+                    desired.add(anchor);
+                    if (!CrateShellPresence.isPresent(position, furniture)) remove(anchor);
+                    else if (!valid(orbits.get(anchor))) { remove(anchor); orbits.put(anchor, spawn(position, rewards)); }
+                } else if (crates.hasNext()) {
+                    crate = crates.next();
+                    rewards = rewardsByCrate.get(crate.getId());
+                    if (rewards != null && !rewards.isEmpty()) positions = crate.getBlockPositions().iterator();
+                    else { captured = new ArrayList<>(); previewRewards = crate.getRewards().iterator(); capturing = true; }
+                } else stale = orbits.keySet().iterator();
+                return false;
+            }
+        };
+        plugin.runtime().nativeWork().submit(() -> !closed && generation == expected, work::get).whenComplete((ignored, failure) -> {
+            if (generation == expected) reconcilePending = false;
+            if (failure != null) reportWorkFailure(plugin, "ambient reconciliation", failure);
+        });
     }
 
     private Orbit spawn(WorldPos source, List<ItemStack> rewards) {
@@ -163,37 +232,53 @@ public final class CrateAmbientEffectService implements AutoCloseable {
             displays.forEach(PacketItemDisplay::remove);
             throw failure;
         }
-        return new Orbit(source.toLocation(), List.copyOf(displays), rewards.stream().map(ItemStack::clone).toList(),
+        return new Orbit(source.toLocation(), List.copyOf(displays), rewards,
                 new int[displays.size()], visual, presentation);
     }
 
     private void animate() {
         if (closed) return;
         frame += FRAME_STEP;
-        for (Map.Entry<Anchor, Orbit> entry : orbits.entrySet()) {
-            Orbit orbit = entry.getValue();
-            World world = orbit.anchor().getWorld();
-            if (world == null || !world.isChunkLoaded(orbit.anchor().getBlockX() >> 4,
-                    orbit.anchor().getBlockZ() >> 4)) continue;
-            boolean hidden = paused.contains(entry.getKey());
-            for (int index = 0; index < orbit.displays().size(); index++) {
-                PacketItemDisplay display = orbit.displays().get(index);
-                if (!display.isValid()) continue;
-                if (hidden) {
+        if (animationPending) return; // Coalesce frames, retaining real tick phase under load.
+        animationPending = true;
+        long expected = generation;
+        var work = new Supplier<Boolean>() {
+            final Iterator<Map.Entry<Anchor, Orbit>> entries = orbits.entrySet().iterator();
+            Map.Entry<Anchor, Orbit> entry;
+            int index;
+            @Override public Boolean get() {
+                if (entry == null || index == entry.getValue().displays().size()) {
+                    if (!entries.hasNext()) return true;
+                    entry = entries.next();
+                    index = 0;
+                    return false;
+                }
+                Orbit orbit = entry.getValue();
+                int slot = index++;
+                if (orbits.get(entry.getKey()) != orbit) return false;
+                World world = orbit.anchor().getWorld();
+                if (world == null || !world.isChunkLoaded(orbit.anchor().getBlockX() >> 4, orbit.anchor().getBlockZ() >> 4)) return false;
+                PacketItemDisplay display = orbit.displays().get(slot);
+                if (!display.isValid()) return false;
+                if (paused.contains(entry.getKey())) {
                     display.teleport(orbit.anchor().clone().add(.5, .45, .5));
                     display.setTransformation(transformation(.01F, 0.0F, orbit.presentation()));
-                    continue;
+                } else {
+                    Frame next = frame(frame, slot, orbit.visual(), orbit.rewards().size());
+                    if (orbit.rewardIndices()[slot] != next.rewardIndex() + 1) {
+                        display.setItemStack(orbit.rewards().get(next.rewardIndex()).clone());
+                        orbit.rewardIndices()[slot] = next.rewardIndex() + 1;
+                    }
+                    display.teleport(orbit.anchor().clone().add(.5 + next.x(), .45 + next.y(), .5 + next.z()));
+                    display.setTransformation(transformation(next.scale(), next.rotation(), orbit.presentation()));
                 }
-                Frame next = frame(frame, index, orbit.visual(), orbit.rewards().size());
-                if (orbit.rewardIndices()[index] != next.rewardIndex() + 1) {
-                    display.setItemStack(orbit.rewards().get(next.rewardIndex()).clone());
-                    orbit.rewardIndices()[index] = next.rewardIndex() + 1;
-                }
-                Location location = orbit.anchor().clone().add(.5 + next.x(), .45 + next.y(), .5 + next.z());
-                display.teleport(location);
-                display.setTransformation(transformation(next.scale(), next.rotation(), orbit.presentation()));
+                return false;
             }
-        }
+        };
+        plugin.runtime().nativeWork().submit(() -> !closed && generation == expected, work::get).whenComplete((ignored, failure) -> {
+            if (generation == expected) animationPending = false;
+            if (failure != null) reportWorkFailure(plugin, "ambient animation", failure);
+        });
     }
 
     static Frame frame(long globalFrame, int slot, CrateVisualSettingsStore.Ambient visual, int rewardCount) {
@@ -438,13 +523,29 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         orbit.displays().forEach(PacketItemDisplay::remove);
     }
 
-    private void removeAll() {
-        Set.copyOf(orbits.keySet()).forEach(this::remove);
+    /** Chunk/entity snapshots are indivisible native reads; every inspected entity gets its own step. */
+    public static CompletableFuture<Unit> cleanLoadedDisplays(ArcExcellentCratesPlugin plugin,
+            BooleanSupplier current, Consumer<Entity> inspect) {
+        var work = new Supplier<Boolean>() {
+            final Iterator<World> worlds = plugin.getServer().getWorlds().iterator();
+            Iterator<Chunk> chunks = Collections.emptyIterator();
+            Iterator<Entity> entities = Collections.emptyIterator();
+            @Override public Boolean get() {
+                if (entities.hasNext()) inspect.accept(entities.next());
+                else if (chunks.hasNext()) {
+                    Chunk chunk = chunks.next();
+                    if (chunk.isLoaded() && chunk.isEntitiesLoaded()) entities = Arrays.asList(chunk.getEntities()).iterator();
+                } else if (worlds.hasNext()) chunks = Arrays.asList(worlds.next().getLoadedChunks()).iterator();
+                else return true;
+                return false;
+            }
+        };
+        return plugin.runtime().nativeWork().submit(current::getAsBoolean, work::get);
     }
 
-    private void removeOrphans() {
-        for (World world : plugin.getServer().getWorlds()) {
-            legacyCleanup.remove(world);
+    public static void reportWorkFailure(ArcExcellentCratesPlugin plugin, String operation, Throwable failure) {
+        if (!(failure instanceof CancellationException)) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "Crate " + operation + " failed", failure);
         }
     }
 
@@ -452,12 +553,26 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     public void close() {
         if (closed) return;
         closed = true;
+        generation++;
+        rewardsGeneration++;
+        legacyCleanup.closed = true;
         HandlerList.unregisterAll(legacyCleanup);
         reconcileTask.cancel();
         animationTask.cancel();
-        removeAll();
-        paused.clear();
+        Iterator<Orbit> detached = orbits.values().iterator();
+        orbits = new ConcurrentHashMap<>();
+        paused = ConcurrentHashMap.newKeySet();
         rewardsByCrate = Map.of();
+        var cleanup = new Supplier<Boolean>() {
+            Iterator<PacketItemDisplay> displays = Collections.emptyIterator();
+            @Override public Boolean get() {
+                if (displays.hasNext()) displays.next().remove();
+                else if (detached.hasNext()) { displays = detached.next().displays().iterator(); detached.remove(); }
+                else return true;
+                return false;
+            }
+        };
+        plugin.runtime().submitNativeCleanup("ambient", cleanup::get);
     }
 
     record Orbit(Location anchor, List<PacketItemDisplay> displays, List<ItemStack> rewards, int[] rewardIndices,
@@ -468,26 +583,31 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     /** Removes only the old server-entity ambient markers when a chunk arrives later. */
     public static final class LegacyAmbientCleanup implements Listener {
         private final NamespacedKey marker;
+        private final BudgetedTaskQueue queue;
+        private final ArcExcellentCratesPlugin plugin;
+        private boolean closed;
 
-        LegacyAmbientCleanup(NamespacedKey marker) {
+        LegacyAmbientCleanup(NamespacedKey marker, BudgetedTaskQueue queue, ArcExcellentCratesPlugin plugin) {
             this.marker = marker;
+            this.queue = queue;
+            this.plugin = plugin;
         }
 
         @EventHandler
         public void onEntitiesLoad(EntitiesLoadEvent event) {
-            event.getEntities().forEach(this::remove);
-        }
-
-        void remove(World world) {
-            for (ItemDisplay display : world.getEntitiesByClass(ItemDisplay.class)) remove(display);
-            for (BlockDisplay display : world.getEntitiesByClass(BlockDisplay.class)) remove(display);
+            Iterator<Entity> entities = event.getEntities().iterator();
+            queue.submit(() -> !closed, () -> {
+                if (!entities.hasNext()) return true;
+                remove(entities.next());
+                return false;
+            }).whenComplete((ignored, failure) -> {
+                if (failure != null) reportWorkFailure(plugin, "legacy ambient cleanup", failure);
+            });
         }
 
         private void remove(Entity entity) {
             if ((entity instanceof ItemDisplay || entity instanceof BlockDisplay)
-                    && entity.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) {
-                entity.remove();
-            }
+                    && entity.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) entity.remove();
         }
     }
 

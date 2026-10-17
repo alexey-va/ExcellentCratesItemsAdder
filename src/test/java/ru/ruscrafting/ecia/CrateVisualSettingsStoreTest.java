@@ -16,6 +16,28 @@ class CrateVisualSettingsStoreTest {
     @TempDir Path directory;
 
     @Test
+    void editsReturnBeforeStorageRunsAndCloseFlushesTheLatestSnapshot() {
+        var pending = new java.util.ArrayDeque<Runnable>();
+        var config = new MemoryConfiguration();
+        var store = new CrateVisualSettingsStore(directory, config, pending::addLast,
+                java.util.logging.Logger.getLogger("crate-test"));
+        var first = new CrateVisualSettingsStore.Anchor("world", 1, 64, 1);
+        var second = new CrateVisualSettingsStore.Anchor("world", 2, 64, 1);
+        var initial = store.save(first, store.defaults());
+        store.save(second, store.defaults());
+        assertFalse(initial.isDone());
+        assertFalse(Files.exists(directory.resolve("visuals.yml")));
+        assertEquals(1, pending.size());
+        store.close();
+        while (!pending.isEmpty()) pending.removeFirst().run();
+        store.flushLatest();
+        var reloaded = new CrateVisualSettingsStore(directory, config);
+        assertEquals(store.get(first), reloaded.get(first));
+        assertEquals(store.get(second), reloaded.get(second));
+        assertTrue(initial.isDone());
+    }
+
+    @Test
     void onePlacedCrateRoundTripsWithoutChangingOtherAnchors() {
         MemoryConfiguration config = new MemoryConfiguration();
         CrateVisualSettingsStore store = new CrateVisualSettingsStore(directory, config);

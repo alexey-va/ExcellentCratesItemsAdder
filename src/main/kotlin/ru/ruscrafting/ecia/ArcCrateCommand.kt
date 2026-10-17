@@ -238,8 +238,7 @@ internal class ArcCrateCommand(
             manager.addCratePositions(crate)
             crate.recreateHologram()
         }.onSuccess {
-            val count = registry.reload()
-            plugin.runtime().updateRegistrySize(count)
+            plugin.refreshRegistry()
             refreshed()
             player.closeInventory()
             message(player, "placement.placed", mapOf(

@@ -26,6 +26,7 @@ public final class PeriodicKeyIssuer {
     private final Clock clock;
     private final Executor storage;
     private final Executor paper;
+    private ru.arc.core.BudgetedTaskQueue paperQueue;
     private final BiPredicate<Player, Long> current;
 
     public PeriodicKeyIssuer(PeriodicKeyLedger grants, OpeningLedger openings, NativeItemPayload payload,
@@ -33,6 +34,14 @@ public final class PeriodicKeyIssuer {
             BiPredicate<Player, Long> current) {
         this.grants = grants; this.openings = openings; this.payload = payload; this.inventory = inventory;
         this.clock = clock; this.storage = storage; this.paper = paper; this.current = current;
+    }
+
+    public PeriodicKeyIssuer(PeriodicKeyLedger grants, OpeningLedger openings, NativeItemPayload payload,
+            OpeningInventoryTransactions inventory, Clock clock, Executor storage, ru.arc.core.BudgetedTaskQueue paperQueue,
+            BiPredicate<Player, Long> current) {
+        this(grants, openings, payload, inventory, clock, storage,
+                command -> { throw new IllegalStateException("Native queue was not initialized"); }, current);
+        this.paperQueue = java.util.Objects.requireNonNull(paperQueue);
     }
 
     public void playerDataLoaded(Player player) { inventory.playerDataLoaded(player); }
@@ -61,7 +70,7 @@ public final class PeriodicKeyIssuer {
             if (old != null && old.state() != PeriodicKeyGrant.State.RETRY) {
                 return apply(player, session, old, allowed, false);
             }
-            return async(paper, () -> {
+            return onPaper(() -> {
                 requireCurrent(player, session);
                 if (!within(window)) return new Plan(null, Result.SKIPPED);
                 if (!allowed.getAsBoolean()) return new Plan(null, Result.RETRY);
@@ -84,7 +93,7 @@ public final class PeriodicKeyIssuer {
 
     private CompletableFuture<Result> apply(Player player, long session, PeriodicKeyGrant grant,
             BooleanSupplier allowed, boolean freshPlan) {
-        return async(paper, () -> {
+        return onPaper(() -> {
             requireCurrent(player, session);
             if (player.isDead()) return freshPlan ? PeriodicKeyGrant.State.RETRY : grant.state();
             var witness = payload.read(grant.witness(), InventoryMutationWitness.class);
@@ -123,6 +132,9 @@ public final class PeriodicKeyIssuer {
     }
     private void requireCurrent(Player player, long session) {
         if (!current.test(player, session)) throw new IllegalStateException("Player session changed during periodic key delivery");
+    }
+    private <T> CompletableFuture<T> onPaper(Supplier<T> action) {
+        return paperQueue == null ? async(paper, action) : paperQueue.call(() -> true, action::get);
     }
     private static <T> CompletableFuture<T> async(Executor executor, Supplier<T> action) {
         try { return CompletableFuture.supplyAsync(action, executor); }
