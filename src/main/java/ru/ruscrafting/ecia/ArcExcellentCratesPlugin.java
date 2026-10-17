@@ -35,56 +35,23 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
     private CrateVisualSettingsStore visualSettings;
     private CrateVisualEditor visualEditor;
     private CrateLocationServiceRegistration crateLocationRegistration;
-    private ru.arc.core.LifecycleTaskScope bootstrapTasks;
-    private static final class StorageGeneration {
-        final ru.arc.core.BoundedAsyncExecutor worker = new ru.arc.core.BoundedAsyncExecutor("arc-excellent-crates", 1, 256);
-        final CompletableFuture<kotlin.Unit> drain = new CompletableFuture<>();
-        final ArcNativeCleanupService nativeCleanup;
-        EciaRuntime runtime;
-        CrateVisualSettingsStore visuals;
-        StorageGeneration(ArcNativeCleanupService nativeCleanup) { this.nativeCleanup = nativeCleanup; }
-    }
-    private StorageGeneration generation;
-    private CompletableFuture<kotlin.Unit> predecessor = CompletableFuture.completedFuture(kotlin.Unit.INSTANCE);
-
-    CompletableFuture<kotlin.Unit> drained() { return (generation == null ? predecessor : generation.drain).copy(); }
+    private ru.arc.core.BoundedAsyncExecutor storage;
+    private CompletableFuture<Void> nativeCleanupTail = CompletableFuture.completedFuture(null);
 
     @Override
     public void onEnable() {
-        var scope = new ru.arc.core.LifecycleTaskScope(new ru.arc.core.BukkitTaskScheduler(this), true);
-        bootstrapTasks = scope;
-        var token = scope.token();
-        predecessor.whenComplete((ignored, failure) -> scope.callSync(token, () -> {
-            if (bootstrapTasks != scope) return kotlin.Unit.INSTANCE;
-            if (failure != null) failStartup("Previous crate generation could not drain", failure);
-            else beginGeneration(scope);
-            return kotlin.Unit.INSTANCE;
-        }));
-    }
-
-    private void beginGeneration(ru.arc.core.LifecycleTaskScope scope) {
         try {
+            if (!nativeCleanupTail.isDone() || nativeCleanupTail.isCompletedExceptionally())
+                throw new IllegalStateException("Previous crate native cleanup is still pending or failed");
             var cleanup = java.util.Objects.requireNonNull(getServer().getServicesManager().load(ArcNativeCleanupService.class),
                     "Required ARC native cleanup provider is not registered");
             ArcActivityTelemetryBridge.INSTANCE.install();
             ru.arc.core.PaperArcRuntime.installScheduling(this);
-            var owner = new StorageGeneration(cleanup);
-            generation = owner;
+            storage = new ru.arc.core.BoundedAsyncExecutor("arc-excellent-crates", 1, 256);
             Path worldContainer = getServer().getWorldContainer().toPath();
-            var token = scope.token();
-            owner.worker.submit(() -> prepare(owner, worldContainer)).whenComplete((prepared, failure) ->
-                    scope.callSync(token, () -> {
-                        if (generation != owner || bootstrapTasks != scope) return kotlin.Unit.INSTANCE;
-                        if (failure != null) failStartup("Could not prepare ArcExcellentCrates configuration", failure);
-                        else {
-                            try { finishEnable(owner, prepared); }
-                            catch (RuntimeException | LinkageError startupFailure) {
-                                failStartup("Could not install ArcExcellentCrates runtime", startupFailure);
-                            }
-                        }
-                        return kotlin.Unit.INSTANCE;
-                    }));
-        } catch (RuntimeException | LinkageError failure) { failStartup("Could not start ArcExcellentCrates generation", failure); }
+            var prepared = storage.submit(() -> prepare(worldContainer)).get();
+            finishEnable(prepared, cleanup);
+        } catch (Exception | LinkageError failure) { failStartup("Could not start ArcExcellentCrates", failure); }
     }
 
     private void failStartup(String message, Throwable failure) {
@@ -92,7 +59,7 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
         getServer().getPluginManager().disablePlugin(this);
     }
 
-    private Prepared prepare(StorageGeneration owner, Path worldContainer) {
+    private Prepared prepare(Path worldContainer) {
         migrateLegacyDataFolder();
         saveDefaultConfig();
         reloadConfig();
@@ -102,14 +69,13 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
         Path directory = configured.isAbsolute() ? configured : worldContainer.resolve(configured).normalize();
         var loadedRegistry = new CrateRegistry(directory, getLogger()::warning);
         int count = loadedRegistry.reload();
-        var visuals = new CrateVisualSettingsStore(this, owner.worker);
-        owner.visuals = visuals;
+        var visuals = new CrateVisualSettingsStore(this, storage);
+        visualSettings = visuals;
         return new Prepared(logging, locale, loadedRegistry, visuals, count);
     }
 
-    private void finishEnable(StorageGeneration owner, Prepared prepared) {
-        runtime = EciaRuntime.create(this, prepared.logging(), owner.worker, owner.nativeCleanup);
-        owner.runtime = runtime;
+    private void finishEnable(Prepared prepared, ArcNativeCleanupService cleanup) {
+        runtime = EciaRuntime.create(this, prepared.logging(), storage, cleanup);
         var activeRuntime = runtime;
         packetDisplays = new PaperPacketDisplays(this, "crate-visuals", runtime.nativeWork());
         var activeDisplays = packetDisplays;
@@ -183,23 +149,35 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        var owner = generation;
-        generation = null;
-        if (owner != null) predecessor = owner.drain;
-        var scope = bootstrapTasks;
-        bootstrapTasks = null;
         var failures = new java.util.ArrayList<Throwable>();
-        attempt(failures, () -> { if (scope != null) scope.close(); });
         attempt(failures, this::unregisterCrateLocationService);
         if (protectionListener != null) {
             attempt(failures, protectionListener::clearManagedPreviewHandler);
             attempt(failures, protectionListener::clearVisualEditorHandler);
             attempt(failures, protectionListener::clear);
         }
-        var active = owner == null ? runtime : owner.runtime;
+        var active = runtime;
+        var visuals = visualSettings;
+        var worker = storage;
+        storage = null;
         attempt(failures, () -> { if (active != null) active.close(); });
+        if (active != null) {
+            try { nativeCleanupTail = active.nativeCleanupDrain(); }
+            catch (Throwable failure) { nativeCleanupTail = CompletableFuture.failedFuture(failure); }
+        }
         runtime = null;
-        if (owner != null) closeStorage(owner, failures);
+        // The host's detached native cursor needs future Main ticks; never join it here.
+        attempt(failures, () -> {
+            if (worker != null) worker.closeAsync(() -> {
+                var persistenceFailures = new java.util.ArrayList<Throwable>();
+                attempt(persistenceFailures, () -> { if (visuals != null) visuals.close(); });
+                attempt(persistenceFailures, () -> { if (active != null) active.flushStorage(); });
+                if (!persistenceFailures.isEmpty()) throw aggregate(persistenceFailures);
+                return kotlin.Unit.INSTANCE;
+            }).join();
+        });
+        if (!failures.isEmpty()) getLogger().log(java.util.logging.Level.SEVERE,
+                "Could not close ArcExcellentCrates storage", aggregate(failures));
         registry = null;
         protectionListener = null;
         managedCrates = null;
@@ -209,31 +187,6 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
         packetDisplays = null;
         visualSettings = null;
         visualEditor = null;
-    }
-
-    private void closeStorage(StorageGeneration owner, java.util.List<Throwable> nativeFailures) {
-        CompletableFuture<Void> nativeDrain;
-        try { nativeDrain = owner.runtime == null ? CompletableFuture.completedFuture(null) : owner.runtime.nativeCleanupDrain(); }
-        catch (Throwable failure) { nativeDrain = CompletableFuture.failedFuture(failure); }
-        var persistenceDrain = owner.worker.closeAsync(() -> {
-            var failures = new java.util.ArrayList<>(nativeFailures);
-            attempt(failures, () -> { if (owner.visuals != null) owner.visuals.close(); });
-            attempt(failures, () -> { if (owner.runtime != null) owner.runtime.flushStorage(); });
-            if (!failures.isEmpty()) throw aggregate(failures);
-            return kotlin.Unit.INSTANCE;
-        });
-        var nativeCompletion = nativeDrain;
-        CompletableFuture.allOf(persistenceDrain, nativeCompletion).whenComplete((ignored, ignoredFailure) -> {
-            var failures = new java.util.ArrayList<Throwable>();
-            attempt(failures, persistenceDrain::join);
-            attempt(failures, nativeCompletion::join);
-            if (failures.isEmpty()) owner.drain.complete(kotlin.Unit.INSTANCE);
-            else {
-                var failure = aggregate(failures);
-                owner.drain.completeExceptionally(failure);
-                getLogger().log(java.util.logging.Level.SEVERE, "Could not drain ArcExcellentCrates generation", failure);
-            }
-        });
     }
 
     private static void attempt(java.util.List<Throwable> failures, Runnable close) {
