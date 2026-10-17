@@ -43,6 +43,7 @@ public final class ArcExcellentCratesPlugin extends JavaPlugin {
         packetDisplays = registerService(new PaperPacketDisplays(this, "crate-visuals"));
         EciaLocale locale = runtime.installLocale(getDataFolder().toPath(), legacyMessages());
         var shopCommand = java.util.Objects.requireNonNull(getCommand("cratekeys"));
+        shopCommand.setTabCompleter((sender, command, alias, arguments) -> java.util.List.of());
         shopCommand.setExecutor((sender, command, label, arguments) -> {
             sender.sendMessage(locale.renderPadded("key-shop.unavailable", sender, Map.of()));
             return true;

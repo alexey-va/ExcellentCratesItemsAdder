@@ -80,7 +80,7 @@ internal class ArcCrateCommand(
     ): List<String> {
         if (!sender.hasPermission(ARC_CRATE_ADMIN_PERMISSION)) return emptyList()
         val choices = when (args.size) {
-            1 -> listOf("menu", "place", "key")
+            1 -> if (sender is Player) listOf("menu", "place", "key") else listOf("key")
             2 -> if (args[0].equals("key", true) || args[0].equals("give", true)) {
                 plugin.server.onlinePlayers.map(Player::getName)
             } else emptyList()
@@ -90,7 +90,9 @@ internal class ArcCrateCommand(
             4 -> if (args[0].equals("key", true) || args[0].equals("give", true)) {
                 listOf("1", "2", "5", "10", "16", "32", "64") + backends().map(BackendServerId::value)
             } else emptyList()
-            5 -> if (args[0].equals("key", true) || args[0].equals("give", true)) backends().map(BackendServerId::value) else emptyList()
+            5 -> if ((args[0].equals("key", true) || args[0].equals("give", true)) &&
+                args[3].toIntOrNull()?.let { it > 0 } == true
+            ) backends().map(BackendServerId::value) else emptyList()
             else -> emptyList()
         }
         val prefix = args.lastOrNull().orEmpty()
