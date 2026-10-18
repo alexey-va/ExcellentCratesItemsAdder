@@ -69,7 +69,6 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     private boolean initialized;
     private boolean reconcilePending;
     private boolean resetPending;
-    private boolean animationPending;
     private long generation;
     private long rewardsGeneration;
 
@@ -136,7 +135,6 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         long expected = ++generation;
         reconcilePending = false;
         resetPending = true;
-        animationPending = false;
         Iterator<Anchor> stale = orbits.keySet().iterator();
         plugin.runtime().nativeWork().submit(() -> !closed && generation == expected, () -> {
             if (stale.hasNext()) { remove(stale.next()); return false; }
@@ -238,33 +236,22 @@ public final class CrateAmbientEffectService implements AutoCloseable {
 
     private void animate() {
         if (closed) return;
-        frame += FRAME_STEP;
-        if (animationPending) return; // Coalesce frames, retaining real tick phase under load.
-        animationPending = true;
-        long expected = generation;
-        var work = new Supplier<Boolean>() {
-            final Iterator<Map.Entry<Anchor, Orbit>> entries = orbits.entrySet().iterator();
-            Map.Entry<Anchor, Orbit> entry;
-            int index;
-            @Override public Boolean get() {
-                if (entry == null || index == entry.getValue().displays().size()) {
-                    if (!entries.hasNext()) return true;
-                    entry = entries.next();
-                    index = 0;
-                    return false;
-                }
-                Orbit orbit = entry.getValue();
-                int slot = index++;
-                if (orbits.get(entry.getKey()) != orbit) return false;
-                World world = orbit.anchor().getWorld();
-                if (world == null || !world.isChunkLoaded(orbit.anchor().getBlockX() >> 4, orbit.anchor().getBlockZ() >> 4)) return false;
+        double frameTime = (frame += FRAME_STEP);
+        // Pose authoring is one coherent frame; the renderer budgets native capture and packet delivery.
+        for (Map.Entry<Anchor, Orbit> entry : orbits.entrySet()) {
+            Orbit orbit = entry.getValue();
+            World world = orbit.anchor().getWorld();
+            if (world == null || !world.isChunkLoaded(orbit.anchor().getBlockX() >> 4,
+                    orbit.anchor().getBlockZ() >> 4)) continue;
+            boolean hidden = paused.contains(entry.getKey());
+            for (int slot = 0; slot < orbit.displays().size(); slot++) {
                 PacketItemDisplay display = orbit.displays().get(slot);
-                if (!display.isValid()) return false;
-                if (paused.contains(entry.getKey())) {
+                if (!display.isValid()) continue;
+                if (hidden) {
                     display.teleport(orbit.anchor().clone().add(.5, .45, .5));
                     display.setTransformation(transformation(.01F, 0.0F, orbit.presentation()));
                 } else {
-                    Frame next = frame(frame, slot, orbit.visual(), orbit.rewards().size());
+                    Frame next = frame(frameTime, slot, orbit.visual(), orbit.rewards().size());
                     if (orbit.rewardIndices()[slot] != next.rewardIndex() + 1) {
                         display.setItemStack(orbit.rewards().get(next.rewardIndex()).clone());
                         orbit.rewardIndices()[slot] = next.rewardIndex() + 1;
@@ -272,13 +259,8 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                     display.teleport(orbit.anchor().clone().add(.5 + next.x(), .45 + next.y(), .5 + next.z()));
                     display.setTransformation(transformation(next.scale(), next.rotation(), orbit.presentation()));
                 }
-                return false;
             }
-        };
-        plugin.runtime().nativeWork().submit(() -> !closed && generation == expected, work::get).whenComplete((ignored, failure) -> {
-            if (generation == expected) animationPending = false;
-            if (failure != null) reportWorkFailure(plugin, "ambient animation", failure);
-        });
+        }
     }
 
     static Frame frame(long globalFrame, int slot, CrateVisualSettingsStore.Ambient visual, int rewardCount) {
