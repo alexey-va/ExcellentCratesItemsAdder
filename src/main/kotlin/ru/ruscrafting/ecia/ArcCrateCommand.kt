@@ -16,6 +16,7 @@ import ru.arc.network.BackendServerId
 import ru.arc.network.NetworkPlayerName
 import ru.arc.paper.menu.PaperDialogActionId
 import ru.arc.paper.menu.PaperDialogBody
+import ru.arc.paper.menu.DialogTables
 import ru.arc.paper.menu.PaperDialogButton
 import ru.arc.paper.menu.PaperDialogClickContext
 import ru.arc.paper.menu.PaperDialogInputId
@@ -114,10 +115,10 @@ internal class ArcCrateCommand(
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.admin",
             title = text("Управление кейсами", NamedTextColor.GOLD, true),
-            body = listOf(PaperDialogBody(text(
+            body = listOf(DialogTables.framedBody(text(
                 "Установите новый кейс в точку прицела или выдайте физический ключ на выбранном сервере.\nShift + ЛКМ по установленному кейсу — тонкая настройка визуала.",
                 NamedTextColor.WHITE,
-            ), 468)),
+            ), frame = DialogTables.Frame.RARE, width = 400)),
             buttons = listOf(
                 button("admin_place", "Установить кейс ›", NamedTextColor.GREEN) {
                     beginPlacement(it.player)

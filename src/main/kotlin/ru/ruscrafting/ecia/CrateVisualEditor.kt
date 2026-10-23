@@ -10,6 +10,7 @@ import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
 import ru.arc.paper.menu.PaperDialogActionId
 import ru.arc.paper.menu.PaperDialogBody
+import ru.arc.paper.menu.DialogTables
 import ru.arc.paper.menu.PaperDialogButton
 import ru.arc.paper.menu.PaperDialogClickContext
 import ru.arc.paper.menu.PaperDialogInputId
@@ -45,7 +46,8 @@ class CrateVisualEditor(
         val anchor = CrateVisualSettingsStore.Anchor.of(target.anchor())
         val body = buildList {
             add(body("Настройки относятся только к этому установленному сундуку."))
-            add(body("${anchor.world()} · ${anchor.x()}, ${anchor.y()}, ${anchor.z()}"))
+            add(DialogTables.filledBody(rows = listOf(listOf(text("${anchor.world()} · ${anchor.x()}, ${anchor.y()}, ${anchor.z()}", WHITE))),
+                headers = null, width = 400, columnWeights = listOf(1)))
             if (saved) add(body("Изменения применены сразу.", SUCCESS))
         }
         dialogs.open(player, PaperDialogScreen(

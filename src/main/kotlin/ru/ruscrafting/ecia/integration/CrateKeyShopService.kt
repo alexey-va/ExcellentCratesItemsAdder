@@ -12,7 +12,7 @@ import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import ru.arc.core.whenCompleteSync
 import ru.arc.paper.menu.PaperDialogActionId
-import ru.arc.paper.menu.PaperDialogBody
+import ru.arc.paper.menu.DialogTables
 import ru.arc.paper.menu.PaperDialogButton
 import ru.arc.paper.menu.PaperDialogClickContext
 import ru.arc.paper.menu.PaperDialogRuntime
@@ -226,7 +226,7 @@ class CrateKeyShopService(
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.keyshop.catalog",
             title = locale.render("key-shop.title", player, emptyMap()),
-            body = listOf(PaperDialogBody(locale.render("key-shop.body", player, emptyMap()), 468)),
+            body = listOf(DialogTables.framedBody(locale.render("key-shop.body", player, emptyMap()), frame = DialogTables.Frame.LEGENDARY, width = 400)),
             buttons = buttons,
             columns = 2,
         ))
@@ -242,10 +242,10 @@ class CrateKeyShopService(
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.keyshop.confirm",
             title = locale.render("key-shop.confirm-title", player, emptyMap()),
-            body = listOf(PaperDialogBody(locale.render("key-shop.confirm-body", player, mapOf(
+            body = listOf(DialogTables.filledBody(rows = listOf(listOf(locale.render("key-shop.confirm-body", player, mapOf(
                 "crate" to offer.crateName,
                 "price" to offer.price.toString(),
-            )), 468)),
+            )))), headers = null, width = 400, columnWeights = listOf(1))),
             buttons = listOf(
                 dialogButton(
                     "purchase_confirm",
