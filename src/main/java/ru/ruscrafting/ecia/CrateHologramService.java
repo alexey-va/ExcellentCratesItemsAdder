@@ -1,20 +1,27 @@
 package ru.ruscrafting.ecia;
 
+import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
-import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
 import su.nightexpress.excellentcrates.crate.CrateManager;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.world.EntitiesLoadEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
 import org.joml.Vector3f;
+import ru.arc.paper.display.PacketTextDisplay;
+import ru.arc.paper.display.PaperPacketDisplays;
 import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess;
 import su.nightexpress.excellentcrates.CratesAPI;
 import su.nightexpress.excellentcrates.crate.impl.Crate;
@@ -31,8 +38,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Replaces ExcellentCrates' line-per-entity labels with one compact TextDisplay per block. */
-final class CrateHologramService implements AutoCloseable {
+/** Replaces ExcellentCrates' line-per-entity labels with private packet-rendered faces. */
+final class CrateHologramService implements AutoCloseable, Listener {
     private final ItemsAdderFurnitureAccess furniture = ItemsAdderFurnitureAccess.create();
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
     private static final long RECONCILE_TICKS = 20L;
@@ -40,6 +47,7 @@ final class CrateHologramService implements AutoCloseable {
 
     private final ArcExcellentCratesPlugin plugin;
     private final CrateVisualSettingsStore settings;
+    private final PaperPacketDisplays packetDisplays;
     private final NamespacedKey marker;
     private Map<Anchor, Faces> displays = new ConcurrentHashMap<>();
     private Map<UUID, Map<Anchor, FaceVisibility>> visibleFaces = new HashMap<>();
@@ -53,26 +61,32 @@ final class CrateHologramService implements AutoCloseable {
     private boolean reconcilePending;
     private boolean visibilityPending;
 
-    CrateHologramService(ArcExcellentCratesPlugin plugin, CrateVisualSettingsStore settings) {
+    CrateHologramService(ArcExcellentCratesPlugin plugin, CrateVisualSettingsStore settings,
+                        PaperPacketDisplays packetDisplays) {
         this.plugin = plugin;
         this.settings = settings;
+        this.packetDisplays = packetDisplays;
         this.marker = new NamespacedKey(plugin, "case_hologram");
         reloadSettings();
-        CrateAmbientEffectService.cleanLoadedDisplays(plugin, () -> !closed, entity -> {
-            if (entity instanceof TextDisplay && entity.getPersistentDataContainer().has(marker, PersistentDataType.STRING)) entity.remove();
-        }).whenComplete((ignored, failure) -> {
-            if (failure != null) CrateAmbientEffectService.reportWorkFailure(plugin, "hologram orphan cleanup", failure);
-            else if (!closed) { initialized = true; reconcile(); }
-        });
+        cleanLegacyDisplays();
         this.reconcileTask = plugin.getServer().getScheduler().runTaskTimer(plugin, this::reconcile,
                 RECONCILE_TICKS, RECONCILE_TICKS);
         this.visibilityTask = plugin.getServer().getScheduler().runTaskTimer(plugin, this::updateVisibility,
                 VISIBILITY_TICKS, VISIBILITY_TICKS);
+        plugin.getServer().getPluginManager().registerEvents(this, plugin);
+    }
+
+    private void cleanLegacyDisplays() {
+        CrateAmbientEffectService.cleanLoadedDisplays(plugin, () -> !closed, this::removeLegacyDisplay)
+                .whenComplete((ignored, failure) -> {
+            if (failure != null) CrateAmbientEffectService.reportWorkFailure(plugin, "hologram orphan cleanup", failure);
+            else if (!closed) { initialized = true; reconcile(); }
+        });
     }
 
     void reload() {
         reloadSettings();
-        reconcile();
+        cleanLegacyDisplays();
     }
 
     void refresh(CrateVisualSettingsStore.Anchor ignored) {
@@ -136,7 +150,6 @@ final class CrateHologramService implements AutoCloseable {
     }
 
     private void reconcileDisplay(Anchor anchor, Source source) {
-        World world = source.position().getWorld();
         if (!CrateShellPresence.isPresent(source.position(), furniture)) {
             remove(anchor);
             return;
@@ -145,41 +158,33 @@ final class CrateHologramService implements AutoCloseable {
         Faces faces = entities(anchor);
         if (faces == null) {
             remove(anchor);
-            TextDisplay front = spawn(world, source.position(), anchor, "front");
-            TextDisplay back;
-            try { back = spawn(world, source.position(), anchor, "back"); }
+            PacketTextDisplay front = spawn(source.position(), anchor);
+            PacketTextDisplay back;
+            try { back = spawn(source.position(), anchor); }
             catch (RuntimeException failure) { front.remove(); throw failure; }
-            faces = new Faces(front.getUniqueId(), back.getUniqueId());
+            faces = new Faces(front, back);
             displays.put(anchor, faces);
         }
         CrateVisualSettingsStore.Hologram visual = settings.get(anchor.settingsAnchor()).hologram();
-        style(entity(faces.front()), source.crate(), source.position(), visual, visual.yaw());
-        style(entity(faces.back()), source.crate(), source.position(), visual, visual.yaw());
+        style(faces.front(), source.crate(), source.position(), visual);
+        style(faces.back(), source.crate(), source.position(), visual);
     }
 
-    private TextDisplay spawn(World world, WorldPos position, Anchor anchor, String face) {
+    private PacketTextDisplay spawn(WorldPos position, Anchor anchor) {
         var visual = settings.get(anchor.settingsAnchor()).hologram();
-        return world.spawn(displayLocation(position, visual), TextDisplay.class, display -> {
-            display.getPersistentDataContainer().set(marker, PersistentDataType.STRING, anchor.key() + "|" + face);
-            display.setPersistent(false);
-            display.setVisibleByDefault(false);
-            display.setInvulnerable(true);
-            display.setSilent(true);
-            display.setGravity(false);
-        });
+        PacketTextDisplay display = packetDisplays.spawnText(displayLocation(position, visual), Component.empty());
+        display.setVisibleByDefault(false);
+        return display;
     }
 
-    private void style(TextDisplay display, Crate crate, WorldPos position,
-                       CrateVisualSettingsStore.Hologram visual, float faceYaw) {
+    private void style(PacketTextDisplay display, Crate crate, WorldPos position,
+                       CrateVisualSettingsStore.Hologram visual) {
         Location location = displayLocation(position, visual);
-        if (!display.getLocation().toVector().equals(location.toVector())) {
-            display.teleport(location);
-        }
+        if (!display.getLocation().equals(location)) display.teleport(location);
         display.text(MINI_MESSAGE.deserialize(renderText(visual.textTemplate(), crate.getName())));
         // Client-side billboard rotation keeps the label readable while each
         // viewer approaches the crate from a different direction.
         display.setBillboard(Display.Billboard.CENTER);
-        display.setRotation(faceYaw, visual.pitch());
         display.setAlignment(TextDisplay.TextAlignment.CENTER);
         display.setLineWidth(512);
         display.setDefaultBackground(false);
@@ -208,15 +213,9 @@ final class CrateHologramService implements AutoCloseable {
                 position.getZ() + 0.5 + visual.offsetZ(), visual.yaw(), visual.pitch());
     }
 
-    private TextDisplay entity(UUID id) {
-        return plugin.getServer().getEntity(id) instanceof TextDisplay display && display.isValid()
-                ? display
-                : null;
-    }
-
     private Faces entities(Anchor anchor) {
         Faces faces = displays.get(anchor);
-        return faces != null && entity(faces.front()) != null && entity(faces.back()) != null ? faces : null;
+        return faces != null && faces.front().isValid() && faces.back().isValid() ? faces : null;
     }
 
     private void updateVisibility() {
@@ -241,17 +240,18 @@ final class CrateHologramService implements AutoCloseable {
                     } else { stale = null; player = null; }
                 } else if (player != null && anchors.hasNext()) {
                     var entry = anchors.next();
-                    TextDisplay front = entity(entry.getValue().front());
-                    TextDisplay back = entity(entry.getValue().back());
-                    if (!player.isOnline() || front == null || back == null || front.getWorld() != player.getWorld()) {
+                    PacketTextDisplay front = entry.getValue().front();
+                    PacketTextDisplay back = entry.getValue().back();
+                    Location location = front.getLocation();
+                    if (!player.isOnline() || !front.isValid() || !back.isValid() || location.getWorld() != player.getWorld()) {
                         state.remove(entry.getKey());
                         return false;
                     }
-                    boolean showFront = frontFaces(front.getLocation(), player.getEyeLocation());
+                    boolean showFront = frontFaces(location, player.getEyeLocation());
                     FaceVisibility next = new FaceVisibility(entry.getValue(), showFront);
                     if (next.equals(state.put(entry.getKey(), next))) return false;
-                    if (showFront) { player.showEntity(plugin, front); player.hideEntity(plugin, back); }
-                    else { player.hideEntity(plugin, front); player.showEntity(plugin, back); }
+                    if (showFront) { front.showTo(player); back.hideFrom(player); }
+                    else { front.hideFrom(player); back.showTo(player); }
                 } else if (player != null) {
                     stale = state.keySet().iterator();
                 } else if (players.hasNext()) {
@@ -271,11 +271,26 @@ final class CrateHologramService implements AutoCloseable {
     private void remove(Anchor anchor) {
         Faces faces = displays.remove(anchor);
         if (faces == null) return;
-        var front = plugin.getServer().getEntity(faces.front());
-        var back = plugin.getServer().getEntity(faces.back());
-        if (front != null) front.remove();
-        if (back != null) back.remove();
+        faces.front().remove();
+        faces.back().remove();
         // Visibility remembers entity identities; the next bounded sweep forgets removed anchors.
+    }
+
+    @EventHandler
+    public void onEntitiesLoad(EntitiesLoadEvent event) {
+        if (closed) return;
+        Iterator<Entity> entities = event.getEntities().iterator();
+        plugin.runtime().nativeWork().submit(() -> !closed, () -> {
+            if (!entities.hasNext()) return true;
+            removeLegacyDisplay(entities.next());
+            return false;
+        }).whenComplete((ignored, failure) -> {
+            if (failure != null) CrateAmbientEffectService.reportWorkFailure(plugin, "legacy hologram cleanup", failure);
+        });
+    }
+
+    private void removeLegacyDisplay(Entity entity) {
+        if (entity instanceof TextDisplay && entity.getPersistentDataContainer().has(marker, PersistentDataType.STRING)) entity.remove();
     }
 
     static boolean frontFaces(Location display, Location viewer) {
@@ -290,27 +305,18 @@ final class CrateHologramService implements AutoCloseable {
     public void close() {
         if (closed) return;
         closed = true;
+        HandlerList.unregisterAll(this);
         reconcileTask.cancel();
         visibilityTask.cancel();
-        var server = plugin.getServer();
-        Iterator<Faces> remaining = displays.values().iterator();
+        // Retire this service's desired handles before the shared owner's tracked closeAsync drain.
+        displays.values().forEach(faces -> { faces.front().remove(); faces.back().remove(); });
         Iterator<Restoration> restorations = suppressed.values().iterator();
         displays = new ConcurrentHashMap<>();
         suppressed = new HashMap<>();
         visibleFaces = new HashMap<>();
         var cleanup = new Supplier<Boolean>() {
-            Faces current;
             @Override public Boolean get() {
-                if (current != null) {
-                    var back = server.getEntity(current.back());
-                    if (back != null) back.remove();
-                    remaining.remove();
-                    current = null;
-                } else if (remaining.hasNext()) {
-                    current = remaining.next();
-                    var front = server.getEntity(current.front());
-                    if (front != null) front.remove();
-                } else if (restorations.hasNext()) {
+                if (restorations.hasNext()) {
                     Restoration restore = restorations.next();
                     Source source = restore.source();
                     if (restore.provider().isEnabled() && restore.crates().getCrateById(source.crate().getId()) == source.crate()
@@ -332,15 +338,11 @@ final class CrateHologramService implements AutoCloseable {
     private record Source(Crate crate, WorldPos position) {
     }
 
-    private record Faces(UUID front, UUID back) { }
+    private record Faces(PacketTextDisplay front, PacketTextDisplay back) { }
 
     private record Anchor(String crateId, String world, int x, int y, int z) {
         static Anchor of(Crate crate, WorldPos position) {
             return new Anchor(crate.getId(), position.getWorldName(), position.getX(), position.getY(), position.getZ());
-        }
-
-        String key() {
-            return crateId + "|" + world + "|" + x + "|" + y + "|" + z;
         }
 
         CrateVisualSettingsStore.Anchor settingsAnchor() {

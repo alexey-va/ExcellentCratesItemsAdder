@@ -107,7 +107,7 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
         NetworkKeyReceiver networkKeyReceiver = registerService(new NetworkKeyReceiver(this));
         if (getServer().getPluginManager().isPluginEnabled("ExcellentCrates")) {
             try {
-                crateHolograms = registerService(new CrateHologramService(this, visualSettings));
+                crateHolograms = registerService(new CrateHologramService(this, visualSettings, packetDisplays));
                 ambientEffects = registerService(new CrateAmbientEffectService(this, visualSettings, packetDisplays));
             } catch (RuntimeException | LinkageError failure) {
                 runtime.error("Compact crate holograms are unavailable: {}", failure.toString());

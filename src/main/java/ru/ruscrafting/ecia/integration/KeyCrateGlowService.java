@@ -11,11 +11,19 @@ import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.world.EntitiesLoadEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+import ru.arc.paper.display.PacketBlockDisplay;
+import ru.arc.paper.display.PacketDisplay;
+import ru.arc.paper.display.PacketItemDisplay;
+import ru.arc.paper.display.PaperPacketDisplays;
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin;
 import ru.ruscrafting.ecia.CrateAmbientEffectService;
 import su.nightexpress.excellentcrates.util.pos.WorldPos;
@@ -36,7 +44,7 @@ import java.util.function.Supplier;
 import java.time.ZoneId;
 
 /** Viewer-scoped outline for nearby crates matching the key in the main hand. */
-final class KeyCrateGlowService implements AutoCloseable {
+final class KeyCrateGlowService implements AutoCloseable, Listener {
     private static final long DEFAULT_REFRESH_TICKS = 5L;
     private static final double DEFAULT_RANGE = 48.0D;
     private static final float GLOW_SHELL_SCALE = 1.01F;
@@ -46,8 +54,9 @@ final class KeyCrateGlowService implements AutoCloseable {
     private final ArcExcellentCratesPlugin plugin;
     private final NativeSeasonKeys keys;
     private final ItemsAdderFurnitureAccess furniture;
+    private final PaperPacketDisplays packetDisplays;
     private final NamespacedKey marker;
-    private Map<MarkerKey, UUID> markers = new ConcurrentHashMap<>();
+    private Map<MarkerKey, PacketDisplay> markers = new ConcurrentHashMap<>();
     private final BukkitTask task;
     private Map<String, ManagedCratesSettings.CaseSettings> cases = Map.of();
     private ZoneId freeOpeningZone = ZoneId.of("Europe/Moscow");
@@ -57,15 +66,14 @@ final class KeyCrateGlowService implements AutoCloseable {
     private long generation;
 
     KeyCrateGlowService(ArcExcellentCratesPlugin plugin, NativeSeasonKeys keys,
-            ItemsAdderFurnitureAccess furniture) {
+            ItemsAdderFurnitureAccess furniture, PaperPacketDisplays packetDisplays) {
         this.plugin = plugin;
         this.keys = keys;
         this.furniture = furniture;
+        this.packetDisplays = packetDisplays;
         marker = new NamespacedKey(plugin, "key_crate_glow");
-        CrateAmbientEffectService.cleanLoadedDisplays(plugin, () -> !closed, entity -> {
-            if ((entity instanceof ItemDisplay || entity instanceof BlockDisplay)
-                    && entity.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) entity.remove();
-        }).whenComplete((ignored, failure) -> {
+        CrateAmbientEffectService.cleanLoadedDisplays(plugin, () -> !closed, this::removeLegacyDisplay)
+                .whenComplete((ignored, failure) -> {
             if (failure != null) CrateAmbientEffectService.reportWorkFailure(plugin, "key glow orphan cleanup", failure);
             else if (!closed) { initialized = true; reconcile(); }
         });
@@ -73,6 +81,7 @@ final class KeyCrateGlowService implements AutoCloseable {
                 plugin.getConfig().getLong("case-key-glow.refresh-ticks", DEFAULT_REFRESH_TICKS));
         task = plugin.getServer().getScheduler().runTaskTimer(plugin, this::reconcile,
                 refreshTicks, refreshTicks);
+        plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
     void configure(Map<String, ManagedCratesSettings.CaseSettings> cases) {
@@ -118,9 +127,8 @@ final class KeyCrateGlowService implements AutoCloseable {
                         if (!matches(player, target, range)) return false;
                         MarkerKey key = new MarkerKey(player.getUniqueId(), target);
                         desired.add(key);
-                        UUID existing = markers.get(key);
-                        Entity entity = existing == null ? null : plugin.getServer().getEntity(existing);
-                        if (entity == null || !entity.isValid()) { remove(key); spawn(key, range); }
+                        PacketDisplay existing = markers.get(key);
+                        if (existing == null || !existing.isValid()) { remove(key); spawn(key, range); }
                     } else if (players.hasNext()) { player = players.next(); targetIndex = 0; }
                     else stale = markers.keySet().iterator();
                 } else if (positions.hasNext()) {
@@ -160,7 +168,7 @@ final class KeyCrateGlowService implements AutoCloseable {
                 || !world.isChunkLoaded(key.target().x() >> 4, key.target().z() >> 4)) return;
         Block block = world.getBlockAt(key.target().x(), key.target().y(), key.target().z());
         ItemsAdderFurnitureAccess.Instance furnitureInstance = furniture.at(block).orElse(null);
-        Display display;
+        PacketDisplay display;
         if (furnitureInstance == null) {
             display = cloneBlock(block, (float) range);
         } else if (furnitureInstance.entity() instanceof ItemDisplay source) {
@@ -169,40 +177,33 @@ final class KeyCrateGlowService implements AutoCloseable {
             return;
         }
         if (display == null) return;
-        markers.put(key, display.getUniqueId());
-        viewer.showEntity(plugin, display);
+        markers.put(key, display);
+        display.showTo(viewer);
     }
 
-    private ItemDisplay cloneFurniture(ItemDisplay source, float range) {
-        return source.getWorld().spawn(source.getLocation(), ItemDisplay.class, display -> {
-            configure(display, range);
-            display.setItemStack(source.getItemStack().clone());
-            display.setItemDisplayTransform(source.getItemDisplayTransform());
-            display.setBillboard(source.getBillboard());
-            display.setTransformation(inflateCentered(source.getTransformation()));
-            display.setDisplayWidth(source.getDisplayWidth());
-            display.setDisplayHeight(source.getDisplayHeight());
-        });
+    private PacketItemDisplay cloneFurniture(ItemDisplay source, float range) {
+        PacketItemDisplay display = packetDisplays.spawnItem(source.getLocation(), source.getItemStack().clone());
+        configure(display, range);
+        display.setItemDisplayTransform(source.getItemDisplayTransform());
+        display.setBillboard(source.getBillboard());
+        display.setTransformation(inflateCentered(source.getTransformation()));
+        display.setDisplayWidth(source.getDisplayWidth());
+        display.setDisplayHeight(source.getDisplayHeight());
+        return display;
     }
 
-    private BlockDisplay cloneBlock(Block block, float range) {
+    private PacketBlockDisplay cloneBlock(Block block, float range) {
         if (block.getType() == Material.AIR) return null;
-        return block.getWorld().spawn(block.getLocation(), BlockDisplay.class, display -> {
-            configure(display, range);
-            display.setBlock(block.getBlockData().clone());
-            display.setTransformation(blockShellTransformation());
-            display.setDisplayWidth(1.0F);
-            display.setDisplayHeight(1.0F);
-        });
+        PacketBlockDisplay display = packetDisplays.spawnBlock(block.getLocation(), block.getBlockData().clone());
+        configure(display, range);
+        display.setTransformation(blockShellTransformation());
+        display.setDisplayWidth(1.0F);
+        display.setDisplayHeight(1.0F);
+        return display;
     }
 
-    private void configure(Display display, float range) {
-        display.getPersistentDataContainer().set(marker, PersistentDataType.BYTE, (byte) 1);
-        display.setPersistent(false);
+    private void configure(PacketDisplay display, float range) {
         display.setVisibleByDefault(false);
-        display.setInvulnerable(true);
-        display.setSilent(true);
-        display.setGravity(false);
         display.setGlowing(true);
         display.setGlowColorOverride(OUTLINE_COLOR);
         display.setBrightness(glowBrightness());
@@ -236,10 +237,26 @@ final class KeyCrateGlowService implements AutoCloseable {
     }
 
     private void remove(MarkerKey key) {
-        UUID id = markers.remove(key);
-        if (id == null) return;
-        Entity entity = plugin.getServer().getEntity(id);
-        if (entity != null) entity.remove();
+        PacketDisplay display = markers.remove(key);
+        if (display != null) display.remove();
+    }
+
+    @EventHandler
+    public void onEntitiesLoad(EntitiesLoadEvent event) {
+        if (closed) return;
+        Iterator<Entity> entities = event.getEntities().iterator();
+        plugin.runtime().nativeWork().submit(() -> !closed, () -> {
+            if (!entities.hasNext()) return true;
+            removeLegacyDisplay(entities.next());
+            return false;
+        }).whenComplete((ignored, failure) -> {
+            if (failure != null) CrateAmbientEffectService.reportWorkFailure(plugin, "legacy key glow cleanup", failure);
+        });
+    }
+
+    private void removeLegacyDisplay(Entity entity) {
+        if ((entity instanceof ItemDisplay || entity instanceof BlockDisplay)
+                && entity.getPersistentDataContainer().has(marker, PersistentDataType.BYTE)) entity.remove();
     }
 
     @Override
@@ -247,18 +264,12 @@ final class KeyCrateGlowService implements AutoCloseable {
         if (closed) return;
         closed = true;
         generation++;
+        HandlerList.unregisterAll(this);
         task.cancel();
         cases = Map.of();
-        var server = plugin.getServer();
-        Iterator<UUID> detached = markers.values().iterator();
+        // Retire this service's desired handles before the shared owner's tracked closeAsync drain.
+        markers.values().forEach(PacketDisplay::remove);
         markers = new ConcurrentHashMap<>();
-        plugin.runtime().submitNativeCleanup("key-glow", () -> {
-            if (!detached.hasNext()) return true;
-            Entity entity = server.getEntity(detached.next());
-            if (entity != null) entity.remove();
-            detached.remove();
-            return false;
-        });
     }
 
     private record MarkerKey(UUID viewer, KeyCrateGlowPlan.Target target) {

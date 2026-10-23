@@ -62,7 +62,7 @@ class ManagedCratesService(
     private val payload = NativeItemPayload()
     private val inventory = OpeningInventoryTransactions(payload)
     private val keys = NativeSeasonKeys()
-    private val keyGlow = KeyCrateGlowService(plugin, keys, furniture)
+    private val keyGlow = KeyCrateGlowService(plugin, keys, furniture, packetDisplays)
     private val rewards = CatalogRewardBridge(payload)
     private val rewardPools = NativeRewardPools(keys, rewards, payload) { issue ->
         runtime.error("Managed reward excluded: {}", issue)
