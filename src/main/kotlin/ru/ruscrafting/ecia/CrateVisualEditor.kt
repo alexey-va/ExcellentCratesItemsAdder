@@ -15,6 +15,7 @@ import ru.arc.paper.menu.PaperDialogButton
 import ru.arc.paper.menu.PaperDialogClickContext
 import ru.arc.paper.menu.PaperDialogInputId
 import ru.arc.paper.menu.PaperDialogNumberRangeInput
+import ru.arc.paper.menu.PaperDialogNavigation
 import ru.arc.paper.menu.PaperDialogRuntime
 import ru.arc.paper.menu.PaperDialogScreen
 import ru.arc.paper.menu.PaperDialogTextInput
@@ -289,8 +290,10 @@ class CrateVisualEditor(
                 replaceShell(it.player, target, shell)
             }
         }.toMutableList()
-        if (page > 0) buttons += button("shell_previous", "‹ Назад", WHITE) { openShells(it.player, target, page - 1) }
-        if (page + 1 < pages) buttons += button("shell_next", "Дальше ›", WHITE) { openShells(it.player, target, page + 1) }
+        if (page > 0) buttons += button("shell_previous", "Предыдущая страница", WHITE) { openShells(it.player, target, page - 1) }
+            .let { PaperDialogNavigation.previous(it, it.label) }
+        if (page + 1 < pages) buttons += button("shell_next", "Следующая страница", WHITE) { openShells(it.player, target, page + 1) }
+            .let { PaperDialogNavigation.next(it, it.label) }
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.visuals.shell",
             title = text("Корпус · ${target.crateId()}", GOLD, bold = true),

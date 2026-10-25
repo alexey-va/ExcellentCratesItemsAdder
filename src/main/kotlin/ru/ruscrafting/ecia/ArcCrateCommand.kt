@@ -21,6 +21,7 @@ import ru.arc.paper.menu.PaperDialogButton
 import ru.arc.paper.menu.PaperDialogClickContext
 import ru.arc.paper.menu.PaperDialogInputId
 import ru.arc.paper.menu.PaperDialogNumberRangeInput
+import ru.arc.paper.menu.PaperDialogNavigation
 import ru.arc.paper.menu.PaperDialogRuntime
 import ru.arc.paper.menu.PaperDialogScreen
 import ru.arc.paper.menu.PaperDialogTextInput
@@ -198,12 +199,12 @@ internal class ArcCrateCommand(
                 place(it.player, target, crate, model)
             }
         }.toMutableList()
-        if (page > 0) buttons += button("models_previous", "‹ Назад", NamedTextColor.BLUE) {
+        if (page > 0) buttons += button("models_previous", "Предыдущая страница", NamedTextColor.BLUE) {
             openModels(it.player, target, crate, page - 1)
-        }
-        if (page + 1 < pages) buttons += button("models_next", "Дальше ›", NamedTextColor.BLUE) {
+        }.let { PaperDialogNavigation.previous(it, it.label) }
+        if (page + 1 < pages) buttons += button("models_next", "Следующая страница", NamedTextColor.BLUE) {
             openModels(it.player, target, crate, page + 1)
-        }
+        }.let { PaperDialogNavigation.next(it, it.label) }
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.admin.place.model",
             title = text(crate.id, NamedTextColor.LIGHT_PURPLE, true),
@@ -281,12 +282,12 @@ internal class ArcCrateCommand(
                 openGrant(it.player, key.id, null)
             }
         }.toMutableList()
-        if (page > 0) buttons += button("keys_previous", "‹ Назад", NamedTextColor.BLUE) {
+        if (page > 0) buttons += button("keys_previous", "Предыдущая страница", NamedTextColor.BLUE) {
             openKeys(it.player, page - 1)
-        }
-        if (page + 1 < pages) buttons += button("keys_next", "Дальше ›", NamedTextColor.BLUE) {
+        }.let { PaperDialogNavigation.previous(it, it.label) }
+        if (page + 1 < pages) buttons += button("keys_next", "Следующая страница", NamedTextColor.BLUE) {
             openKeys(it.player, page + 1)
-        }
+        }.let { PaperDialogNavigation.next(it, it.label) }
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.admin.keys",
             title = text("Выдать ключ", NamedTextColor.GOLD, true),

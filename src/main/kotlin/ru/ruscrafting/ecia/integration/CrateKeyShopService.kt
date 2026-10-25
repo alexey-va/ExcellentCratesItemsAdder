@@ -222,14 +222,15 @@ class CrateKeyShopService(
                     "price" to offer.price.toString(),
                 )),
             ) { openConfirmation(it.player, offer.crateId, offer.price) }
-        } + dialogButton("shop_close", locale.render("key-shop.close", player, emptyMap()), true) { }
+        }
         dialogs.open(player, PaperDialogScreen(
             id = "arc-excellent-crates.keyshop.catalog",
             title = locale.render("key-shop.title", player, emptyMap()),
             body = listOf(DialogTables.framedBody(locale.render("key-shop.body", player, emptyMap()), frame = DialogTables.Frame.LEGENDARY, width = 400)),
             buttons = buttons,
+            exitButton = dialogButton("shop_close", locale.render("key-shop.close", player, emptyMap()), true) { }.copy(width = 200),
             columns = 2,
-        ))
+        ), reopen = { openCatalog(player) }, onDismiss = {}, closeOnEscape = true)
     }
 
     private fun openConfirmation(player: Player, crateId: String, displayedPrice: Long) {
@@ -256,12 +257,10 @@ class CrateKeyShopService(
                     confirmed = true
                     startPurchase(it.player, crateId, displayedPrice)
                 },
-                dialogButton("purchase_back", locale.render("key-shop.back", player, emptyMap())) {
-                    openCatalog(it.player)
-                },
             ),
+            exitButton = dialogButton("purchase_back", locale.render("key-shop.back", player, emptyMap())) {}.copy(width = 200),
             columns = 2,
-        ))
+        ), reopen = null, onDismiss = {}, closeOnEscape = false)
     }
 
     private fun startPurchase(player: Player, crateId: String, displayedPrice: Long) {
