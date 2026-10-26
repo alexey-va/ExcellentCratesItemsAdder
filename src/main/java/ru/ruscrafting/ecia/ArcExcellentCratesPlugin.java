@@ -14,12 +14,15 @@ import ru.ruscrafting.ecia.integration.CrateKeyShopService;
 import ru.ruscrafting.ecia.integration.ArcActivityTelemetryBridge;
 import ru.arc.paper.display.PaperPacketDisplays;
 import ru.arc.paper.api.ArcNativeCleanupService;
+import ru.arc.paper.runtime.PaperPluginHotload;
+import ru.arc.logging.ArcLogging;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.function.BiFunction;
 
 public class ArcExcellentCratesPlugin extends JavaPlugin {
@@ -37,12 +40,22 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
     private CrateLocationServiceRegistration crateLocationRegistration;
     private ru.arc.core.BoundedAsyncExecutor storage;
     private CompletableFuture<Void> nativeCleanupTail = CompletableFuture.completedFuture(null);
+    private CompletableFuture<kotlin.Unit> storageDrain = CompletableFuture.completedFuture(kotlin.Unit.INSTANCE);
+    private CompletableFuture<Void> closeDrain = CompletableFuture.completedFuture(null);
+    private final PaperPluginHotload hotload = new PaperPluginHotload(this, this::stopRuntime);
+
+    public CompletableFuture<Void> drained() {
+        return CompletableFuture.allOf(storageDrain, nativeCleanupTail, closeDrain);
+    }
 
     @Override
     public void onEnable() {
         try {
-            if (!nativeCleanupTail.isDone() || nativeCleanupTail.isCompletedExceptionally())
-                throw new IllegalStateException("Previous crate native cleanup is still pending or failed");
+            hotload.beginGeneration();
+            hotload.register();
+            nativeCleanupTail = CompletableFuture.completedFuture(null);
+            storageDrain = CompletableFuture.completedFuture(kotlin.Unit.INSTANCE);
+            closeDrain = CompletableFuture.completedFuture(null);
             var cleanup = java.util.Objects.requireNonNull(getServer().getServicesManager().load(ArcNativeCleanupService.class),
                     "Required ARC native cleanup provider is not registered");
             ArcActivityTelemetryBridge.INSTANCE.install();
@@ -149,6 +162,10 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        try { hotload.prepare(); } finally { hotload.close(); }
+    }
+
+    private Map<String, CompletionStage<?>> stopRuntime() {
         var failures = new java.util.ArrayList<Throwable>();
         attempt(failures, this::unregisterCrateLocationService);
         if (protectionListener != null) {
@@ -168,14 +185,19 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
         runtime = null;
         // The host's detached native cursor needs future Main ticks; never join it here.
         attempt(failures, () -> {
-            if (worker != null) worker.closeAsync(() -> {
+            if (worker != null) storageDrain = worker.closeAsync(() -> {
                 var persistenceFailures = new java.util.ArrayList<Throwable>();
                 attempt(persistenceFailures, () -> { if (visuals != null) visuals.close(); });
                 attempt(persistenceFailures, () -> { if (active != null) active.flushStorage(); });
                 if (!persistenceFailures.isEmpty()) throw aggregate(persistenceFailures);
                 return kotlin.Unit.INSTANCE;
-            }).join();
+            });
+            storageDrain.join();
         });
+        attempt(failures, hotload::retireGameplayRegistrations);
+        attempt(failures, ArcLogging::close);
+        closeDrain = failures.isEmpty() ? CompletableFuture.completedFuture(null)
+                : CompletableFuture.failedFuture(aggregate(failures));
         if (!failures.isEmpty()) getLogger().log(java.util.logging.Level.SEVERE,
                 "Could not close ArcExcellentCrates storage", aggregate(failures));
         registry = null;
@@ -187,6 +209,11 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
         packetDisplays = null;
         visualSettings = null;
         visualEditor = null;
+        Map<String, CompletionStage<?>> phases = new java.util.LinkedHashMap<>();
+        phases.put("storage", storageDrain);
+        phases.put("native", nativeCleanupTail);
+        phases.put("close", closeDrain);
+        return phases;
     }
 
     private static void attempt(java.util.List<Throwable> failures, Runnable close) {
