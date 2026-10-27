@@ -22,6 +22,19 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import ru.arc.paper.display.PacketItemDisplay;
 import ru.arc.paper.display.PaperPacketDisplays;
+import ru.arc.paper.api.ArcSceneBounds;
+import ru.arc.paper.api.ArcSceneDisplay;
+import ru.arc.paper.api.ArcSceneDisplayContent;
+import ru.arc.paper.api.ArcSceneDisplayKeyframe;
+import ru.arc.paper.api.ArcSceneDisplayItemSwitch;
+import ru.arc.paper.api.ArcSceneDisplayTimeline;
+import ru.arc.paper.api.ArcSceneDisplayPose;
+import ru.arc.paper.api.ArcSceneVector3;
+import ru.arc.paper.api.ArcSceneQuaternion;
+import ru.arc.paper.api.ArcSceneEntity;
+import ru.arc.paper.api.ArcSceneEntitySource;
+import ru.arc.paper.api.ArcSceneItem;
+import ru.arc.paper.scene.PaperSceneSnapshots;
 import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess;
 import su.nightexpress.excellentcrates.CratesAPI;
 import su.nightexpress.excellentcrates.api.crate.Reward;
@@ -31,6 +44,7 @@ import su.nightexpress.excellentcrates.util.pos.WorldPos;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,7 +59,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /** Animates packet-only reward previews beside every idle placed crate. */
-public final class CrateAmbientEffectService implements AutoCloseable {
+public final class CrateAmbientEffectService implements AutoCloseable, ArcSceneEntitySource {
     private static final long RECONCILE_TICKS = 40L;
     private static final long ANIMATION_TICKS = 1L;
     private static final int INTERPOLATION_TICKS = 2;
@@ -63,7 +77,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
     private Set<Anchor> paused = ConcurrentHashMap.newKeySet();
     private final BukkitTask reconcileTask;
     private final BukkitTask animationTask;
-    private Map<String, List<ItemStack>> rewardsByCrate = Map.of();
+    private Map<String, RewardPool> rewardsByCrate = Map.of();
     private double frame;
     private boolean closed;
     private boolean initialized;
@@ -92,18 +106,22 @@ public final class CrateAmbientEffectService implements AutoCloseable {
 
     public CompletableFuture<Unit> setRewards(Map<String, List<ItemStack>> rewards) {
         long expected = ++rewardsGeneration;
-        Map<String, List<ItemStack>> copied = new HashMap<>();
+        Map<String, RewardPool> copied = new HashMap<>();
         var work = new Supplier<Boolean>() {
             final Iterator<Map.Entry<String, List<ItemStack>>> crates = rewards.entrySet().iterator();
             Iterator<ItemStack> items = Collections.emptyIterator();
             List<ItemStack> usable = new ArrayList<>();
+            List<ArcSceneItem> appearances = new ArrayList<>();
             String crateId;
             @Override public Boolean get() {
                 if (items.hasNext()) {
                     ItemStack item = items.next();
-                    if (item != null && !item.isEmpty()) usable.add(item.clone());
+                    if (item != null && !item.isEmpty()) {
+                        usable.add(item.clone());
+                        appearances.add(PaperSceneSnapshots.item(item));
+                    }
                 } else {
-                    if (crateId != null && !usable.isEmpty()) copied.put(crateId, Collections.unmodifiableList(usable));
+                    if (crateId != null && !usable.isEmpty()) copied.put(crateId, new RewardPool(List.copyOf(usable), List.copyOf(appearances)));
                     if (!crates.hasNext()) {
                         rewardsByCrate = Collections.unmodifiableMap(copied);
                         refresh();
@@ -113,6 +131,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                     crateId = crate.getKey();
                     items = crate.getValue().iterator();
                     usable = new ArrayList<>();
+                    appearances = new ArrayList<>();
                 }
                 return false;
             }
@@ -160,8 +179,9 @@ public final class CrateAmbientEffectService implements AutoCloseable {
             Iterator<Anchor> stale;
             Iterator<Anchor> pausedStale;
             Crate crate;
-            List<ItemStack> rewards = List.of();
+            RewardPool rewards;
             List<ItemStack> captured = new ArrayList<>();
+            List<ArcSceneItem> appearances = new ArrayList<>();
             boolean capturing;
 
             @Override public Boolean get() {
@@ -174,10 +194,13 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                 } else if (capturing) {
                     if (previewRewards.hasNext()) {
                         ItemStack item = previewRewards.next().getPreviewItem();
-                        if (item != null && !item.isEmpty()) captured.add(item.clone());
+                        if (item != null && !item.isEmpty()) {
+                            captured.add(item.clone());
+                            appearances.add(PaperSceneSnapshots.item(item));
+                        }
                     } else {
-                        rewards = Collections.unmodifiableList(captured);
-                        if (!rewards.isEmpty()) positions = crate.getBlockPositions().iterator();
+                        rewards = new RewardPool(List.copyOf(captured), List.copyOf(appearances));
+                        if (!rewards.items().isEmpty()) positions = crate.getBlockPositions().iterator();
                         capturing = false;
                     }
                 } else if (positions.hasNext()) {
@@ -189,8 +212,8 @@ public final class CrateAmbientEffectService implements AutoCloseable {
                 } else if (crates.hasNext()) {
                     crate = crates.next();
                     rewards = rewardsByCrate.get(crate.getId());
-                    if (rewards != null && !rewards.isEmpty()) positions = crate.getBlockPositions().iterator();
-                    else { captured = new ArrayList<>(); previewRewards = crate.getRewards().iterator(); capturing = true; }
+                    if (rewards != null && !rewards.items().isEmpty()) positions = crate.getBlockPositions().iterator();
+                    else { captured = new ArrayList<>(); appearances = new ArrayList<>(); previewRewards = crate.getRewards().iterator(); capturing = true; }
                 } else stale = orbits.keySet().iterator();
                 return false;
             }
@@ -201,7 +224,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         });
     }
 
-    private Orbit spawn(WorldPos source, List<ItemStack> rewards) {
+    private Orbit spawn(WorldPos source, RewardPool rewards) {
         CrateVisualSettingsStore.Anchor settingsAnchor = new CrateVisualSettingsStore.Anchor(
                 source.getWorldName(), source.getX(), source.getY(), source.getZ());
         CrateVisualSettingsStore.Ambient visual = settings.get(settingsAnchor).ambient();
@@ -213,7 +236,7 @@ public final class CrateAmbientEffectService implements AutoCloseable {
             for (int index = 0; index < visual.itemCount(); index++) {
                 int slot = index;
                 PacketItemDisplay display = packetDisplays.spawnItem(
-                        origin.clone(), rewards.get(slot % rewards.size()).clone());
+                        origin.clone(), rewards.items().get(slot % rewards.items().size()).clone());
                 displays.add(display);
                 display.setVisibleByDefault(true);
                 display.setItemDisplayTransform(presentation.transform());
@@ -230,8 +253,83 @@ public final class CrateAmbientEffectService implements AutoCloseable {
             displays.forEach(PacketItemDisplay::remove);
             throw failure;
         }
-        return new Orbit(source.toLocation(), List.copyOf(displays), rewards,
+        return new Orbit(source.toLocation(), List.copyOf(displays), rewards.items(), rewards.appearances(),
                 new int[displays.size()], visual, presentation);
+    }
+
+    @Override
+    public List<ArcSceneEntity> snapshot(ArcSceneBounds bounds, int limit) {
+        return List.of();
+    }
+
+    /** Only this owner's idle public placed-crate rewards opt in; no packet-owner registry scan. */
+    @Override
+    public List<ArcSceneDisplay> displays(ArcSceneBounds bounds, int limit) {
+        if (closed) return List.of();
+        if (!org.bukkit.Bukkit.isPrimaryThread()) throw new IllegalStateException("Crate scene capture requires Paper's primary thread");
+        if (limit < 1 || limit > 128) throw new IllegalArgumentException("Crate scene display limit must be 1..128");
+        List<ArcSceneDisplay> result = new ArrayList<>(limit);
+        int anchorsExamined = 0;
+        int displaysExamined = 0;
+        double capturedFrame = frame;
+        long capturedAt = System.currentTimeMillis();
+        for (Map.Entry<Anchor, Orbit> entry : orbits.entrySet()) {
+            if (++anchorsExamined > 128 || displaysExamined >= 128) break;
+            Orbit orbit = entry.getValue();
+            World world = orbit.anchor().getWorld();
+            if (world == null || !world.getUID().equals(bounds.getWorldId()) || paused.contains(entry.getKey())
+                    || !world.isChunkLoaded(orbit.anchor().getBlockX() >> 4, orbit.anchor().getBlockZ() >> 4)) continue;
+            for (int slot = 0; slot < orbit.displays().size() && displaysExamined < 128; slot++) {
+                displaysExamined++;
+                PacketItemDisplay display = orbit.displays().get(slot);
+                if (!display.isValid() || !display.isVisibleByDefault() || display.getAudienceGroup() != null) continue;
+                Frame current = frame(capturedFrame, slot, orbit.visual(), orbit.rewards().size());
+                double x = orbit.anchor().getX() + .5 + current.x();
+                double y = orbit.anchor().getY() + .45 + current.y();
+                double z = orbit.anchor().getZ() + .5 + current.z();
+                if (!bounds.contains(world.getUID(), x, y, z)) continue;
+                ArcSceneDisplayTimeline timeline = sceneTimeline(orbit, slot, capturedFrame, capturedAt);
+                Anchor anchor = entry.getKey();
+                result.add(new ArcSceneDisplay(world.getUID(), "ecia:ambient:" + world.getUID() + ":" + anchor.x() + ":" + anchor.y() + ":" + anchor.z() + ":" + slot,
+                        timeline.getSamples().getFirst().getPose(), display.getBillboard().name(), 15, 15,
+                        display.getViewRange(), display.getShadowRadius(), display.getShadowStrength(),
+                        new ArcSceneDisplayContent.Item(timeline.getItems().getFirst(), orbit.presentation().transform().name()), timeline));
+                if (result.size() == limit) return List.copyOf(result);
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    /** Same authored native frame function, detached into a finite non-looping prediction window. */
+    static ArcSceneDisplayTimeline sceneTimeline(Orbit orbit, int slot, double capturedFrame, long capturedAt) {
+        List<ArcSceneDisplayKeyframe> samples = new ArrayList<>(21);
+        List<ArcSceneItem> palette = new ArrayList<>();
+        Map<Integer, Integer> paletteIndices = new LinkedHashMap<>();
+        java.util.function.IntUnaryOperator paletteIndex = reward -> paletteIndices.computeIfAbsent(reward, index -> {
+            palette.add(orbit.appearances().get(index));
+            return palette.size() - 1;
+        });
+        for (int index = 0; index <= 20; index++) {
+            Frame sample = frame(capturedFrame + index, slot, orbit.visual(), orbit.rewards().size());
+            Transformation transform = transformation(sample.scale(), sample.rotation(), orbit.presentation());
+            Vector3f scale = transform.getScale();
+            Quaternionf rotation = transform.getLeftRotation();
+            ArcSceneDisplayPose pose = new ArcSceneDisplayPose(
+                    orbit.anchor().getX() + .5 + sample.x(), orbit.anchor().getY() + .45 + sample.y(),
+                    orbit.anchor().getZ() + .5 + sample.z(), orbit.anchor().getYaw(), orbit.anchor().getPitch(),
+                    new ArcSceneVector3(0f, 0f, 0f), new ArcSceneVector3(scale.x, scale.y, scale.z),
+                    new ArcSceneQuaternion(rotation.x, rotation.y, rotation.z, rotation.w), new ArcSceneQuaternion(0f, 0f, 0f, 1f));
+            samples.add(new ArcSceneDisplayKeyframe(pose, paletteIndex.applyAsInt(sample.rewardIndex())));
+        }
+        List<ArcSceneDisplayItemSwitch> switches = new ArrayList<>();
+        int previousReward = -1;
+        for (int index = 0; index <= 40; index++) {
+            Frame sample = frame(capturedFrame + index * FRAME_STEP, slot, orbit.visual(), orbit.rewards().size());
+            if (sample.rewardIndex() == previousReward) continue;
+            switches.add(new ArcSceneDisplayItemSwitch(index * 50, paletteIndex.applyAsInt(sample.rewardIndex())));
+            previousReward = sample.rewardIndex();
+        }
+        return new ArcSceneDisplayTimeline(capturedAt, capturedFrame, 100, samples, palette, switches);
     }
 
     private void animate() {
@@ -557,7 +655,9 @@ public final class CrateAmbientEffectService implements AutoCloseable {
         plugin.runtime().submitNativeCleanup("ambient", cleanup::get);
     }
 
-    record Orbit(Location anchor, List<PacketItemDisplay> displays, List<ItemStack> rewards, int[] rewardIndices,
+    record RewardPool(List<ItemStack> items, List<ArcSceneItem> appearances) { }
+
+    record Orbit(Location anchor, List<PacketItemDisplay> displays, List<ItemStack> rewards, List<ArcSceneItem> appearances, int[] rewardIndices,
                  CrateVisualSettingsStore.Ambient visual, ItemDisplayPresentation presentation) { }
 
     record Frame(double x, double y, double z, float scale, float rotation, int rewardIndex) { }

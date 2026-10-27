@@ -14,6 +14,7 @@ import ru.ruscrafting.ecia.integration.CrateKeyShopService;
 import ru.ruscrafting.ecia.integration.ArcActivityTelemetryBridge;
 import ru.arc.paper.display.PaperPacketDisplays;
 import ru.arc.paper.api.ArcNativeCleanupService;
+import ru.arc.paper.api.ArcSceneObservationService;
 import ru.arc.paper.runtime.PaperPluginHotload;
 import ru.arc.logging.ArcLogging;
 
@@ -122,6 +123,10 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
             try {
                 crateHolograms = registerService(new CrateHologramService(this, visualSettings, packetDisplays));
                 ambientEffects = registerService(new CrateAmbientEffectService(this, visualSettings, packetDisplays));
+                ArcSceneObservationService scenes = java.util.Objects.requireNonNull(
+                        getServer().getServicesManager().load(ArcSceneObservationService.class), "ArcCore public scene observer is required");
+                registerService(scenes.registerEntitySource(this, "crate-captions", crateHolograms));
+                registerService(scenes.registerEntitySource(this, "crate-ambient", ambientEffects));
             } catch (RuntimeException | LinkageError failure) {
                 runtime.error("Compact crate holograms are unavailable: {}", failure.toString());
             }

@@ -22,6 +22,12 @@ import org.bukkit.util.Transformation;
 import org.joml.Vector3f;
 import ru.arc.paper.display.PacketTextDisplay;
 import ru.arc.paper.display.PaperPacketDisplays;
+import ru.arc.paper.api.ArcSceneBounds;
+import ru.arc.paper.api.ArcSceneDisplay;
+import ru.arc.paper.api.ArcSceneDisplayContent;
+import ru.arc.paper.api.ArcSceneEntity;
+import ru.arc.paper.api.ArcSceneEntitySource;
+import ru.arc.paper.scene.PaperSceneSnapshots;
 import ru.ruscrafting.ecia.integration.ItemsAdderFurnitureAccess;
 import su.nightexpress.excellentcrates.CratesAPI;
 import su.nightexpress.excellentcrates.crate.impl.Crate;
@@ -35,11 +41,13 @@ import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Set;
 import java.util.UUID;
 
 /** Replaces ExcellentCrates' line-per-entity labels with private packet-rendered faces. */
-final class CrateHologramService implements AutoCloseable, Listener {
+final class CrateHologramService implements AutoCloseable, Listener, ArcSceneEntitySource {
     private final ItemsAdderFurnitureAccess furniture = ItemsAdderFurnitureAccess.create();
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
     private static final long RECONCILE_TICKS = 20L;
@@ -50,6 +58,7 @@ final class CrateHologramService implements AutoCloseable, Listener {
     private final PaperPacketDisplays packetDisplays;
     private final NamespacedKey marker;
     private Map<Anchor, Faces> displays = new ConcurrentHashMap<>();
+    private Map<Anchor, ArcSceneDisplay> publicCaptions = new ConcurrentHashMap<>();
     private Map<UUID, Map<Anchor, FaceVisibility>> visibleFaces = new HashMap<>();
     private Map<Anchor, Restoration> suppressed = new HashMap<>();
     private final BukkitTask reconcileTask;
@@ -166,8 +175,14 @@ final class CrateHologramService implements AutoCloseable, Listener {
             displays.put(anchor, faces);
         }
         CrateVisualSettingsStore.Hologram visual = settings.get(anchor.settingsAnchor()).hologram();
-        style(faces.front(), source.crate(), source.position(), visual);
-        style(faces.back(), source.crate(), source.position(), visual);
+        Caption caption = caption(source.crate(), source.position(), visual);
+        style(faces.front(), caption);
+        style(faces.back(), caption);
+        publicCaptions.put(anchor, new ArcSceneDisplay(caption.location().getWorld().getUID(),
+                "ecia:caption:" + caption.location().getWorld().getUID() + ":" + anchor.x() + ":" + anchor.y() + ":" + anchor.z(),
+                PaperSceneSnapshots.pose(caption.location(), caption.transformation()), "CENTER", 15, 15,
+                visual.viewRange(), 0f, 1f,
+                new ArcSceneDisplayContent.Text(PaperSceneSnapshots.textContent(caption.text()), 512, "CENTER", 0, false, 255, true, false), null));
     }
 
     private PacketTextDisplay spawn(WorldPos position, Anchor anchor) {
@@ -177,11 +192,15 @@ final class CrateHologramService implements AutoCloseable, Listener {
         return display;
     }
 
-    private void style(PacketTextDisplay display, Crate crate, WorldPos position,
-                       CrateVisualSettingsStore.Hologram visual) {
-        Location location = displayLocation(position, visual);
+    private Caption caption(Crate crate, WorldPos position, CrateVisualSettingsStore.Hologram visual) {
+        return new Caption(displayLocation(position, visual), MINI_MESSAGE.deserialize(renderText(visual.textTemplate(), crate.getName())),
+                new Transformation(new Vector3f(), new org.joml.Quaternionf(), new Vector3f(visual.scale()), new org.joml.Quaternionf()), visual.viewRange());
+    }
+
+    private void style(PacketTextDisplay display, Caption caption) {
+        Location location = caption.location();
         if (!display.getLocation().equals(location)) display.teleport(location);
-        display.text(MINI_MESSAGE.deserialize(renderText(visual.textTemplate(), crate.getName())));
+        display.text(caption.text());
         // Client-side billboard rotation keeps the label readable while each
         // viewer approaches the crate from a different direction.
         display.setBillboard(Display.Billboard.CENTER);
@@ -193,17 +212,36 @@ final class CrateHologramService implements AutoCloseable, Listener {
         display.setShadowed(true);
         display.setSeeThrough(false);
         display.setBrightness(new Display.Brightness(15, 15));
-        display.setViewRange(visual.viewRange());
+        display.setViewRange(caption.viewRange());
         display.setInterpolationDuration(0);
         display.setTeleportDuration(0);
 
-        Transformation current = display.getTransformation();
-        display.setTransformation(new Transformation(
-                current.getTranslation(),
-                current.getLeftRotation(),
-                new Vector3f(visual.scale(), visual.scale(), visual.scale()),
-                current.getRightRotation()
-        ));
+        display.setTransformation(caption.transformation());
+    }
+
+    @Override
+    public List<ArcSceneEntity> snapshot(ArcSceneBounds bounds, int limit) { return List.of(); }
+
+    /** One canonical config-owned caption, independent of the two viewer-private packet faces. */
+    @Override
+    public List<ArcSceneDisplay> displays(ArcSceneBounds bounds, int limit) {
+        if (closed) return List.of();
+        if (!org.bukkit.Bukkit.isPrimaryThread()) throw new IllegalStateException("Crate caption capture requires Paper's primary thread");
+        if (limit < 1 || limit > 128) throw new IllegalArgumentException("Crate caption limit must be 1..128");
+        List<ArcSceneDisplay> result = new ArrayList<>(limit);
+        int examined = 0;
+        for (Map.Entry<Anchor, ArcSceneDisplay> entry : publicCaptions.entrySet()) {
+            if (++examined > 128) break;
+            ArcSceneDisplay caption = entry.getValue();
+            if (!bounds.contains(caption.getWorldId(), caption.getPose().getX(), caption.getPose().getY(), caption.getPose().getZ())) continue;
+            Faces faces = entities(entry.getKey());
+            if (faces == null) continue;
+            Location at = faces.front().getLocation();
+            if (at.getWorld() == null || !at.getWorld().isChunkLoaded(at.getBlockX() >> 4, at.getBlockZ() >> 4)) continue;
+            result.add(caption);
+            if (result.size() == limit) break;
+        }
+        return List.copyOf(result);
     }
 
     private Location displayLocation(WorldPos position, CrateVisualSettingsStore.Hologram visual) {
@@ -269,6 +307,7 @@ final class CrateHologramService implements AutoCloseable, Listener {
     }
 
     private void remove(Anchor anchor) {
+        publicCaptions.remove(anchor);
         Faces faces = displays.remove(anchor);
         if (faces == null) return;
         faces.front().remove();
@@ -312,6 +351,7 @@ final class CrateHologramService implements AutoCloseable, Listener {
         displays.values().forEach(faces -> { faces.front().remove(); faces.back().remove(); });
         Iterator<Restoration> restorations = suppressed.values().iterator();
         displays = new ConcurrentHashMap<>();
+        publicCaptions = new ConcurrentHashMap<>();
         suppressed = new HashMap<>();
         visibleFaces = new HashMap<>();
         var cleanup = new Supplier<Boolean>() {
@@ -337,6 +377,8 @@ final class CrateHologramService implements AutoCloseable, Listener {
 
     private record Source(Crate crate, WorldPos position) {
     }
+
+    private record Caption(Location location, Component text, Transformation transformation, float viewRange) { }
 
     private record Faces(PacketTextDisplay front, PacketTextDisplay back) { }
 

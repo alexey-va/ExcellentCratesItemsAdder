@@ -6,6 +6,7 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import io.mockk.verify
 import org.bukkit.Location
+import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Chunk
@@ -90,6 +91,9 @@ class CrateAmbientLegacyCleanupTest {
         val item = mockk<ItemStack>(relaxed = true)
         every { item.clone() } returns item
         every { item.isEmpty } returns false
+        every { item.type } returns Material.PAPER
+        every { item.amount } returns 1
+        every { item.itemMeta } returns null
         val reward = mockk<Reward>()
         every { reward.previewItem } returns item
         val crate = mockk<Crate>(relaxed = true)
@@ -103,6 +107,9 @@ class CrateAmbientLegacyCleanupTest {
         val displays = List(8) { slot ->
             mockk<PacketItemDisplay>(relaxed = true).also { display ->
                 every { display.isValid } returns true
+                every { display.isVisibleByDefault } returns true
+                every { display.audienceGroup } returns null
+                every { display.billboard } returns org.bukkit.entity.Display.Billboard.CENTER
                 every { display.teleport(any()) } answers { positions[slot].add(firstArg<Location>().clone()); Unit }
                 every { display.transformation = any() } answers { transformations[slot].add(firstArg()); Unit }
             }
@@ -111,6 +118,8 @@ class CrateAmbientLegacyCleanupTest {
         every { packetDisplays.spawnItem(any(), any()) } returnsMany displays
         val settings = CrateVisualSettingsStore(directory, config)
         mockkStatic(CratesAPI::class)
+        mockkStatic(Bukkit::class)
+        every { Bukkit.isPrimaryThread() } returns true
         every { CratesAPI.isLoaded() } returns true
         every { CratesAPI.getCrateManager() } returns manager
         try {
@@ -140,12 +149,29 @@ class CrateAmbientLegacyCleanupTest {
                     verify(exactly = 1) { display.teleportDuration = 2 }
                     verify(exactly = 1) { display.interpolationDuration = 2 }
                 }
+                val bounds = ru.arc.paper.api.ArcSceneBounds(world.uid, 0.0, 0.0, 0.0, 16.0, 100.0, 16.0)
+                val captured = service.displays(bounds, 128)
+                assertEquals(8, captured.size)
+                assertEquals(21, captured.first().timeline!!.samples.size)
+                assertEquals(100, captured.first().timeline!!.samplePeriodMillis)
+                assertEquals(1, service.displays(bounds, 1).size)
+                every { displays.first().isVisibleByDefault } returns false
+                assertEquals(7, service.displays(bounds, 128).size, "default-hidden private handles never export")
+                service.setOpening(anchor, true)
+                assertEquals(emptyList<ru.arc.paper.api.ArcSceneDisplay>(), service.displays(bounds, 128))
+                service.setOpening(anchor, false)
+                assertEquals(7, service.displays(bounds, 128).size)
+                assertEquals(emptyList<ru.arc.paper.api.ArcSceneDisplay>(), service.displays(
+                    ru.arc.paper.api.ArcSceneBounds(UUID(0, 2), 0.0, 0.0, 0.0, 16.0, 100.0, 16.0), 128))
+                service.close()
+                assertEquals(emptyList<ru.arc.paper.api.ArcSceneDisplay>(), service.displays(bounds, 128))
             } finally { service.close() }
         } finally {
             queue.close()
             scope.close()
             settings.close()
             unmockkStatic(CratesAPI::class)
+            unmockkStatic(Bukkit::class)
         }
     }
 

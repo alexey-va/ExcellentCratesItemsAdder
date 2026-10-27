@@ -8,6 +8,7 @@ import io.mockk.verify
 import io.mockk.verifyOrder
 import net.kyori.adventure.text.Component
 import org.bukkit.Chunk
+import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.Material
@@ -80,6 +81,8 @@ class CrateHologramPacketDisplaysTest {
 
         val world = mockk<World>()
         every { world.name } returns "world"
+        every { world.uid } returns UUID(0, 1)
+        every { world.isChunkLoaded(any<Int>(), any<Int>()) } returns true
         val position = mockk<WorldPos>()
         every { position.world } returns world
         every { position.worldName } returns "world"
@@ -144,6 +147,8 @@ class CrateHologramPacketDisplaysTest {
         }
         val settings = CrateVisualSettingsStore(directory, config)
         mockkStatic(CratesAPI::class)
+        mockkStatic(Bukkit::class)
+        every { Bukkit.isPrimaryThread() } returns true
         every { CratesAPI.isLoaded() } returns true
         every { CratesAPI.getCrateManager() } returns crates
         every { CratesAPI.getPlugin() } returns provider
@@ -151,6 +156,11 @@ class CrateHologramPacketDisplaysTest {
             val service = CrateHologramService(plugin, settings, packetDisplays)
             try {
                 scheduler.tick(2)
+                val sceneBounds = ru.arc.paper.api.ArcSceneBounds(UUID(0, 1), 0.0, 0.0, 0.0, 16.0, 100.0, 16.0)
+                val publicCaption = service.displays(sceneBounds, 128).single()
+                assertEquals("ecia:caption:00000000-0000-0000-0000-000000000001:8:64:8", publicCaption.id)
+                assertEquals("Test crate", (publicCaption.content as ru.arc.paper.api.ArcSceneDisplayContent.Text).content.text)
+                assertEquals(emptyList<ru.arc.paper.api.ArcSceneEntity>(), service.snapshot(sceneBounds, 128))
                 timers.getValue(2L).run()
                 scheduler.tick()
                 verify(exactly = 1) { faces[0].showTo(player); faces[1].hideFrom(player) }
@@ -196,6 +206,7 @@ class CrateHologramPacketDisplaysTest {
             scope.close()
             settings.close()
             unmockkStatic(CratesAPI::class)
+            unmockkStatic(Bukkit::class)
         }
     }
 }

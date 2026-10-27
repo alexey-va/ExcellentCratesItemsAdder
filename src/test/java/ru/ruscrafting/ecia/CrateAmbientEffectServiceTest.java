@@ -1,7 +1,12 @@
 package ru.ruscrafting.ecia;
 
 import org.junit.jupiter.api.Test;
+import org.bukkit.Location;
+import org.bukkit.inventory.ItemStack;
+import ru.arc.paper.api.ArcSceneItem;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -148,5 +153,65 @@ class CrateAmbientEffectServiceTest {
                 "rotation must not jump when the preview item cycle restarts");
         assertTrue(Math.abs(after.rotation() - boundary.rotation()) < .2,
                 "rotation must continue smoothly after the preview item cycle");
+    }
+
+    @Test
+    void publicTimelineUsesTheNativePoseForEveryPresetAndNeverLoopsItsForwardWindow() {
+        for (String preset : PRESETS) {
+            var orbit = sceneOrbit(preset, 2);
+            var timeline = CrateAmbientEffectService.sceneTimeline(orbit, 0, 24.5, 1_000);
+            assertEquals(21, timeline.getSamples().size());
+            assertEquals(100, timeline.getSamplePeriodMillis());
+            assertEquals(24.5, timeline.getCapturedFrame());
+            for (int index = 0; index <= 20; index++) {
+                var nativeFrame = CrateAmbientEffectService.frame(24.5 + index, 0, orbit.visual(), orbit.rewards().size());
+                var pose = timeline.getSamples().get(index).getPose();
+                assertEquals(8.5 + nativeFrame.x(), pose.getX(), 1.0E-9, preset);
+                assertEquals(64.45 + nativeFrame.y(), pose.getY(), 1.0E-9, preset);
+                assertEquals(8.5 + nativeFrame.z(), pose.getZ(), 1.0E-9, preset);
+                assertEquals(nativeFrame.scale(), pose.getScale().getX(), 1.0E-6, preset);
+                assertEquals(nativeFrame.scale(), pose.getScale().getZ(), 1.0E-6, preset);
+                assertEquals(Math.sin(nativeFrame.rotation() / 2.0), pose.getLeftRotation().getZ(), 1.0E-6, preset);
+            }
+        }
+        var orbit = sceneOrbit("SATURN", 2);
+        var timeline = CrateAmbientEffectService.sceneTimeline(orbit, 0, 10.0, 1_000);
+        var first = timeline.getSamples().getFirst().getPose();
+        var last = timeline.getSamples().getLast().getPose();
+        assertTrue(Math.abs(first.getX() - last.getX()) > .2, "prediction endpoints must not be forced into a fake loop");
+        var midpoint = CrateAmbientEffectService.frame(10.5, 0, orbit.visual(), orbit.rewards().size());
+        var second = timeline.getSamples().get(1).getPose();
+        assertEquals(8.5 + midpoint.x(), (first.getX() + second.getX()) / 2.0, .002);
+        assertEquals(64.45 + midpoint.y(), (first.getY() + second.getY()) / 2.0, .002);
+        assertEquals(8.5 + midpoint.z(), (first.getZ() + second.getZ()) / 2.0, .002);
+    }
+
+    @Test
+    void publicTimelinePreservesNativeHalfFrameRewardSwitchesBetweenPoseSamples() {
+        var orbit = sceneOrbit("SATURN", 2);
+        var timeline = CrateAmbientEffectService.sceneTimeline(orbit, 0, 24.5, 1_000);
+        assertEquals(0, timeline.getItemSwitches().getFirst().getOffsetMillis());
+        assertEquals(50, timeline.getItemSwitches().get(1).getOffsetMillis());
+        for (int tick = 0; tick <= 40; tick++) {
+            int offset = tick * 50;
+            var latest = timeline.getItemSwitches().stream().filter(change -> change.getOffsetMillis() <= offset)
+                    .reduce((before, after) -> after).orElseThrow();
+            int shown = timeline.getItems().get(latest.getItemIndex()).getCustomModelData();
+            assertEquals(CrateAmbientEffectService.frame(24.5 + tick * .5, 0, orbit.visual(), orbit.rewards().size()).rewardIndex(), shown);
+        }
+        assertTrue(timeline.getItemSwitches().size() <= 8);
+        var flat = sceneOrbit("SATURN", 2);
+        flat = new CrateAmbientEffectService.Orbit(flat.anchor(), flat.displays(), flat.rewards(), flat.appearances(),
+                flat.rewardIndices(), flat.visual(), ItemDisplayPresentation.FLAT);
+        var pose = CrateAmbientEffectService.sceneTimeline(flat, 0, 10.0, 1_000).getSamples().getFirst().getPose();
+        assertEquals(pose.getScale().getX() * .06f, pose.getScale().getZ(), 1.0E-6);
+    }
+
+    private static CrateAmbientEffectService.Orbit sceneOrbit(String preset, double speed) {
+        List<ArcSceneItem> items = IntStream.range(0, 7)
+                .mapToObj(index -> new ArcSceneItem("minecraft:paper", 1, index, null, "ruscrafting:crate_reward_" + index)).toList();
+        return new CrateAmbientEffectService.Orbit(new Location(null, 8, 64, 8), List.of(),
+                Collections.nCopies(7, (ItemStack) null), items, new int[8],
+                new CrateVisualSettingsStore.Ambient(preset, 8, 1.6, .5, .5f, speed, 20f), ItemDisplayPresentation.THREE_DIMENSIONAL);
     }
 }

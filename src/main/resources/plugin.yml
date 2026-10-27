@@ -5,7 +5,7 @@ provides: [ExcellentCratesItemsAdder]
 api-version: "1.21"
 description: RusCrafting crate integration with protected anchors, display visuals, and durable delivery recovery.
 authors: [alexey-va]
-depend: [packetevents, ARC]
+depend: [ArcCore, packetevents, ARC]
 softdepend: [ExcellentCrates, ItemsAdder, HuskSync, RedisEconomy]
 commands:
   cratekeys:
