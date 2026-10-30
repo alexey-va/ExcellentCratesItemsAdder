@@ -4,6 +4,7 @@ import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.junit.jupiter.api.Test;
 import ru.arc.paper.testing.MockBukkitTestRuntime;
+import ru.ruscrafting.ecia.inventory.InventoryMutationWitness;
 import ru.ruscrafting.ecia.inventory.NativeItemPayload;
 import ru.ruscrafting.ecia.inventory.OpeningInventoryTransactions;
 import ru.ruscrafting.ecia.journal.OpeningLedger;
@@ -15,6 +16,8 @@ import ru.ruscrafting.ecia.roll.WeightedOfferGenerator;
 
 import java.time.Clock;
 import java.util.HashMap;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -23,6 +26,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -31,6 +35,148 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ManagedOpeningEngineTest {
+    @Test void inventoryMoveDuringDeliveryJournalWritePreservesItemsAndGrantsOnce() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            player.getInventory().setItem(0, new ItemStack(Material.STONE, 5));
+            var ledger = new OpeningLedger(new MemoryStore(), Clock.systemUTC());
+            var codec = new NativeItemPayload();
+            var saves = new AtomicInteger();
+            var inventory = new OpeningInventoryTransactions(codec, p -> saves.incrementAndGet(), () -> true);
+            var mail = preparedMail(ledger, player.getUniqueId(), codec, new ItemStack(Material.DIAMOND, 2));
+            var storage = new QueuedExecutor();
+            var engine = new ManagedOpeningEngine(ledger, new WeightedOfferGenerator(new Random(1)), inventory, codec,
+                    ignored -> { throw new AssertionError("The frozen reward must be reused"); }, storage, Runnable::run,
+                    (candidate, session) -> candidate.isOnline());
+            var claim = engine.claim(player, 1L, mail.id(), mail.revision());
+            storage.runNext(); // Capture the plan, leaving its journal write queued.
+            assertFalse(claim.isDone());
+            player.getInventory().setItem(7, player.getInventory().getItem(0));
+            player.getInventory().setItem(0, null);
+            storage.runNext(); // Commit and replan/apply together on Paper.
+            storage.runNext();
+            var delivered = claim.join();
+            assertEquals(OpeningRecord.Stage.DELIVERED, delivered.stage());
+            assertEquals(Material.STONE, player.getInventory().getItem(7).getType());
+            assertEquals(5, player.getInventory().getItem(7).getAmount());
+            assertEquals(Material.DIAMOND, player.getInventory().getItem(0).getType());
+            assertEquals(2, player.getInventory().getItem(0).getAmount());
+            var witness = codec.read(delivered.deliveryWitness(), InventoryMutationWitness.class);
+            assertEquals(OpeningInventoryTransactions.Outcome.APPLIED,
+                    inventory.applyFreshDelivery(player, witness, codec.items(delivered.preparedReward())));
+            assertEquals(1, saves.get());
+            var duplicate = engine.claim(player, 1L, delivered.id(), delivered.revision());
+            storage.runNext();
+            assertThrows(java.util.concurrent.CompletionException.class, duplicate::join);
+            assertEquals(2, player.getInventory().getItem(0).getAmount());
+        }
+    }
+
+    @Test void inventoryFillingDuringDeliveryJournalWriteReturnsWholeRewardToMail() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            for (int slot = 1; slot < 35; slot++) player.getInventory().setItem(slot, new ItemStack(Material.STONE, 64));
+            player.getInventory().setItem(0, new ItemStack(Material.DIAMOND, 63));
+            var ledger = new OpeningLedger(new MemoryStore(), Clock.systemUTC());
+            var codec = new NativeItemPayload();
+            var saves = new AtomicInteger();
+            var inventory = new OpeningInventoryTransactions(codec, p -> saves.incrementAndGet(), () -> true);
+            var mail = preparedMail(ledger, player.getUniqueId(), codec, new ItemStack(Material.DIAMOND, 2));
+            var storage = new QueuedExecutor();
+            var engine = new ManagedOpeningEngine(ledger, new WeightedOfferGenerator(new Random(1)), inventory, codec,
+                    ignored -> { throw new AssertionError("The frozen reward must be reused"); }, storage, Runnable::run,
+                    (candidate, session) -> candidate.isOnline());
+            var claim = engine.claim(player, 1L, mail.id(), mail.revision());
+            storage.runNext();
+            player.getInventory().setItem(35, new ItemStack(Material.STONE, 64));
+            var before = codec.capture(player.getInventory().getContents());
+            storage.runNext();
+            storage.runNext();
+            var waiting = claim.join();
+            assertEquals(OpeningRecord.Stage.MAIL, waiting.stage());
+            assertEquals(mail.preparedReward(), waiting.preparedReward());
+            assertEquals(before, codec.capture(player.getInventory().getContents()));
+            assertEquals(0, saves.get());
+            player.getInventory().setItem(35, null);
+            var retry = engine.claim(player, 1L, waiting.id(), waiting.revision());
+            storage.runNext();
+            storage.runNext();
+            storage.runNext();
+            assertEquals(OpeningRecord.Stage.DELIVERED, retry.join().stage());
+            assertEquals(64, player.getInventory().getItem(0).getAmount());
+            assertEquals(1, player.getInventory().getItem(35).getAmount());
+            assertEquals(1, saves.get());
+        }
+    }
+
+    @Test void nativeRewardSaveFailureRequiresReviewAndNeverRepeatsTheGrant() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            var ledger = new OpeningLedger(new MemoryStore(), Clock.systemUTC());
+            var codec = new NativeItemPayload();
+            var saves = new AtomicInteger();
+            var inventory = new OpeningInventoryTransactions(codec, p -> {
+                saves.incrementAndGet();
+                throw new IllegalStateException("Native player-data persistence failed");
+            }, () -> true);
+            var mail = preparedMail(ledger, player.getUniqueId(), codec, new ItemStack(Material.DIAMOND, 2));
+            var engine = engine(ledger, inventory, codec, ignored -> { throw new AssertionError("Already prepared"); });
+            var reviewed = engine.claim(player, 1L, mail.id(), mail.revision()).join();
+            assertEquals(OpeningRecord.Stage.REVIEW, reviewed.stage());
+            assertEquals(2, player.getInventory().getItem(0).getAmount());
+            var witness = codec.read(reviewed.deliveryWitness(), InventoryMutationWitness.class);
+            assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN,
+                    inventory.applyFreshDelivery(player, witness, codec.items(reviewed.preparedReward())));
+            assertThrows(java.util.concurrent.CompletionException.class,
+                    () -> engine.claim(player, 1L, reviewed.id(), reviewed.revision()).join());
+            assertEquals(reviewed, engine.pending(player.getUniqueId()).join().orElseThrow());
+            assertEquals(1, saves.get());
+            assertEquals(2, player.getInventory().getItem(0).getAmount());
+        }
+    }
+
+    @Test void operatorResolutionOnlyClosesReviewedPreparedRewardsWithoutNativeEffects() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            player.getInventory().setItem(5, new ItemStack(Material.SPECTRAL_ARROW, 32));
+            var ledger = new OpeningLedger(new MemoryStore(), Clock.systemUTC());
+            var codec = new NativeItemPayload();
+            var inventory = new OpeningInventoryTransactions(codec, p -> fail("Resolution must not save player data"), () -> true);
+            var mail = preparedMail(ledger, player.getUniqueId(), codec, new ItemStack(Material.SPECTRAL_ARROW, 32));
+            var delivering = ledger.deliveryStarted(mail.id(), mail.playerId(), mail.revision(), "native-witness");
+            var reviewed = ledger.review(delivering.id(), delivering.playerId(), delivering.revision(), "unconfirmed-save");
+            var otherMail = preparedMail(ledger, UUID.randomUUID(), codec, new ItemStack(Material.DIAMOND));
+            var debit = ledger.reserve(UUID.randomUUID(), UUID.randomUUID(), mail.pool(), mail.offers(), "key-witness");
+            var debitReview = ledger.review(debit.id(), debit.playerId(), debit.revision(), "unconfirmed-debit");
+            var choosingDebit = ledger.reserve(UUID.randomUUID(), UUID.randomUUID(), mail.pool(), mail.offers(), "key-witness");
+            var choosing = ledger.debitConfirmed(choosingDebit.id(), choosingDebit.playerId(), choosingDebit.revision());
+            var storage = new QueuedExecutor();
+            var engine = new ManagedOpeningEngine(ledger, new WeightedOfferGenerator(new Random(1)), inventory, codec,
+                    ignored -> { throw new AssertionError("Resolution must not materialize rewards"); }, storage,
+                    ignored -> fail("Resolution must not schedule native work"), (candidate, session) -> true);
+            var before = codec.capture(player.getInventory().getContents());
+            for (UUID denied : List.of(otherMail.id(), debitReview.id(), choosing.id(), UUID.randomUUID())) {
+                var rejected = engine.resolveCompensatedOpening(denied);
+                storage.runNext();
+                assertThrows(java.util.concurrent.CompletionException.class, rejected::join);
+            }
+            var resolution = engine.resolveCompensatedOpening(reviewed.id());
+            assertFalse(resolution.isDone(), "Resolution must use the storage executor");
+            storage.runNext();
+            var resolved = resolution.join();
+            assertEquals(OpeningRecord.Stage.DELIVERED, resolved.stage());
+            assertEquals("operator-compensated-native-grant", resolved.reason());
+            assertTrue(ledger.pending(player.getUniqueId()).isEmpty());
+            assertTrue(ledger.active(player.getUniqueId()).isEmpty());
+            assertEquals(before, codec.capture(player.getInventory().getContents()));
+            var duplicate = engine.resolveCompensatedOpening(reviewed.id());
+            storage.runNext();
+            assertThrows(java.util.concurrent.CompletionException.class, duplicate::join);
+            assertEquals(resolved, ledger.get(resolved.id(), resolved.playerId()));
+            assertEquals(before, codec.capture(player.getInventory().getContents()));
+        }
+    }
+
     @Test void copiedPeriodicKeyCannotBuyAnotherRollButOrdinaryKeysStillWork() {
         try (var runtime = MockBukkitTestRuntime.Companion.open()) {
             var player = runtime.addPlayer("CrateQA");
@@ -281,6 +427,21 @@ class ManagedOpeningEngineTest {
             NativeItemPayload codec, java.util.function.Function<RewardDefinition, ItemStack[]> materialize) {
         return new ManagedOpeningEngine(ledger, new WeightedOfferGenerator(new Random(1)), inventory, codec,
                 materialize, Runnable::run, Runnable::run, (player, session) -> player.isOnline());
+    }
+
+    private static OpeningRecord preparedMail(OpeningLedger ledger, UUID playerId, NativeItemPayload codec, ItemStack... rewards) {
+        var reward = new RewardDefinition("prize", 1, "frozen", "preview");
+        var pool = new PoolSnapshot("daily", "launch", List.of(reward), 1, 0, 1);
+        var reserved = ledger.reserve(UUID.randomUUID(), playerId, pool, List.of(reward), "key-witness");
+        var choosing = ledger.debitConfirmed(reserved.id(), playerId, reserved.revision());
+        var selected = ledger.select(choosing.id(), playerId, choosing.revision(), reward.id());
+        return ledger.prepared(selected.id(), playerId, selected.revision(), codec.items(rewards));
+    }
+
+    private static final class QueuedExecutor implements Executor {
+        private final Deque<Runnable> queued = new ArrayDeque<>();
+        @Override public void execute(Runnable action) { queued.addLast(action); }
+        private void runNext() { queued.removeFirst().run(); }
     }
 
     private static final class MemoryStore implements OpeningStore {

@@ -329,6 +329,11 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
         if (protectionListener != null) protectionListener.clearManagedOpenHandler();
     }
 
+    public void resolveCompensatedOpening(java.util.UUID id) {
+        if (managedCrates == null) throw new IllegalStateException("Managed crate service is unavailable");
+        managedCrates.resolveCompensatedOpening(id);
+    }
+
     /** Register an AutoCloseable feature service under the shared lifecycle. */
     public <T extends AutoCloseable> T registerService(T service) {
         if (runtime == null) {

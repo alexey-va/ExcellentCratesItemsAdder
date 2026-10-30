@@ -175,6 +175,24 @@ public final class OpeningInventoryTransactions {
         }
     }
 
+    /** Replan only the live, not-yet-attempted reward after its journal write completes. */
+    public Outcome applyFreshDelivery(Player player, InventoryMutationWitness persistedWitness, ItemStack[] frozenRewards) {
+        requirePlayer(player);
+        if (persistedWitness.kind() != InventoryMutationWitness.Kind.REWARD_DELIVERY
+                || !player.getUniqueId().equals(persistedWitness.playerId())) {
+            throw new IllegalArgumentException("Wrong reward delivery witness");
+        }
+        UUID playerId = player.getUniqueId();
+        if (uncertainPlayers.contains(playerId)) return Outcome.UNKNOWN;
+        boolean livePlan = persistedWitness.openingId().equals(livePlans.get(playerId));
+        if (!livePlan && !loadedPlayers.contains(playerId)) return Outcome.UNKNOWN;
+        String receipt = receipt(player, persistedWitness.kind());
+        if (receipt.equals(persistedWitness.receipt())) return Outcome.APPLIED;
+        if (!livePlan || !receipt.equals(persistedWitness.previousReceipt())) return Outcome.UNKNOWN;
+        return delivery(player, persistedWitness.openingId(), frozenRewards)
+                .map(fresh -> apply(player, fresh)).orElse(Outcome.NOT_APPLIED);
+    }
+
     /** Call only after native player data was loaded anew, never on a menu refresh. */
     public void playerDataLoaded(Player player) {
         requirePlayer(player);

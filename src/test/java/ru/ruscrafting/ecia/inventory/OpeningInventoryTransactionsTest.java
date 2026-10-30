@@ -84,6 +84,34 @@ class OpeningInventoryTransactionsTest {
         }
     }
 
+    @Test void freshDeliveryRequiresItsLiveRewardPlanAndUnchangedReceipt() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            var other = runtime.addPlayer("OtherQA");
+            var codec = new NativeItemPayload();
+            var transactions = new OpeningInventoryTransactions(codec, p -> fail("No save expected"), () -> true);
+            var rewards = new ItemStack[]{new ItemStack(Material.DIAMOND)};
+            var witness = transactions.delivery(player, UUID.randomUUID(), rewards).orElseThrow();
+            var wrongKind = new InventoryMutationWitness(witness.openingId(), witness.playerId(),
+                    InventoryMutationWitness.Kind.KEY_DEBIT, witness.before(), witness.after(), witness.previousReceipt());
+            assertThrows(IllegalArgumentException.class, () -> transactions.applyFreshDelivery(player, wrongKind, rewards));
+            assertThrows(IllegalArgumentException.class, () -> transactions.applyFreshDelivery(other, witness, rewards));
+            var wrongId = new InventoryMutationWitness(UUID.randomUUID(), witness.playerId(), witness.kind(),
+                    witness.before(), witness.after(), witness.previousReceipt());
+            assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN, transactions.applyFreshDelivery(player, wrongId, rewards));
+            var cold = new OpeningInventoryTransactions(codec, p -> fail("No cold replay allowed"), () -> true);
+            assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN, cold.applyFreshDelivery(player, witness, rewards));
+            transactions.playerDataLoaded(player);
+            assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN, transactions.applyFreshDelivery(player, witness, rewards));
+            assertEquals(OpeningInventoryTransactions.Outcome.NOT_APPLIED, transactions.inspect(player, witness));
+            var fresh = transactions.delivery(player, UUID.randomUUID(), rewards).orElseThrow();
+            player.getPersistentDataContainer().set(NamespacedKey.fromString("ecia:last_reward_delivery"),
+                    PersistentDataType.STRING, "REWARD_DELIVERY:" + UUID.randomUUID());
+            assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN, transactions.applyFreshDelivery(player, fresh, rewards));
+            assertTrue(player.getInventory().isEmpty());
+        }
+    }
+
     private static final class NonCanonicalItemCodec implements PaperItemStackBinaryCodec {
         private final AtomicInteger sequence = new AtomicInteger();
         @Override public byte[] encodeItems(List<? extends ItemStack> items) {

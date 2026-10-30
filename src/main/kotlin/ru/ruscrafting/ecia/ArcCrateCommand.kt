@@ -66,6 +66,7 @@ internal class ArcCrateCommand(
             null, "menu" -> openMenu(sender)
             "place" -> beginPlacement(sender)
             "key", "give" -> grantFromCommand(sender, args.drop(1))
+            "resolve" -> resolveCompensatedOpening(sender, args.drop(1))
             "receive-key" -> receiver.receive(sender, args.drop(1))
             else -> {
                 message(sender, "command.usage")
@@ -82,7 +83,7 @@ internal class ArcCrateCommand(
     ): List<String> {
         if (!sender.hasPermission(ARC_CRATE_ADMIN_PERMISSION)) return emptyList()
         val choices = when (args.size) {
-            1 -> if (sender is Player) listOf("menu", "place", "key") else listOf("key")
+            1 -> if (sender is Player) listOf("menu", "place", "key") else listOf("key", "resolve")
             2 -> if (args[0].equals("key", true) || args[0].equals("give", true)) {
                 plugin.server.onlinePlayers.map(Player::getName)
             } else emptyList()
@@ -109,6 +110,22 @@ internal class ArcCrateCommand(
         if (!ready(player)) return true
         dialogs.beginFlow(player)
         openRoot(player)
+        return true
+    }
+
+    private fun resolveCompensatedOpening(sender: CommandSender, args: List<String>): Boolean {
+        if (sender !== plugin.server.consoleSender) {
+            message(sender, "no-permission")
+            return true
+        }
+        val id = args.singleOrNull()?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        if (id == null) {
+            sender.sendMessage("Usage: /arc-crate resolve <opening-uuid> (after manual reward compensation)")
+            return true
+        }
+        runCatching { plugin.resolveCompensatedOpening(id) }.onFailure {
+            sender.sendMessage("Opening $id resolution refused: ${it.message}")
+        }
         return true
     }
 

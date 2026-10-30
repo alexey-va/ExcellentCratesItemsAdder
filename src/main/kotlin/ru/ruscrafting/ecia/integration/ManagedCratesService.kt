@@ -593,6 +593,26 @@ class ManagedCratesService(
         }
     }
 
+    fun resolveCompensatedOpening(id: UUID) {
+        check(!closed) { "Managed crate service is closed" }
+        val current = checkNotNull(engine) { "Managed opening storage is not ready" }
+        current.resolveCompensatedOpening(id)
+            .thenCompose { resolved -> current.pendingCount().thenApply { resolved to it } }
+            .whenCompleteSync(lifecycleTasks, lifecycleToken) { result, failure ->
+                if (failure != null || result == null) {
+                    runtime.warn("Compensated opening resolution refused id={}: {}", id, failure.toString())
+                    plugin.server.consoleSender.sendMessage("Opening $id resolution refused: ${failure?.cause?.message ?: failure?.message}")
+                    refreshStorageHealth()
+                    return@whenCompleteSync
+                }
+                val (resolved, count) = result
+                pendingOpeningCount = count
+                runtime.updateRecoveryBacklog(count)
+                runtime.info("Resolved compensated opening id={} player={}", resolved.id(), resolved.playerId())
+                plugin.server.consoleSender.sendMessage("Opening $id marked DELIVERED after manual compensation. No items granted.")
+            }
+    }
+
     private fun updateHealth() {
         engine?.pendingCount()?.whenCompleteSync(lifecycleTasks, lifecycleToken) { count, failure ->
             if (failure == null && count != null) {

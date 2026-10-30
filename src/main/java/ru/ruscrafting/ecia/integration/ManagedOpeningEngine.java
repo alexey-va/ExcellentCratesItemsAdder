@@ -220,8 +220,10 @@ public final class ManagedOpeningEngine {
                                 : storage(() -> ledger.deliveryStarted(id, playerId, value.revision(), plan.get().witness()))
                                         .thenCompose(started -> paper(() -> {
                                                     requireCurrent(player, session);
-                                                    return inventory.apply(player,
-                                                            payload.read(started.deliveryWitness(), InventoryMutationWitness.class));
+                                                    return inventory.applyFreshDelivery(player,
+                                                            witness(started.deliveryWitness(), InventoryMutationWitness.Kind.REWARD_DELIVERY,
+                                                                    started.id(), playerId),
+                                                            payload.items(started.preparedReward()));
                                                 })
                                                 .thenCompose(outcome -> storage(() -> settleDelivery(started, playerId, outcome)))));
             });
@@ -256,6 +258,22 @@ public final class ManagedOpeningEngine {
 
     public CompletableFuture<Boolean> available() {
         return storage(ledger::available);
+    }
+
+    /** A console operator has already compensated this reviewed reward through native issuance. */
+    public CompletableFuture<OpeningRecord> resolveCompensatedOpening(UUID id) {
+        return storage(() -> {
+            OpeningRecord record = ledger.snapshot().stream().filter(value -> value.id().equals(id)).findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Unknown opening"));
+            if (record.stage() != OpeningRecord.Stage.REVIEW || record.selectedRewardId().isEmpty()
+                    || record.preparedReward().isEmpty() || record.deliveryWitness().isEmpty()) {
+                throw new IllegalStateException("Only a reviewed prepared reward can be resolved after manual compensation");
+            }
+            OpeningRecord resolved = ledger.reconciled(id, record.playerId(), record.revision(), true,
+                    "operator-compensated-native-grant");
+            observeActivity("recovered", resolved);
+            return resolved;
+        });
     }
 
     private CompletableFuture<Optional<OpeningRecord>> reconcile(UUID playerId, Player player, long session) {
