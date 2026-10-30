@@ -23,6 +23,7 @@ import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
 import ru.ruscrafting.ecia.CrateAmbientEffectService
 import ru.ruscrafting.ecia.CrateVisualSettingsStore
 import ru.ruscrafting.ecia.CrateVisualTarget
+import ru.ruscrafting.ecia.api.CrateAcquisitionSnapshot
 import ru.ruscrafting.ecia.inventory.NativeItemPayload
 import ru.ruscrafting.ecia.inventory.OpeningInventoryTransactions
 import ru.ruscrafting.ecia.journal.DurableOpeningStore
@@ -44,6 +45,7 @@ import java.time.Instant
 import java.util.IdentityHashMap
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CancellationException
 import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
 import java.util.random.RandomGenerator
@@ -288,7 +290,8 @@ class ManagedCratesService(
             return
         }
         val generation = reloadGeneration
-        currentPoolAsync(crateId).whenCompleteSync(lifecycleTasks, lifecycleToken) { pool, failure ->
+        currentPoolAsync(crateId).whenCompleteSync(lifecycleTasks, lifecycleToken) { loaded, failure ->
+            val pool = loaded?.pool()
             if (!isCurrentSession(player, session)) return@whenCompleteSync
             if (failure != null || pool == null || generation != reloadGeneration || !ready) {
                 inFlight.remove(playerId)
@@ -353,7 +356,8 @@ class ManagedCratesService(
         val crate = manager.getCrateById(crateId) ?: return message(player, "managed.unavailable")
         if (!crate.hasPermission(player)) return message(player, "no-permission")
         val generation = reloadGeneration
-        currentPoolAsync(crateId).whenCompleteSync(lifecycleTasks, lifecycleToken) { pool, failure ->
+        currentPoolAsync(crateId).whenCompleteSync(lifecycleTasks, lifecycleToken) { loaded, failure ->
+            val pool = loaded?.pool()
             if (!player.isOnline || closed || !ready || generation != reloadGeneration || !crate.hasPermission(player)) return@whenCompleteSync
             if (failure != null || pool == null) {
                 if (failure != null) runtime.error("Could not capture crate preview pool: crate={}, error={}", crateId, failure.toString())
@@ -401,8 +405,43 @@ class ManagedCratesService(
         )
     }
 
-    private fun currentPoolAsync(crateId: String): CompletableFuture<PoolSnapshot?> =
-        settings.cases[crateId]?.let { rewardPools.loadCurrentAsync(it, runtime.nativeWork(), storageExecutor) }
+    /** Main-thread, memory-only enumeration; each listed crate still needs a current capture. */
+    fun acquisitionCrateIds(): List<String> =
+        if (!acquisitionReady()) emptyList() else java.util.List.copyOf(settings.cases.keys.sorted())
+
+    /** Read-only capture; accepted work always completes, including lifecycle invalidation. */
+    fun acquisitionSnapshotAsync(crateId: String): CompletableFuture<CrateAcquisitionSnapshot> {
+        val unavailable = CrateAcquisitionSnapshot.unavailable(crateId)
+        if (!acquisitionReady() || crateId !in settings.cases) {
+            return CompletableFuture.completedFuture(unavailable)
+        }
+        val generation = reloadGeneration
+        return try {
+            val manager = CratesAPI.getCrateManager()
+            val crate = manager.getCrateById(crateId)
+                ?: return CompletableFuture.completedFuture(unavailable)
+            currentPoolAsync(crateId).thenCompose { loaded ->
+                lifecycleTasks.callSync(lifecycleToken) {
+                    if (loaded == null || !acquisitionReady() || generation != reloadGeneration
+                        || CratesAPI.getCrateManager() !== manager || manager.getCrateById(crateId) !== crate) unavailable
+                    else loaded.acquisition()
+                }
+            }
+        } catch (failure: RuntimeException) {
+            CompletableFuture.failedFuture<CrateAcquisitionSnapshot>(failure)
+        }.exceptionally { failure ->
+            if (failure !is CancellationException && failure.cause !is CancellationException) {
+                runtime.error("Could not capture crate acquisition pool: crate={}, error={}", crateId, failure.toString())
+            }
+            unavailable
+        }
+    }
+
+    private fun acquisitionReady(): Boolean = !closed && ready && !configurationFailed
+        && plugin.server.pluginManager.isPluginEnabled("ExcellentCrates")
+
+    private fun currentPoolAsync(crateId: String): CompletableFuture<NativeRewardPools.LoadedPool?> =
+        settings.cases[crateId]?.let { rewardPools.loadCurrentWithAcquisitionAsync(it, runtime.nativeWork(), storageExecutor) }
             ?: CompletableFuture.completedFuture(null)
 
     private fun show(player: Player, record: OpeningRecord, anchor: Location? = null) {

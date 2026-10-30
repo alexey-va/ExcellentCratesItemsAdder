@@ -1,6 +1,8 @@
 package ru.ruscrafting.ecia.integration;
 
 import org.bukkit.inventory.ItemStack;
+import ru.ruscrafting.ecia.api.CrateAcquisitionReward;
+import ru.ruscrafting.ecia.api.CrateAcquisitionSnapshot;
 import ru.ruscrafting.ecia.inventory.NativeItemPayload;
 import ru.ruscrafting.ecia.roll.PoolSnapshot;
 import ru.ruscrafting.ecia.roll.RewardDefinition;
@@ -25,6 +27,9 @@ import ru.arc.core.BudgetedTaskQueue;
 /** Builds the managed pool directly from the currently loaded native rewards. */
 public final class NativeRewardPools {
     private static final String CURRENT_POOL = "current";
+
+    /** The opening pool and read-only evidence captured from the same native rewards. */
+    public record LoadedPool(PoolSnapshot pool, CrateAcquisitionSnapshot acquisition) { }
 
     private final NativeSeasonKeys keys;
     private final CatalogRewardBridge provider;
@@ -77,6 +82,12 @@ public final class NativeRewardPools {
 
     public CompletableFuture<PoolSnapshot> loadCurrentAsync(ManagedCratesSettings.CaseSettings configured,
             BudgetedTaskQueue work, Executor worker) {
+        return loadCurrentWithAcquisitionAsync(configured, work, worker)
+                .thenApply(loaded -> loaded == null ? null : loaded.pool());
+    }
+
+    public CompletableFuture<LoadedPool> loadCurrentWithAcquisitionAsync(ManagedCratesSettings.CaseSettings configured,
+            BudgetedTaskQueue work, Executor worker) {
         final Crate crate;
         try {
             if (Config.CRATE_REVERSE_CLICK_ACTIONS.get()) throw new IllegalStateException("Managed crates require native right-click opening");
@@ -86,6 +97,7 @@ public final class NativeRewardPools {
             issueSink.accept("crate=" + configured.crateId() + " reason=" + failure.getMessage());
             return CompletableFuture.completedFuture(null);
         }
+        String displayName = displayName(crate.getName(), configured.crateId());
         var nativeRewards = List.copyOf(crate.getRewards()).iterator();
         List<CapturedReward> captured = new ArrayList<>();
         Set<String> ids = new HashSet<>();
@@ -107,7 +119,18 @@ public final class NativeRewardPools {
             int bundle = Math.min(configured.bundleSize(), definitions.size());
             if (bundle != configured.bundleSize()) issueSink.accept("crate=" + configured.crateId()
                     + " reason=bundle size " + configured.bundleSize() + " reduced to " + bundle + " for current rewards");
-            return currentPool(configured.crateId(), definitions, configured.choiceCount(), configured.maxRerolls(), bundle);
+            PoolSnapshot pool = currentPool(configured.crateId(), definitions,
+                    configured.choiceCount(), configured.maxRerolls(), bundle);
+            double maximum = definitions.stream().mapToDouble(RewardDefinition::weight).max().orElseThrow();
+            double total = 0.0d;
+            for (RewardDefinition definition : definitions) total += definition.weight() / maximum;
+            double denominator = total;
+            List<CrateAcquisitionReward> acquisition = captured.stream()
+                    .sorted(Comparator.comparing(CapturedReward::id))
+                    .map(reward -> new CrateAcquisitionReward(reward.id(), reward.displayName(), reward.weight(),
+                            (reward.weight() / maximum) / denominator, reward.category(), reward.entry()))
+                    .toList();
+            return new LoadedPool(pool, new CrateAcquisitionSnapshot(configured.crateId(), displayName, true, acquisition));
         }, worker);
     }
 
@@ -184,7 +207,8 @@ public final class NativeRewardPools {
         ItemStack preview = reward.getPreviewItem();
         byte[] previewBytes = preview == null || preview.isEmpty() ? null
                 : ru.arc.paper.playerstate.NativePaperItemStackBinaryCodec.INSTANCE.encodeItem(preview);
-        return new CapturedReward(reward.getId(), reward.getWeight(), category, entry, delivery, previewBytes);
+        return new CapturedReward(reward.getId(), displayName(reward.getName(), reward.getId()),
+                reward.getWeight(), category, entry, delivery, previewBytes);
     }
 
     private RewardDefinition encodeReward(CapturedReward captured) {
@@ -197,7 +221,12 @@ public final class NativeRewardPools {
         return new RewardDefinition(captured.id(), captured.weight(), delivery, preview);
     }
 
-    private record CapturedReward(String id, double weight, String category, String entry, byte[] delivery, byte[] preview) { }
+    private record CapturedReward(String id, String displayName, double weight,
+            String category, String entry, byte[] delivery, byte[] preview) { }
+
+    private static String displayName(String loaded, String fallback) {
+        return loaded == null || loaded.isBlank() ? fallback : loaded;
+    }
 
     private RewardDefinition compileReward(Reward reward) {
         if (!(reward instanceof CommandReward command) || command.getCommands().size() != 1

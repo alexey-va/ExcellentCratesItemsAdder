@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "ru.ruscrafting.arc"
-version = "0.1.0"
+version = "0.1.1"
 base.archivesName.set("arc-crate-api")
 
 repositories {
@@ -44,8 +44,8 @@ publishing {
             from(components["java"])
             artifactId = "arc-crate-api"
             pom {
-                name.set("ARC Crate Location API")
-                description.set("Optional Bukkit service contract for managed crate location checks.")
+                name.set("ARC Crate Read API")
+                description.set("Optional Bukkit service contract for crate locations and loaded acquisition pools.")
             }
         }
     }

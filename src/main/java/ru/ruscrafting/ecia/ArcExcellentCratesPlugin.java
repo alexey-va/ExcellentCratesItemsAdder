@@ -5,6 +5,7 @@ import org.bukkit.Location;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.ruscrafting.ecia.api.CrateLocationService;
+import ru.ruscrafting.ecia.api.CrateAcquisitionSnapshot;
 import ru.ruscrafting.ecia.runtime.EciaLocale;
 import ru.ruscrafting.ecia.runtime.EciaRuntime;
 import ru.ruscrafting.ecia.integration.CrateOpeningEffects;
@@ -22,6 +23,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BiFunction;
@@ -265,7 +267,24 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
 
     private void registerCrateLocationService() {
         crateLocationRegistration = registerService(
-                new CrateLocationServiceRegistration(this, this::isManagedCrateLocation)
+                new CrateLocationServiceRegistration(this, new CrateLocationService() {
+                    @Override
+                    public boolean isCrateLocation(Location location) {
+                        return isManagedCrateLocation(location);
+                    }
+
+                    @Override
+                    public List<String> acquisitionCrateIds() {
+                        return managedCrates == null ? List.of() : managedCrates.acquisitionCrateIds();
+                    }
+
+                    @Override
+                    public CompletableFuture<CrateAcquisitionSnapshot> acquisitionSnapshotAsync(String crateId) {
+                        return managedCrates == null
+                                ? CompletableFuture.completedFuture(CrateAcquisitionSnapshot.unavailable(crateId))
+                                : managedCrates.acquisitionSnapshotAsync(crateId);
+                    }
+                })
         );
     }
 
