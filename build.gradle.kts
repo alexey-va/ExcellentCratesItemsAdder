@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "ru.ruscrafting"
-version = "0.14.60"
+version = "0.14.61"
 
 repositories {
     mavenCentral()

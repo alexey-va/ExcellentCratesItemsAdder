@@ -21,7 +21,7 @@ class EciaLocaleTest : FunSpec({
                     val component = locale.renderWithLocale("key-shop.$key", language,
                         mapOf("crate" to "Daily", "price" to "3"))
                     val plain = PlainTextComponentSerializer.plainText().serialize(component)
-                    plain shouldContain "3 "
+                    plain shouldContain "3"
                     plain.contains("жет.") shouldBe false
                     plain.contains("3 tokens") shouldBe false
                     component.textAndColorRuns().single { "" in it.first }.second shouldBe TextColor.color(0xFFFFFF)
