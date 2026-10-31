@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "ru.ruscrafting.arc"
-version = "0.1.1"
+version = "0.1.2"
 base.archivesName.set("arc-crate-api")
 
 repositories {

@@ -10,6 +10,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -24,6 +25,8 @@ class CrateAcquisitionApiTest {
         assertEquals("case_daily", snapshot.crateId());
         assertFalse(snapshot.available());
         assertTrue(snapshot.rewards().isEmpty());
+        assertTrue(provider.acquisitionSnapshotsAsync().join().isEmpty());
+        assertNull(provider.keyTemplateAsync("daily").join());
     }
 
     @Test

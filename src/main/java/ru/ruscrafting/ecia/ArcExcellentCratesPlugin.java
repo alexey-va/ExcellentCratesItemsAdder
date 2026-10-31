@@ -16,6 +16,10 @@ import ru.ruscrafting.ecia.integration.ArcActivityTelemetryBridge;
 import ru.arc.paper.display.PaperPacketDisplays;
 import ru.arc.paper.api.ArcNativeCleanupService;
 import ru.arc.paper.api.ArcSceneObservationService;
+import ru.arc.paper.api.ArcRedisService;
+import ru.arc.paper.redis.PaperRedisClient;
+import ru.arc.paper.playerstate.NativePaperItemStackBinaryCodec;
+import ru.arc.redis.network.ArcTaskRedisRequestTimeoutScheduler;
 import ru.arc.paper.runtime.PaperPluginHotload;
 import ru.arc.logging.ArcLogging;
 
@@ -41,6 +45,7 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
     private CrateVisualSettingsStore visualSettings;
     private CrateVisualEditor visualEditor;
     private CrateLocationServiceRegistration crateLocationRegistration;
+    private CompletableFuture<CrateReadNetwork> crateReadNetwork;
     private ru.arc.core.BoundedAsyncExecutor storage;
     private CompletableFuture<Void> nativeCleanupTail = CompletableFuture.completedFuture(null);
     private CompletableFuture<kotlin.Unit> storageDrain = CompletableFuture.completedFuture(kotlin.Unit.INSTANCE);
@@ -105,6 +110,7 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
         });
         registry = prepared.registry();
         int count = prepared.count();
+        startCrateReadNetwork();
         registerCrateLocationService();
         String previewCommand = getConfig().getString(
                 "preview-command",
@@ -216,6 +222,7 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
         packetDisplays = null;
         visualSettings = null;
         visualEditor = null;
+        crateReadNetwork = null;
         Map<String, CompletionStage<?>> phases = new java.util.LinkedHashMap<>();
         phases.put("storage", storageDrain);
         phases.put("native", nativeCleanupTail);
@@ -284,8 +291,85 @@ public class ArcExcellentCratesPlugin extends JavaPlugin {
                                 ? CompletableFuture.completedFuture(CrateAcquisitionSnapshot.unavailable(crateId))
                                 : managedCrates.acquisitionSnapshotAsync(crateId);
                     }
+
+                    @Override
+                    public CompletableFuture<List<CrateAcquisitionSnapshot>> acquisitionSnapshotsAsync() {
+                        requirePaperThread();
+                        if (nativeCratesEnabled()) return localAcquisitionSnapshots();
+                        var network = crateReadNetwork;
+                        return network == null ? CompletableFuture.completedFuture(List.of())
+                                : network.thenCompose(CrateReadNetwork::acquisitionSnapshotsAsync)
+                                        .exceptionally(failure -> List.of());
+                    }
+
+                    @Override
+                    public CompletableFuture<org.bukkit.inventory.ItemStack> keyTemplateAsync(String keyId) {
+                        requirePaperThread();
+                        if (nativeCratesEnabled()) return CompletableFuture.completedFuture(localKeyTemplate(keyId));
+                        var network = crateReadNetwork;
+                        return network == null ? CompletableFuture.completedFuture(null)
+                                : network.thenCompose(reader -> reader.keyTemplateAsync(keyId))
+                                        .exceptionally(failure -> null);
+                    }
                 })
         );
+    }
+
+    private void startCrateReadNetwork() {
+        ArcRedisService service = getServer().getServicesManager().load(ArcRedisService.class);
+        if (service == null) {
+            getLogger().warning("Crate read network is unavailable: ArcRedisService is not registered");
+            return;
+        }
+        var scheduler = ru.arc.core.Tasks.INSTANCE.getScheduler();
+        String owner = getName();
+        var opening = runtime.storage().submit(() -> {
+            var redis = PaperRedisClient.openPrimary(service, owner);
+            CrateReadNetwork reader = null;
+            try {
+                reader = new CrateReadNetwork(redis, this::nativeCratesEnabled,
+                        this::localAcquisitionSnapshots, this::localKeyTemplate,
+                        NativePaperItemStackBinaryCodec.INSTANCE, System::currentTimeMillis,
+                        scheduler, ArcTaskRedisRequestTimeoutScheduler.INSTANCE);
+                redis.init();
+                return reader;
+            } catch (RuntimeException | Error failure) {
+                try { if (reader == null) redis.close(); else reader.close(); }
+                catch (Throwable cleanup) { failure.addSuppressed(cleanup); }
+                throw failure;
+            }
+        });
+        crateReadNetwork = opening;
+        var activeRuntime = runtime;
+        runtime.registerService(() -> {
+            CompletableFuture<Void> closing = opening.handle((reader, failure) -> {
+                if (reader != null) reader.close();
+                return null;
+            });
+            if (closing.isDone()) closing.join();
+            else activeRuntime.trackNativeCleanup(closing);
+        });
+        opening.whenComplete((reader, failure) -> {
+            if (failure != null) getLogger().log(java.util.logging.Level.WARNING,
+                    "Crate read network could not start; local read service remains available", failure);
+        });
+    }
+
+    private boolean nativeCratesEnabled() {
+        return isEnabled() && getServer().getPluginManager().isPluginEnabled("ExcellentCrates");
+    }
+
+    private CompletableFuture<List<CrateAcquisitionSnapshot>> localAcquisitionSnapshots() {
+        return managedCrates == null ? CompletableFuture.completedFuture(List.of())
+                : managedCrates.acquisitionSnapshotsAsync();
+    }
+
+    private org.bukkit.inventory.ItemStack localKeyTemplate(String keyId) {
+        return managedCrates == null ? null : managedCrates.keyTemplate(keyId);
+    }
+
+    private static void requirePaperThread() {
+        if (!org.bukkit.Bukkit.isPrimaryThread()) throw new IllegalStateException("Crate reads require the Paper thread");
     }
 
     private void unregisterCrateLocationService() {

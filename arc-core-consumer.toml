@@ -9,6 +9,7 @@ capabilities = [
   "logging",
   "paper-menu",
   "paper-testing",
+  "redis-networking",
   "runtime",
   "scheduling",
 ]

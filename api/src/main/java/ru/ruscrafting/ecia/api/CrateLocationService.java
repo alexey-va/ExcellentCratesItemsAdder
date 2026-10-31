@@ -1,6 +1,7 @@
 package ru.ruscrafting.ecia.api;
 
 import org.bukkit.Location;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -48,5 +49,28 @@ public interface CrateLocationService {
      */
     default CompletableFuture<CrateAcquisitionSnapshot> acquisitionSnapshotAsync(String crateId) {
         return CompletableFuture.completedFuture(CrateAcquisitionSnapshot.unavailable(crateId));
+    }
+
+    /**
+     * Captures every currently configured managed case on the authoritative
+     * native provider, including when this backend does not load ExcellentCrates.
+     * Call on Paper and never wait there. Completion has no thread affinity.
+     * An empty list means no authoritative capture is currently available.
+     * No roll, player lookup, key consumption or reward delivery is performed.
+     */
+    default CompletableFuture<List<CrateAcquisitionSnapshot>> acquisitionSnapshotsAsync() {
+        return CompletableFuture.completedFuture(List.of());
+    }
+
+    /**
+     * Returns a fresh copy of one ordinary physical native key from the current
+     * authoritative key manager, or null when it is unavailable. The template
+     * has amount one and is not a periodic/free key. This only constructs an
+     * ItemStack; it never grants it, touches an inventory, or records a delivery.
+     * Call on Paper and never wait there. Consumers own the returned stack and
+     * must discard stale completions after their own lifecycle changes.
+     */
+    default CompletableFuture<ItemStack> keyTemplateAsync(String keyId) {
+        return CompletableFuture.completedFuture(null);
     }
 }

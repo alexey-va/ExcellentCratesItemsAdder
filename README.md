@@ -251,6 +251,35 @@ Never delete journals to clear an uncertain transaction. Inspect the record and
 player receipt first. Journal corruption stops managed opening until repaired;
 protection remains an independent listener.
 
+## Read-only acquisition API
+
+`api/.../CrateLocationService.java` is published as `arc-crate-api:0.1.2` and
+registered through Bukkit ServicesManager. Consumers use `compileOnly` and
+resolve the current provider at the point of use. `acquisitionSnapshotsAsync()`
+reads the loaded managed opening pools; probabilities retain every valid native
+reward in the denominator. Catalogue category/entry references belong to the
+source ARC catalogue and must be resolved there, not against another backend's
+possibly different catalogue.
+
+`keyTemplateAsync(keyId)` returns one detached ordinary physical key from the
+current native key factory. It does not give a player an item, consume a key,
+open a case, or issue an owner-bound periodic key. Nodes without native
+ExcellentCrates use `CrateReadNetwork` to request current data from Spawn.
+Capture, item serialization and destination decoding run on Paper; the shared
+core request/reply channel bounds requests to 32 and expires replies after
+10 seconds. Unavailable sources return empty snapshots or a null key, never
+fabricated metadata. Close settles queued callers and releases its Redis lease.
+
+Focused transport checks:
+
+```bash
+./gradlew :test --tests ru.ruscrafting.ecia.CrateReadNetworkTest
+./gradlew :integrationTest --tests ru.ruscrafting.ecia.CrateReadNetworkIntegrationTest
+```
+
+The integration check uses the canonical `RedisTestService`; local Colima needs
+the environment documented in arc-core's `docs/integration-testing.md`.
+
 ## Building
 
 Focused calendar-key and durable-delivery regression checks:

@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "ru.ruscrafting"
-version = "0.14.61"
+version = "0.14.62"
 
 repositories {
     mavenCentral()
@@ -41,15 +41,24 @@ repositories {
     }
 }
 
+val integrationTest by sourceSets.creating {
+    compileClasspath += sourceSets.main.get().output + configurations.testRuntimeClasspath.get()
+    runtimeClasspath += output + compileClasspath
+}
+configurations[integrationTest.implementationConfigurationName].extendsFrom(configurations.testImplementation.get())
+configurations[integrationTest.runtimeOnlyConfigurationName].extendsFrom(configurations.testRuntimeOnly.get())
+
 dependencies {
     implementation(kotlin("stdlib"))
     implementation(project(":api"))
     implementation("ru.ruscrafting.arc:arc-core:2.7.81")
     implementation("ru.ruscrafting.arc:arc-core-logging:2.7.81")
+    implementation("ru.ruscrafting.arc:arc-core-redis:2.7.81")
     implementation("ru.ruscrafting.arc:arc-core-paper:2.7.81")
     implementation("ru.ruscrafting.arc:arc-core-menu:2.7.81")
     implementation("ru.ruscrafting.arc:arc-core-paper-menu:2.7.81")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.10")
+    implementation("com.google.code.gson:gson:2.11.0")
 
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("ru.ruscrafting.arc:arc-core-paper-api:2.7.81")
@@ -75,6 +84,7 @@ dependencies {
     testImplementation("su.nightexpress.nightcore:main:2.16.4")
     testImplementation("ru.ruscrafting.thirdparty:rediseconomy:4.5.12")
     testImplementation("com.github.MilkBowl:VaultAPI:1.7") { isTransitive = false }
+    "integrationTestImplementation"("ru.ruscrafting.arc:arc-core-integration-testing:2.7.81")
 }
 
 java {
@@ -83,6 +93,16 @@ java {
     }
 }
 kotlin { jvmToolchain(25) }
+
+tasks.register<Test>("integrationTest") {
+    description = "Checks the read-only crate API over a disposable Redis transport"
+    group = "verification"
+    testClassesDirs = integrationTest.output.classesDirs
+    classpath = integrationTest.runtimeClasspath
+    useJUnitPlatform()
+    shouldRunAfter(tasks.test)
+}
+tasks.check { dependsOn("integrationTest") }
 
 val verifyExcellentCratesArtifact by tasks.registering {
     val nativeJar = configurations.compileClasspath.map { files ->

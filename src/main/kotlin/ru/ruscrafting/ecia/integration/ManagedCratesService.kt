@@ -20,6 +20,7 @@ import ru.arc.paper.display.PaperPacketDisplays
 import ru.arc.paper.menu.PaperMenuConfiguration
 import ru.ruscrafting.ecia.ARC_CRATE_ADMIN_PERMISSION
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
+import ru.ruscrafting.ecia.KeyGrantRequest
 import ru.ruscrafting.ecia.CrateAmbientEffectService
 import ru.ruscrafting.ecia.CrateVisualSettingsStore
 import ru.ruscrafting.ecia.CrateVisualTarget
@@ -435,6 +436,27 @@ class ManagedCratesService(
             }
             unavailable
         }
+    }
+
+    /** One current generation; every individual pool retains its full native denominator. */
+    fun acquisitionSnapshotsAsync(): CompletableFuture<List<CrateAcquisitionSnapshot>> {
+        val generation = reloadGeneration
+        val captures = acquisitionCrateIds().map(::acquisitionSnapshotAsync)
+        return CompletableFuture.allOf(*captures.toTypedArray()).thenCompose {
+            lifecycleTasks.callSync(lifecycleToken) {
+                if (!acquisitionReady() || generation != reloadGeneration) emptyList()
+                else java.util.List.copyOf(captures.map { it.join() })
+            }
+        }.exceptionally { emptyList() }
+    }
+
+    /** Memory-only native factory; no inventory, player, ledger or grant is involved. */
+    fun keyTemplate(keyId: String): ItemStack? {
+        check(org.bukkit.Bukkit.isPrimaryThread()) { "Native key templates require the Paper thread" }
+        if (!acquisitionReady() || !KeyGrantRequest.safeKeyId(keyId) || !CratesAPI.isLoaded()) return null
+        val key = CratesAPI.getKeyManager().getKeyById(keyId) ?: return null
+        if (key.isVirtual) return null
+        return keys.create(keyId, 1)
     }
 
     private fun acquisitionReady(): Boolean = !closed && ready && !configurationFailed
