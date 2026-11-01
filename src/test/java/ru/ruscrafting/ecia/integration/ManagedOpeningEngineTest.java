@@ -35,6 +35,51 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ManagedOpeningEngineTest {
+    @Test void inventoryMoveDuringKeyJournalWriteRejectsWithoutReviewAndNextOpenSucceeds() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            player.getInventory().setItem(0, new ItemStack(Material.TRIPWIRE_HOOK, 2));
+            player.getInventory().setItem(1, new ItemStack(Material.STONE, 5));
+            var ledger = new OpeningLedger(new MemoryStore(), Clock.systemUTC());
+            var codec = new NativeItemPayload();
+            var saves = new AtomicInteger();
+            var inventory = new OpeningInventoryTransactions(codec, p -> saves.incrementAndGet(), () -> true);
+            var reward = new RewardDefinition("prize", 1, "frozen", "preview");
+            var pool = new PoolSnapshot("daily", "launch", List.of(reward), 1, 0, 1);
+            var storage = new QueuedExecutor();
+            var engine = new ManagedOpeningEngine(ledger, new WeightedOfferGenerator(new Random(1)), inventory, codec,
+                    ignored -> new ItemStack[]{new ItemStack(Material.DIAMOND)}, storage, Runnable::run,
+                    (candidate, session) -> candidate.isOnline());
+            var attempt = engine.openPhysical(player, 1L, pool,
+                    item -> item.getType() == Material.TRIPWIRE_HOOK, 1);
+            storage.runNext(); // Plan the debit, leaving its journal write queued.
+            assertFalse(attempt.isDone());
+            player.getInventory().setItem(7, player.getInventory().getItem(1));
+            player.getInventory().setItem(1, null);
+            storage.runNext();
+            storage.runNext();
+
+            var rejected = attempt.join().orElseThrow();
+            assertEquals(OpeningRecord.Stage.ABORTED, rejected.stage());
+            assertTrue(ledger.active(player.getUniqueId()).isEmpty());
+            assertEquals(2, player.getInventory().getItem(0).getAmount());
+            assertNull(player.getInventory().getItem(1));
+            assertEquals(Material.STONE, player.getInventory().getItem(7).getType());
+            assertEquals(5, player.getInventory().getItem(7).getAmount());
+            assertEquals(0, saves.get(), "A stale first plan must not mutate or save player data");
+
+            var retry = engine.openPhysical(player, 1L, pool,
+                    item -> item.getType() == Material.TRIPWIRE_HOOK, 1);
+            storage.runNext();
+            storage.runNext();
+            storage.runNext();
+            assertEquals(OpeningRecord.Stage.CHOOSING, retry.join().orElseThrow().stage());
+            assertEquals(1, player.getInventory().getItem(0).getAmount());
+            assertEquals(5, player.getInventory().getItem(7).getAmount());
+            assertEquals(1, saves.get());
+        }
+    }
+
     @Test void inventoryMoveDuringDeliveryJournalWritePreservesItemsAndGrantsOnce() {
         try (var runtime = MockBukkitTestRuntime.Companion.open()) {
             var player = runtime.addPlayer("CrateQA");
@@ -129,9 +174,55 @@ class ManagedOpeningEngineTest {
                     inventory.applyFreshDelivery(player, witness, codec.items(reviewed.preparedReward())));
             assertThrows(java.util.concurrent.CompletionException.class,
                     () -> engine.claim(player, 1L, reviewed.id(), reviewed.revision()).join());
-            assertEquals(reviewed, engine.pending(player.getUniqueId()).join().orElseThrow());
+            assertTrue(engine.pending(player.getUniqueId()).join().isEmpty(), "A retained review must not block another opening");
+            assertEquals(reviewed, ledger.get(reviewed.id(), reviewed.playerId()));
             assertEquals(1, saves.get());
             assertEquals(2, player.getInventory().getItem(0).getAmount());
+
+            var recovered = engine.playerDataLoaded(player, 2L).join().orElseThrow();
+            assertEquals(OpeningRecord.Stage.DELIVERED, recovered.stage());
+            assertEquals("native-receipt-confirmed", recovered.reason());
+            assertEquals(1, saves.get(), "Receipt recovery must not repeat the native grant");
+            assertEquals(2, player.getInventory().getItem(0).getAmount());
+        }
+    }
+
+    @Test void retainedUnknownRewardDoesNotBlockNewOpeningOrReplayAfterReceiptChanges() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            player.getInventory().setItem(0, new ItemStack(Material.TRIPWIRE_HOOK, 2));
+            var ledger = new OpeningLedger(new MemoryStore(), Clock.systemUTC());
+            var codec = new NativeItemPayload();
+            var saves = new AtomicInteger();
+            var inventory = new OpeningInventoryTransactions(codec, ignored -> saves.incrementAndGet(), () -> true);
+            var mail = preparedMail(ledger, player.getUniqueId(), codec, new ItemStack(Material.SPECTRAL_ARROW, 32));
+            var witness = inventory.delivery(player, mail.id(), codec.items(mail.preparedReward())).orElseThrow();
+            var delivering = ledger.deliveryStarted(mail.id(), mail.playerId(), mail.revision(), codec.write(witness));
+            var reviewed = ledger.review(delivering.id(), delivering.playerId(), delivering.revision(),
+                    "native-reward-delivery-unconfirmed");
+            player.getInventory().setItem(10, new ItemStack(Material.STONE, 5));
+            var engine = engine(ledger, inventory, codec, ignored -> new ItemStack[]{new ItemStack(Material.DIAMOND)});
+
+            assertEquals(reviewed, engine.playerDataLoaded(player, 1L).join().orElseThrow());
+            assertTrue(engine.pending(player.getUniqueId()).join().isEmpty());
+            var opened = engine.openPhysical(player, 1L, mail.pool(),
+                    item -> item.getType() == Material.TRIPWIRE_HOOK, 1).join().orElseThrow();
+            assertEquals(OpeningRecord.Stage.CHOOSING, opened.stage());
+            assertEquals(opened, engine.playerDataLoaded(player, 1L).join().orElseThrow(),
+                    "The current opening must take priority over a retained review");
+            var selected = engine.select(player, opened.id(), opened.revision(), "prize").join();
+            var delivered = engine.claim(player, 1L, selected.id(), selected.revision()).join();
+            assertEquals(OpeningRecord.Stage.DELIVERED, delivered.stage());
+            assertEquals(1, player.getInventory().getItem(0).getAmount());
+            assertEquals(Material.DIAMOND, player.getInventory().getItem(1).getType());
+            assertEquals(5, player.getInventory().getItem(10).getAmount());
+
+            var beforeRecovery = codec.capture(player.getInventory().getContents());
+            assertEquals(reviewed, engine.playerDataLoaded(player, 2L).join().orElseThrow());
+            assertEquals(reviewed, ledger.get(reviewed.id(), reviewed.playerId()));
+            assertTrue(reviewed.pending(), "The unknown reward must remain in the durable recovery backlog");
+            assertEquals(beforeRecovery, codec.capture(player.getInventory().getContents()));
+            assertEquals(2, saves.get(), "Only the new key debit and new reward may save native data");
         }
     }
 

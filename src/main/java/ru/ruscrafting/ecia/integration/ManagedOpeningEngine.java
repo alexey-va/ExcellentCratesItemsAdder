@@ -128,8 +128,13 @@ public final class ManagedOpeningEngine {
                                                 if (periodId != null && java.util.Arrays.stream(player.getInventory().getContents())
                                                         .filter(Objects::nonNull).filter(item -> !item.isEmpty())
                                                         .noneMatch(matchingKey)) return OpeningInventoryTransactions.Outcome.NOT_APPLIED;
-                                                return inventory.apply(player,
-                                                        payload.read(record.keyWitness(), InventoryMutationWitness.class));
+                                                InventoryMutationWitness planned = witness(record.keyWitness(),
+                                                        InventoryMutationWitness.Kind.KEY_DEBIT, record.id(), playerId);
+                                                // This first apply has not run: ordinary slot changes can safely reject the stale plan.
+                                                if (inventory.inspect(player, planned) == OpeningInventoryTransactions.Outcome.UNKNOWN) {
+                                                    return OpeningInventoryTransactions.Outcome.NOT_APPLIED;
+                                                }
+                                                return inventory.apply(player, planned);
                                             })
                                             .thenCompose(outcome -> storage(() -> Optional.of(settleDebit(record, playerId, outcome))))));
         });
@@ -277,7 +282,7 @@ public final class ManagedOpeningEngine {
     }
 
     private CompletableFuture<Optional<OpeningRecord>> reconcile(UUID playerId, Player player, long session) {
-        return storage(() -> ledger.active(playerId)).thenCompose(active -> {
+        return storage(() -> ledger.active(playerId).or(() -> ledger.latestReview(playerId))).thenCompose(active -> {
             if (active.isEmpty() || active.get().stage() == OpeningRecord.Stage.CHOOSING) {
                 return CompletableFuture.completedFuture(active);
             }

@@ -187,8 +187,15 @@ public final class OpeningLedger {
     }
 
     public synchronized Optional<OpeningRecord> pending(UUID player) {
-        return records.values().stream().filter(r -> r.playerId().equals(player) && r.pending())
+        return records.values().stream().filter(r -> r.playerId().equals(player) && r.pending()
+                        && r.stage() != Stage.REVIEW)
                 .sorted(Comparator.comparingLong(OpeningRecord::createdAt)).findFirst();
+    }
+
+    /** A reviewed side effect remains recoverable without blocking unrelated openings. */
+    public synchronized Optional<OpeningRecord> latestReview(UUID player) {
+        return records.values().stream().filter(r -> r.playerId().equals(player) && r.stage() == Stage.REVIEW)
+                .max(Comparator.comparingLong(OpeningRecord::createdAt).thenComparing(OpeningRecord::id));
     }
 
     /** Resolve only from a freshly loaded native player-data receipt or an exact preimage. */
@@ -199,6 +206,9 @@ public final class OpeningLedger {
         boolean debit = record.selectedRewardId().isEmpty();
         Stage target = debit ? (applied ? Stage.CHOOSING : Stage.ABORTED)
                 : (applied ? Stage.DELIVERED : Stage.MAIL);
+        if (target == Stage.CHOOSING && active(player).isPresent()) {
+            throw new IllegalStateException("Finish the active opening before recovering an earlier key debit");
+        }
         return change(record, target, record.offers(), record.rerollsUsed(),
                 record.selectedRewardId(), record.preparedReward(),
                 target == Stage.MAIL ? "" : record.deliveryWitness(), evidence);
@@ -209,7 +219,7 @@ public final class OpeningLedger {
     }
 
     private static boolean blocksOpening(OpeningRecord record) {
-        return record.pending() && record.stage() != Stage.MAIL;
+        return record.pending() && record.stage() != Stage.MAIL && record.stage() != Stage.REVIEW;
     }
 
     public synchronized OpeningRecord get(UUID id, UUID player) {

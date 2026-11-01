@@ -112,6 +112,48 @@ class OpeningInventoryTransactionsTest {
         }
     }
 
+    @Test void failedSaveDoesNotBlockOtherOpeningsOrReplayAnOverwrittenReceipt() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            var player = runtime.addPlayer("CrateQA");
+            var saves = new AtomicInteger();
+            var transactions = new OpeningInventoryTransactions(new NativeItemPayload(), p -> {
+                if (saves.incrementAndGet() == 1) throw new IllegalStateException("Native save failed");
+            }, () -> true);
+            var oldRewards = new ItemStack[]{new ItemStack(Material.DIAMOND, 2)};
+            var old = transactions.delivery(player, UUID.randomUUID(), oldRewards).orElseThrow();
+            assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN,
+                    transactions.applyFreshDelivery(player, old, oldRewards));
+
+            player.getInventory().setItem(10, new ItemStack(Material.TRIPWIRE_HOOK, 2));
+            var nextDebit = transactions.debit(player, UUID.randomUUID(),
+                    item -> item.getType() == Material.TRIPWIRE_HOOK, 1).orElseThrow();
+            assertEquals(OpeningInventoryTransactions.Outcome.APPLIED, transactions.apply(player, nextDebit));
+            assertEquals(1, player.getInventory().getItem(10).getAmount());
+            assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN, transactions.inspect(player, old),
+                    "An unrelated successful save must not release the old operation's uncertainty");
+            assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN,
+                    transactions.applyFreshDelivery(player, old, oldRewards));
+            assertEquals(2, saves.get());
+
+            transactions.playerDataLoaded(player);
+            assertEquals(OpeningInventoryTransactions.Outcome.APPLIED, transactions.inspect(player, old));
+            var newRewards = new ItemStack[]{new ItemStack(Material.EMERALD, 3)};
+            var nextReward = transactions.delivery(player, UUID.randomUUID(), newRewards).orElseThrow();
+            assertEquals(OpeningInventoryTransactions.Outcome.APPLIED,
+                    transactions.applyFreshDelivery(player, nextReward, newRewards));
+            transactions.playerDataLoaded(player);
+            assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN, transactions.inspect(player, old));
+            assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN, transactions.apply(player, old));
+            assertEquals(OpeningInventoryTransactions.Outcome.UNKNOWN,
+                    transactions.applyFreshDelivery(player, old, oldRewards));
+            assertEquals(2, player.getInventory().getItem(0).getAmount());
+            assertEquals(Material.DIAMOND, player.getInventory().getItem(0).getType());
+            assertEquals(3, player.getInventory().getItem(1).getAmount());
+            assertEquals(Material.EMERALD, player.getInventory().getItem(1).getType());
+            assertEquals(3, saves.get());
+        }
+    }
+
     private static final class NonCanonicalItemCodec implements PaperItemStackBinaryCodec {
         private final AtomicInteger sequence = new AtomicInteger();
         @Override public byte[] encodeItems(List<? extends ItemStack> items) {

@@ -192,8 +192,14 @@ legacy `ecia:season` metadata is ignored for new openings.
 The addon durably records an opening before key debit and records the exact
 reward payload before delivery. Exact inventory preimages and saved player
 receipts distinguish committed actions from actions proven not to have happened.
-An uncertain disk/player-save result blocks automatic replay and enters review.
-Rejoining allows reconciliation against freshly loaded player data. Keep both
+An uncertain disk/player-save result enters review and blocks replay of that
+operation, while other openings and calendar key grants remain available.
+Inventory changes before the first key debit abort that attempt without consuming
+the key. Rejoining reconciles the latest reviewed operation against freshly loaded
+player data; a newer receipt can leave an older review for operator resolution.
+The console-only `arc-crate resolve <opening-uuid>` closes a reviewed reward only
+after its exact reward has been compensated through native issuance; it grants
+no items itself. Keep both
 the addon data directory and ARC's `data/reward-physical-archive` in backups.
 Journal I/O failures remain fail-closed across settings reloads; after repairing
 storage, restart the plugin runtime to reload and reconcile the journal. Never

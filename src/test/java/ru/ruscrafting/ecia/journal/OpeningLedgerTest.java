@@ -87,6 +87,54 @@ class OpeningLedgerTest {
                 () -> ledger.deliveryConfirmed(done.id(), PLAYER, done.revision()));
     }
 
+    @Test void reviewedOpeningsRemainRecordedWithoutBlockingNewOpeningsAfterRestart() {
+        MemoryStore store = new MemoryStore();
+        OpeningLedger ledger = new OpeningLedger(store, CLOCK);
+        OpeningRecord first = ready(ledger);
+        first = ledger.select(first.id(), PLAYER, first.revision(), RARE.id());
+        first = ledger.prepared(first.id(), PLAYER, first.revision(), "native-prize");
+        first = ledger.deliveryStarted(first.id(), PLAYER, first.revision(), "delivery-witness");
+        OpeningRecord rewardReview = ledger.review(first.id(), PLAYER, first.revision(), "unconfirmed-delivery");
+        assertTrue(rewardReview.pending(), "Review still counts as an unresolved entitlement");
+        assertTrue(ledger.pending(PLAYER).isEmpty());
+        assertTrue(ledger.active(PLAYER).isEmpty());
+
+        OpeningRecord second = reserve(ledger);
+        OpeningRecord debitReview = ledger.review(second.id(), PLAYER, second.revision(), "unconfirmed-debit");
+        OpeningRecord current = reserve(ledger);
+        OpeningLedger restarted = new OpeningLedger(store, CLOCK);
+        assertEquals(current, restarted.pending(PLAYER).orElseThrow());
+        assertEquals(current, restarted.active(PLAYER).orElseThrow());
+        assertEquals(debitReview, restarted.latestReview(PLAYER).orElseThrow());
+        assertTrue(restarted.latestReview(UUID.randomUUID()).isEmpty());
+        assertEquals(rewardReview, restarted.get(rewardReview.id(), PLAYER));
+        assertFalse(restarted.canSpendPeriodicKey(rewardReview.id()));
+        assertEquals(3, restarted.history(PLAYER, 0, 10).size());
+
+        OpeningRecord resolved = restarted.reconciled(rewardReview.id(), PLAYER, rewardReview.revision(),
+                true, "native-receipt-confirmed");
+        assertEquals(OpeningRecord.Stage.DELIVERED, resolved.stage());
+        assertEquals(current, restarted.active(PLAYER).orElseThrow());
+    }
+
+    @Test void reviewedDebitCannotBecomeChoosingWhileAnotherOpeningIsActive() {
+        OpeningLedger ledger = new OpeningLedger(new MemoryStore(), CLOCK);
+        OpeningRecord first = reserve(ledger);
+        OpeningRecord review = ledger.review(first.id(), PLAYER, first.revision(), "unconfirmed-debit");
+        OpeningRecord current = ready(ledger);
+
+        assertThrows(IllegalStateException.class,
+                () -> ledger.reconciled(review.id(), PLAYER, review.revision(), true, "native-receipt-confirmed"));
+        assertEquals(review, ledger.get(review.id(), PLAYER));
+        assertEquals(current, ledger.active(PLAYER).orElseThrow());
+
+        ledger.select(current.id(), PLAYER, current.revision(), COMMON.id());
+        OpeningRecord recovered = ledger.reconciled(review.id(), PLAYER, review.revision(),
+                true, "native-receipt-confirmed");
+        assertEquals(OpeningRecord.Stage.CHOOSING, recovered.stage());
+        assertEquals(recovered, ledger.active(PLAYER).orElseThrow());
+    }
+
     @Test void failedStoreCommitLeavesLastConfirmedStateInMemory() {
         MemoryStore store = new MemoryStore();
         OpeningLedger ledger = new OpeningLedger(store, CLOCK);

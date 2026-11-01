@@ -11,6 +11,7 @@ import ru.ruscrafting.ecia.inventory.NativeItemPayload;
 import ru.ruscrafting.ecia.inventory.OpeningInventoryTransactions;
 import ru.ruscrafting.ecia.journal.DurableOpeningStore;
 import ru.ruscrafting.ecia.journal.OpeningLedger;
+import ru.ruscrafting.ecia.journal.OpeningRecord;
 import ru.ruscrafting.ecia.journal.PeriodicKeyGrant;
 import ru.ruscrafting.ecia.journal.PeriodicKeyLedger;
 import ru.ruscrafting.ecia.roll.PoolSnapshot;
@@ -279,6 +280,82 @@ class PeriodicKeyIssuerTest {
             assertTrue(grants.get(PeriodicVirtualOpening.openingId(
                     player.getUniqueId(), CRATE, current.period(), current)).isEmpty());
             assertTrue(openings.pending(player.getUniqueId()).isPresent());
+        }
+    }
+
+    @Test
+    void reviewedRewardDoesNotDenyDailyKeyOrLoseItsConfirmedNativeReceipt() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            Player player = runtime.addPlayer("PeriodicKeys");
+            MutableClock clock = new MutableClock(Instant.parse("2026-09-25T12:00:00Z"), ZoneId.of("UTC"));
+            PeriodicKeyLedger grants = new PeriodicKeyLedger(directory);
+            OpeningLedger openings = new OpeningLedger(new DurableOpeningStore(directory), clock);
+            AtomicInteger nativeSaves = new AtomicInteger();
+            NativeItemPayload payload = new NativeItemPayload();
+            OpeningInventoryTransactions rewardInventory = new OpeningInventoryTransactions(
+                    payload, p -> nativeSaves.incrementAndGet(), () -> true);
+            rewardInventory.playerDataLoaded(player);
+            PoolSnapshot pool = pool(OTHER_CRATE);
+            OpeningRecord opening = openings.reserve(UUID.randomUUID(), player.getUniqueId(),
+                    pool, pool.rewards(), "native-key-witness");
+            opening = openings.debitConfirmed(opening.id(), player.getUniqueId(), opening.revision());
+            opening = openings.select(opening.id(), player.getUniqueId(), opening.revision(), "prize");
+            ItemStack[] reward = {new ItemStack(Material.DIAMOND)};
+            opening = openings.prepared(opening.id(), player.getUniqueId(), opening.revision(), payload.items(reward));
+            var witness = rewardInventory.delivery(player, opening.id(), reward).orElseThrow();
+            opening = openings.deliveryStarted(opening.id(), player.getUniqueId(), opening.revision(), payload.write(witness));
+            assertEquals(OpeningInventoryTransactions.Outcome.APPLIED, rewardInventory.apply(player, witness));
+            OpeningRecord review = openings.review(opening.id(), player.getUniqueId(), opening.revision(),
+                    "native-reward-delivery-unconfirmed");
+            IssuerFixture fixture = fixture(grants, openings, clock, p -> nativeSaves.incrementAndGet());
+            fixture.issuer().playerDataLoaded(player);
+            PeriodicVirtualOpening.Window current = window(clock, PeriodicVirtualOpening.Period.DAILY);
+
+            assertEquals(PeriodicKeyIssuer.Result.DELIVERED, grant(fixture.issuer(), player, current));
+            assertEquals(PeriodicKeyIssuer.Result.ALREADY_DELIVERED, grant(fixture.issuer(), player, current));
+
+            assertEquals(1, periodicKeys(player).size());
+            assertEquals(Material.DIAMOND, player.getInventory().getItem(0).getType());
+            assertEquals(review, openings.get(review.id(), player.getUniqueId()), "The retained review is unchanged");
+            assertEquals(OpeningInventoryTransactions.Outcome.APPLIED, rewardInventory.inspect(player, witness),
+                    "Periodic keys must preserve the independent reward-delivery receipt");
+            assertEquals(2, nativeSaves.get(), "One reward and one daily key are persisted; neither is replayed");
+        }
+    }
+
+    @Test
+    void activeNativeMutationBehindOlderReviewStillDefersDailyKey() {
+        try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+            for (OpeningRecord.Stage stage : List.of(OpeningRecord.Stage.RESERVED, OpeningRecord.Stage.DELIVERING)) {
+                Player player = runtime.addPlayer("Daily" + stage.name());
+                MutableClock clock = new MutableClock(Instant.parse("2026-09-25T12:00:00Z"), ZoneId.of("UTC"));
+                Path data = directory.resolve(stage.name());
+                PeriodicKeyLedger grants = new PeriodicKeyLedger(data);
+                OpeningLedger openings = new OpeningLedger(new DurableOpeningStore(data), clock);
+                PoolSnapshot pool = pool(OTHER_CRATE);
+                OpeningRecord old = openings.reserve(UUID.randomUUID(), player.getUniqueId(),
+                        pool, pool.rewards(), "old-native-key-witness");
+                OpeningRecord review = openings.review(old.id(), player.getUniqueId(), old.revision(), "old-outcome-unknown");
+                OpeningRecord active = openings.reserve(UUID.randomUUID(), player.getUniqueId(),
+                        pool, pool.rewards(), "current-native-key-witness");
+                if (stage == OpeningRecord.Stage.DELIVERING) {
+                    active = openings.debitConfirmed(active.id(), player.getUniqueId(), active.revision());
+                    active = openings.select(active.id(), player.getUniqueId(), active.revision(), "prize");
+                    active = openings.prepared(active.id(), player.getUniqueId(), active.revision(), "native-reward");
+                    active = openings.deliveryStarted(active.id(), player.getUniqueId(), active.revision(), "native-delivery-witness");
+                }
+                IssuerFixture fixture = fixture(grants, openings, clock, p -> fail("Active native mutation must defer a key grant"));
+                fixture.issuer().playerDataLoaded(player);
+                PeriodicVirtualOpening.Window current = window(clock, PeriodicVirtualOpening.Period.DAILY);
+
+                assertEquals(PeriodicKeyIssuer.Result.RETRY, grant(fixture.issuer(), player, current), stage.name());
+
+                assertTrue(periodicKeys(player).isEmpty());
+                assertTrue(grants.get(PeriodicVirtualOpening.openingId(
+                        player.getUniqueId(), CRATE, current.period(), current)).isEmpty());
+                assertEquals(active, openings.pending(player.getUniqueId()).orElseThrow());
+                assertEquals(review, openings.get(review.id(), player.getUniqueId()));
+            }
         }
     }
 

@@ -28,7 +28,8 @@ public final class OpeningInventoryTransactions {
     private final NativeItemPayload payload;
     private final PaperPlayerDataPersistence persistence;
     private final BooleanSupplier primaryThread;
-    private final Set<UUID> uncertainPlayers = new HashSet<>();
+    // A later successful operation cannot confirm an earlier failed native save.
+    private final Map<UUID, Set<UUID>> uncertainOpenings = new HashMap<>();
     private final Set<UUID> loadedPlayers = new HashSet<>();
     private final Map<UUID, UUID> livePlans = new HashMap<>();
     private final NamespacedKey debitReceipt = Objects.requireNonNull(NamespacedKey.fromString("ecia:last_key_debit"));
@@ -142,7 +143,7 @@ public final class OpeningInventoryTransactions {
     public Outcome inspect(Player player, InventoryMutationWitness witness) {
         requirePlayer(player);
         if (!player.getUniqueId().equals(witness.playerId())) throw new IllegalArgumentException("Wrong witness owner");
-        if (uncertainPlayers.contains(player.getUniqueId())) return Outcome.UNKNOWN;
+        if (uncertainOpenings.getOrDefault(player.getUniqueId(), Set.of()).contains(witness.openingId())) return Outcome.UNKNOWN;
         if (!loadedPlayers.contains(player.getUniqueId())
                 && !witness.openingId().equals(livePlans.get(player.getUniqueId()))) return Outcome.UNKNOWN;
         String receipt = receipt(player, witness.kind());
@@ -159,7 +160,7 @@ public final class OpeningInventoryTransactions {
             ItemStack[] after = payload.restore(witness.after());
             player.getInventory().setContents(after);
             if (!sameInventory(player.getInventory().getContents(), after)) {
-                uncertainPlayers.add(player.getUniqueId());
+                uncertainOpenings.computeIfAbsent(player.getUniqueId(), ignored -> new HashSet<>()).add(witness.openingId());
                 return Outcome.UNKNOWN;
             }
             player.getPersistentDataContainer().set(receiptKey(witness.kind()), PersistentDataType.STRING, witness.receipt());
@@ -170,7 +171,7 @@ public final class OpeningInventoryTransactions {
         } catch (RuntimeException failure) {
             // The mutation or native save may have succeeded. The journal stays
             // unresolved until a fresh player-data load can establish its receipt.
-            uncertainPlayers.add(player.getUniqueId());
+            uncertainOpenings.computeIfAbsent(player.getUniqueId(), ignored -> new HashSet<>()).add(witness.openingId());
             return Outcome.UNKNOWN;
         }
     }
@@ -183,7 +184,7 @@ public final class OpeningInventoryTransactions {
             throw new IllegalArgumentException("Wrong reward delivery witness");
         }
         UUID playerId = player.getUniqueId();
-        if (uncertainPlayers.contains(playerId)) return Outcome.UNKNOWN;
+        if (uncertainOpenings.getOrDefault(playerId, Set.of()).contains(persistedWitness.openingId())) return Outcome.UNKNOWN;
         boolean livePlan = persistedWitness.openingId().equals(livePlans.get(playerId));
         if (!livePlan && !loadedPlayers.contains(playerId)) return Outcome.UNKNOWN;
         String receipt = receipt(player, persistedWitness.kind());
@@ -196,13 +197,13 @@ public final class OpeningInventoryTransactions {
     /** Call only after native player data was loaded anew, never on a menu refresh. */
     public void playerDataLoaded(Player player) {
         requirePlayer(player);
-        uncertainPlayers.remove(player.getUniqueId());
+        uncertainOpenings.remove(player.getUniqueId());
         livePlans.remove(player.getUniqueId());
         loadedPlayers.add(player.getUniqueId());
     }
 
     public void playerLeft(UUID playerId) {
-        uncertainPlayers.remove(playerId);
+        uncertainOpenings.remove(playerId);
         loadedPlayers.remove(playerId);
         livePlans.remove(playerId);
     }
