@@ -35,6 +35,73 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ManagedOpeningEngineTest {
+    @Test void ordinaryRetryHealsInterruptedKeyDebitFromItsReceiptOrPreimage() {
+        for (boolean applied : new boolean[]{false, true}) {
+            try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+                var player = runtime.addPlayer("CrateQA");
+                player.getInventory().setItem(0, new ItemStack(Material.TRIPWIRE_HOOK, 2));
+                var ledger = new OpeningLedger(new MemoryStore(), Clock.systemUTC());
+                var codec = new NativeItemPayload();
+                var saves = new AtomicInteger();
+                var inventory = new OpeningInventoryTransactions(codec, ignored -> saves.incrementAndGet(), () -> true);
+                var reward = new RewardDefinition("prize", 1, "frozen", "preview");
+                var pool = new PoolSnapshot("daily", "launch", List.of(reward), 1, 0, 1);
+                var planned = inventory.debit(player, UUID.randomUUID(),
+                        item -> item.getType() == Material.TRIPWIRE_HOOK, 1).orElseThrow();
+                var interrupted = ledger.reserve(planned.openingId(), player.getUniqueId(), pool,
+                        List.of(reward), codec.write(planned));
+                if (applied) assertEquals(OpeningInventoryTransactions.Outcome.APPLIED, inventory.apply(player, planned));
+                var engine = engine(ledger, inventory, codec, ignored -> new ItemStack[]{new ItemStack(Material.DIAMOND)});
+
+                var resumed = engine.openPhysical(player, 1L, pool,
+                        item -> item.getType() == Material.TRIPWIRE_HOOK, 1).join().orElseThrow();
+                assertEquals(OpeningRecord.Stage.CHOOSING, resumed.stage());
+                assertEquals(1, player.getInventory().getItem(0).getAmount());
+                assertEquals(1, saves.get(), "The retry must charge exactly one key across both attempts");
+                assertEquals(applied ? OpeningRecord.Stage.CHOOSING : OpeningRecord.Stage.ABORTED,
+                        ledger.get(interrupted.id(), interrupted.playerId()).stage());
+                assertEquals(applied, interrupted.id().equals(resumed.id()));
+                assertEquals(resumed, engine.openPhysical(player, 1L, pool,
+                        item -> item.getType() == Material.TRIPWIRE_HOOK, 1).join().orElseThrow());
+                assertEquals(1, saves.get());
+            }
+        }
+    }
+
+    @Test void ordinaryRetryHealsInterruptedRewardDeliveryWithoutRepeatingTheGrant() {
+        for (boolean applied : new boolean[]{false, true}) {
+            try (var runtime = MockBukkitTestRuntime.Companion.open()) {
+                var player = runtime.addPlayer("CrateQA");
+                var ledger = new OpeningLedger(new MemoryStore(), Clock.systemUTC());
+                var codec = new NativeItemPayload();
+                var saves = new AtomicInteger();
+                var inventory = new OpeningInventoryTransactions(codec, ignored -> saves.incrementAndGet(), () -> true);
+                var mail = preparedMail(ledger, player.getUniqueId(), codec, new ItemStack(Material.DIAMOND, 2));
+                var planned = inventory.delivery(player, mail.id(), codec.items(mail.preparedReward())).orElseThrow();
+                var interrupted = ledger.deliveryStarted(mail.id(), mail.playerId(), mail.revision(), codec.write(planned));
+                if (applied) assertEquals(OpeningInventoryTransactions.Outcome.APPLIED, inventory.apply(player, planned));
+                var engine = engine(ledger, inventory, codec, ignored -> { throw new AssertionError("Already prepared"); });
+
+                var retry = engine.openPhysical(player, 1L, mail.pool(),
+                        item -> item.getType() == Material.TRIPWIRE_HOOK, 1).join();
+                if (applied) {
+                    assertTrue(retry.isEmpty(), "A completed delivery must not demand another key");
+                } else {
+                    var resumed = retry.orElseThrow();
+                    assertEquals(OpeningRecord.Stage.MAIL, resumed.stage());
+                    assertEquals(mail.id(), resumed.id());
+                    assertEquals(OpeningRecord.Stage.DELIVERED,
+                            engine.claim(player, 1L, resumed.id(), resumed.revision()).join().stage());
+                }
+                assertEquals(OpeningRecord.Stage.DELIVERED, ledger.get(interrupted.id(), interrupted.playerId()).stage());
+                assertEquals(2, player.getInventory().getItem(0).getAmount());
+                assertEquals(1, saves.get());
+                assertTrue(engine.recover(player, 1L).join().isEmpty());
+                assertEquals(1, saves.get());
+            }
+        }
+    }
+
     @Test void inventoryMoveDuringKeyJournalWriteRejectsWithoutReviewAndNextOpenSucceeds() {
         try (var runtime = MockBukkitTestRuntime.Companion.open()) {
             var player = runtime.addPlayer("CrateQA");
@@ -52,6 +119,7 @@ class ManagedOpeningEngineTest {
                     (candidate, session) -> candidate.isOnline());
             var attempt = engine.openPhysical(player, 1L, pool,
                     item -> item.getType() == Material.TRIPWIRE_HOOK, 1);
+            storage.runNext(); // Check for an interrupted prior operation.
             storage.runNext(); // Plan the debit, leaving its journal write queued.
             assertFalse(attempt.isDone());
             player.getInventory().setItem(7, player.getInventory().getItem(1));
@@ -70,6 +138,7 @@ class ManagedOpeningEngineTest {
 
             var retry = engine.openPhysical(player, 1L, pool,
                     item -> item.getType() == Material.TRIPWIRE_HOOK, 1);
+            storage.runNext();
             storage.runNext();
             storage.runNext();
             storage.runNext();
@@ -176,6 +245,8 @@ class ManagedOpeningEngineTest {
                     () -> engine.claim(player, 1L, reviewed.id(), reviewed.revision()).join());
             assertTrue(engine.pending(player.getUniqueId()).join().isEmpty(), "A retained review must not block another opening");
             assertEquals(reviewed, ledger.get(reviewed.id(), reviewed.playerId()));
+            assertEquals(reviewed, engine.recover(player, 1L).join().orElseThrow(),
+                    "Ordinary recovery must not clear native-save uncertainty");
             assertEquals(1, saves.get());
             assertEquals(2, player.getInventory().getItem(0).getAmount());
 

@@ -175,6 +175,7 @@ class ManagedCratesService(
                             || activePlayers[player.uniqueId] !== player || !inFlight.add(player.uniqueId)) return null
                         return session(player.uniqueId)
                     }
+                    override fun recover(player: Player, session: Long) = checkNotNull(engine).recover(player, session)
                     override fun current(player: Player, session: Long) = isCurrentSession(player, session)
                     override fun release(player: Player, session: Long) {
                         if (isCurrentSession(player, session)) inFlight.remove(player.uniqueId)

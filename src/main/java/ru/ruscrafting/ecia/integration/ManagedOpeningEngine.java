@@ -103,8 +103,8 @@ public final class ManagedOpeningEngine {
     private CompletableFuture<Optional<OpeningRecord>> openPhysical(Player player, long session, PoolSnapshot pool,
             Predicate<ItemStack> matchingKey, int keyAmount, UUID periodId) {
         UUID playerId = player.getUniqueId();
-        return storage(() -> new PhysicalStart(ledger.pending(playerId),
-                periodId == null || ledger.canSpendPeriodicKey(periodId))).thenCompose(start -> {
+        return recover(player, session).thenCompose(ignored -> storage(() -> new PhysicalStart(ledger.pending(playerId),
+                periodId == null || ledger.canSpendPeriodicKey(periodId)))).thenCompose(start -> {
             var pending = start.pending();
             // Resume any durable opening (including claimable MAIL) before a new
             // physical debit. MAIL is intentionally not considered active by the
@@ -243,6 +243,11 @@ public final class ManagedOpeningEngine {
             inventory.playerDataLoaded(player);
             return null;
         }).thenCompose(ignored -> reconcile(playerId, player, session));
+    }
+
+    /** Retry under the caller's exclusive player access without trusting an uncertain in-memory receipt. */
+    public CompletableFuture<Optional<OpeningRecord>> recover(Player player, long session) {
+        return reconcile(player.getUniqueId(), player, session);
     }
 
     public CompletableFuture<Optional<OpeningRecord>> active(UUID playerId) {

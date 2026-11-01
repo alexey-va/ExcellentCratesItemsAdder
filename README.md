@@ -194,6 +194,9 @@ reward payload before delivery. Exact inventory preimages and saved player
 receipts distinguish committed actions from actions proven not to have happened.
 An uncertain disk/player-save result enters review and blocks replay of that
 operation, while other openings and calendar key grants remain available.
+Ordinary opening retries and periodic key checks automatically reconcile an
+interrupted debit or delivery; neither a reconnect nor an operator command is
+needed to release its blocking state.
 Inventory changes before the first key debit abort that attempt without consuming
 the key. Rejoining reconciles the latest reviewed operation against freshly loaded
 player data; a newer receipt can leave an older review for operator resolution.

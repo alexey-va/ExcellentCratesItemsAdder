@@ -29,6 +29,7 @@ internal class PeriodicKeysService(
 ) : AutoCloseable {
     interface PlayerAccess {
         fun acquire(player: Player): Long?
+        fun recover(player: Player, session: Long): CompletableFuture<*>
         fun current(player: Player, session: Long): Boolean
         fun release(player: Player, session: Long)
     }
@@ -106,7 +107,7 @@ internal class PeriodicKeysService(
             val session = access.acquire(player) ?: return
             val received = mutableListOf<Pair<ManagedCratesSettings.CaseSettings, String>>()
             var noticeDay: LocalDate? = null
-            var chain = CompletableFuture.completedFuture(true)
+            var chain = access.recover(player, session).thenApply { true }
             for ((case, window) in windows) {
                 val grantId = PeriodicVirtualOpening.openingId(id, case.crateId(), window.period(), window)
                 if (grantId in done) continue
