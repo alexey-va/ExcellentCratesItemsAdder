@@ -263,7 +263,7 @@ public final class ManagedOpeningEngine {
     }
 
     public CompletableFuture<Integer> pendingCount() {
-        return storage(() -> (int) ledger.snapshot().stream().filter(OpeningRecord::pending).count());
+        return storage(ledger::pendingCount);
     }
 
     public CompletableFuture<Boolean> available() {
@@ -273,8 +273,7 @@ public final class ManagedOpeningEngine {
     /** A console operator has already compensated this reviewed reward through native issuance. */
     public CompletableFuture<OpeningRecord> resolveCompensatedOpening(UUID id) {
         return storage(() -> {
-            OpeningRecord record = ledger.snapshot().stream().filter(value -> value.id().equals(id)).findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException("Unknown opening"));
+            OpeningRecord record = ledger.get(id);
             if (record.stage() != OpeningRecord.Stage.REVIEW || record.selectedRewardId().isEmpty()
                     || record.preparedReward().isEmpty() || record.deliveryWitness().isEmpty()) {
                 throw new IllegalStateException("Only a reviewed prepared reward can be resolved after manual compensation");

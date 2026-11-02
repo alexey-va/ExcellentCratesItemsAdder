@@ -155,7 +155,7 @@ class ManagedCratesService(
             val opened = OpeningLedger(DurableOpeningStore(root), Clock.systemUTC())
             val grants = PeriodicKeyLedger(root)
             LoadedLedger(opened, grants, grants.deliveredIds(),
-                opened.snapshot().count { it.pending() }, opened.available())
+                opened.pendingCount(), opened.available())
         }.whenCompleteSync(lifecycleTasks, lifecycleToken) { loaded, failure ->
             ledgerLoadInProgress = false
             if (failure != null) {

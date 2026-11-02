@@ -10,6 +10,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 /** Opening records use Core's fsync/readback boundary; no native item serialization is reinvented here. */
 public final class DurableOpeningStore implements OpeningStore {
@@ -32,6 +34,15 @@ public final class DurableOpeningStore implements OpeningStore {
             }
             return record.getValue();
         }).toList();
+    }
+
+    @Override
+    public Optional<OpeningRecord> find(UUID id) {
+        OpeningRecord record = journal.loadOrNull(id.toString());
+        if (record != null && !record.id().equals(id)) {
+            throw new IllegalStateException("Opening journal identity mismatch");
+        }
+        return Optional.ofNullable(record);
     }
 
     @Override

@@ -211,6 +211,13 @@ Journal I/O failures remain fail-closed across settings reloads; after repairing
 storage, restart the plugin runtime to reload and reconcile the journal. Never
 delete a journal to reset a player's quota or clear an uncertain delivery.
 
+After a `DELIVERED` commit passes exact durable readback, memory retains only
+its identity, timestamps, revision and virtual-period flag. The full JSON stays
+unchanged in `openings/`; history loads only its requested page on the storage
+executor. A missing or mismatched archive refuses that read while its compact
+receipt continues to prevent replay. All other stages retain their full frozen
+records, including claimable mail, reviews and aborted debit retries.
+
 Removing an anchor uses ExcellentCrates' native position mutators because its
 position getter returns a copy. Idle displays and holograms also stop rendering
 when the saved point no longer contains a block or ItemsAdder furniture; this

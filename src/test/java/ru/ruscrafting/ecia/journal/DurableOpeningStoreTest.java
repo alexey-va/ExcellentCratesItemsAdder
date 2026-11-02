@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -36,5 +37,21 @@ class DurableOpeningStoreTest {
         Files.writeString(directory.resolve("openings").resolve(UUID.randomUUID() + ".json"), "{}");
         assertThrows(RuntimeException.class,
                 () -> new OpeningLedger(new DurableOpeningStore(directory), CLOCK));
+    }
+
+    @Test void exactLookupDoesNotScanOtherFilesAndChecksTheFilenameIdentity() throws Exception {
+        DurableOpeningStore store = new DurableOpeningStore(directory);
+        OpeningLedger ledger = new OpeningLedger(store, CLOCK);
+        OpeningRecord first = ready(ledger);
+        first = ledger.select(first.id(), PLAYER, first.revision(), COMMON.id());
+        OpeningRecord second = ready(ledger);
+        Path firstFile = directory.resolve("openings").resolve(first.id() + ".json");
+        Path secondFile = directory.resolve("openings").resolve(second.id() + ".json");
+        Files.writeString(secondFile, "{broken");
+
+        assertEquals(first, store.find(first.id()).orElseThrow());
+        assertTrue(store.find(UUID.randomUUID()).isEmpty());
+        Files.copy(firstFile, secondFile, StandardCopyOption.REPLACE_EXISTING);
+        assertThrows(IllegalStateException.class, () -> store.find(second.id()));
     }
 }
