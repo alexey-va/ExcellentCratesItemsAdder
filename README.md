@@ -20,7 +20,10 @@ unexpected listener layout. The build verifies the official EC binary SHA-256.
 ## Protection and installation
 
 Place the plugin JAR in `plugins/` and restart. All ExcellentCrates
-`Block.Positions` entries are reread every five seconds. Matching furniture
+crate files are checked every five seconds. Byte-identical files reuse their
+parsed `Block.Positions`; content changes are detected even when file size and
+timestamp stay unchanged. Deleted, unreadable or invalid files lose their cached
+positions on the next refresh. Matching furniture
 entities are protected; ordinary furniture is unaffected. Left click opens the
 crate preview. Shift + left-click opens the per-anchor visual editor for an
 administrator. The old `/ecia` command is not registered.
