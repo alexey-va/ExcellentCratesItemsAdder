@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "title": "Seven-day network-inactive crate MAIL expiry",
+  "assumptions": [
+    "Owner explicitly authorized forfeiting unclaimed MAIL after seven days of network inactivity. Before: no inactivity expiry. After: only MAIL, unchanged revision, max(network lastSeen, MAIL.updatedAt) at least 604800000 ms old, absent from a complete proxy-origin roster received at most 10000 ms ago.",
+    "Unknown, future or failed activity; missing, malformed, foreign or stale roster; an online player on any backend; DELIVERING/REVIEW; or uncertain storage always retain the entitlement.",
+    "One participant per distinct named entitlement unit. These are separate one-owner cohorts; the calculator does not sum different reward units. The observed cohort contains two eligible MAIL rights and one recent right that must remain.",
+    "Base/high describe eligibility of the observed one-time cohort, not an ongoing daily reward frequency. Each named entitlement has a one-unit network weekly ceiling in this assessment. Future unclaimed-mail rates are unknown.",
+    "The two eligible selections are case_weekly/ae_black_scrolls_4 and case_weekly/ae_randomizers_8; the recent case_weekly/weekly_gift_choice remains. Each has empty preparedReward and deliveryWitness. Exact inner item counts and any SELL value are unverified and are not inferred from identifiers.",
+    "No price, weight, bundle contents, key costs, roll count, refund, direct money payout or currency conversion changes. Expired IDs remain spent forever. SELL/AutoSell and the planned SELL-to-contract transition remain unchanged.",
+    "Conditional forfeiture removes a future item-claim liability. It creates no currency burn: no existing Vault, token, crystal or XP balance is touched. Indirect sale/redemption value is unknown and not added to the direct delta.",
+    "No price accumulation or full-set progression changes; low/base/high active play and earning rates are irrelevant to this one-time conditional liability removal. Exploit ceiling: at most each already-spent opening can expire once, with durable readback before compaction; no reroll, duplicate payout or ABORTED retry."
+  ],
+  "participants": [
+    1,
+    1,
+    1
+  ],
+  "currencies": {
+    "vault": {
+      "minor_per_unit": 100,
+      "flows": []
+    },
+    "tokens": {
+      "minor_per_unit": 1,
+      "flows": []
+    },
+    "crystals": {
+      "minor_per_unit": 1,
+      "flows": []
+    },
+    "xp": {
+      "minor_per_unit": 1,
+      "flows": []
+    },
+    "ae_black_scrolls_bundle_entitlement": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "ae_black_scrolls_4",
+          "kind": "liability",
+          "source": "Spawn openings/ MAIL read-only review 2026-11-03; selected ae_black_scrolls_4",
+          "basis": "One existing selected native reward-bundle entitlement, not a count of its inner items. Low: unknown/online guard retains; base/high: known cohort satisfies inactivity and fresh proxy offline guards. Weekly cap is this one known right, not recurring income.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "1",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0",
+              "1",
+              "1"
+            ],
+            "network_weekly_cap": {
+              "value": "1",
+              "unit": "major"
+            }
+          },
+          "after": {
+            "enabled": false,
+            "amount_per_event": {
+              "value": "1",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0",
+              "1",
+              "1"
+            ],
+            "network_weekly_cap": {
+              "value": "1",
+              "unit": "major"
+            }
+          }
+        }
+      ]
+    },
+    "ae_randomizers_bundle_entitlement": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "ae_randomizers_8",
+          "kind": "liability",
+          "source": "Spawn openings/ MAIL read-only review 2026-11-03; selected ae_randomizers_8",
+          "basis": "One existing selected native reward-bundle entitlement, not a count of its inner items. Low: unknown/online guard retains; base/high: known cohort satisfies inactivity and fresh proxy offline guards. Weekly cap is this one known right, not recurring income.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "1",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0",
+              "1",
+              "1"
+            ],
+            "network_weekly_cap": {
+              "value": "1",
+              "unit": "major"
+            }
+          },
+          "after": {
+            "enabled": false,
+            "amount_per_event": {
+              "value": "1",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0",
+              "1",
+              "1"
+            ],
+            "network_weekly_cap": {
+              "value": "1",
+              "unit": "major"
+            }
+          }
+        }
+      ]
+    },
+    "weekly_gift_choice_entitlement": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "weekly_gift_choice",
+          "kind": "liability",
+          "source": "Spawn openings/ MAIL read-only review 2026-11-03; selected weekly_gift_choice",
+          "basis": "One existing selected native reward-bundle entitlement, not a count of its inner items. Low: unknown/online guard retains; base/high: known cohort satisfies inactivity and fresh proxy offline guards. Weekly cap is this one known right, not recurring income.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "1",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0",
+              "1",
+              "1"
+            ],
+            "network_weekly_cap": {
+              "value": "1",
+              "unit": "major"
+            }
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "1",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0",
+              "1",
+              "1"
+            ],
+            "network_weekly_cap": {
+              "value": "1",
+              "unit": "major"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "prices": [],
+  "decision": "Implement the owner-authorized seven-day offline-only MAIL expiry as honest EXPIRED, retaining durable JSON and compact spent identity. Do not expire uncertain or online records; do not report an expiry as a delivered reward.",
+  "post_delivery_check": "Parent verifies activated version/hash, two eligible rights only when runtime evidence is still authoritative, recent/online right retained, no inventory/currency mutations, and lower retained heap. No live mutation performed by this source task."
+}

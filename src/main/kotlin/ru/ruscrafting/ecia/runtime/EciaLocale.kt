@@ -289,6 +289,7 @@ class EciaLocale(
             "managed.key-not-consumed",
             "managed.review",
             "managed.pending",
+            "managed.expired",
             "managed.operation-refused",
             "managed.inventory-full",
         )

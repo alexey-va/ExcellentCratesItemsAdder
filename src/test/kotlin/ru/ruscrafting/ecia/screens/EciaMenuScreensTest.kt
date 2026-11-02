@@ -30,6 +30,7 @@ import ru.arc.paper.menu.PaperMenuItemTemplate
 import ru.arc.paper.menu.PaperMenuRuntime
 import ru.ruscrafting.ecia.roll.PoolSnapshot
 import ru.ruscrafting.ecia.roll.RewardDefinition
+import ru.ruscrafting.ecia.journal.OpeningRecord
 import ru.ruscrafting.ecia.inventory.NativeItemPayload
 import ru.ruscrafting.ecia.integration.ManagedPoolPreviewRewardGrant
 import su.nightexpress.excellentcrates.api.crate.Reward
@@ -37,6 +38,7 @@ import su.nightexpress.excellentcrates.crate.CrateManager
 import su.nightexpress.excellentcrates.crate.impl.Crate
 import java.util.IdentityHashMap
 import java.util.UUID
+import java.nio.file.Files
 
 class EciaMenuScreensTest {
     private lateinit var paper: MockBukkitTestRuntime
@@ -72,6 +74,35 @@ class EciaMenuScreensTest {
         assertEquals(Material.BLUE_STAINED_GLASS_PANE, material(configuration.template(MenuTemplateId.of("next"))))
         assertTrue(configuration.templates.values.all { it.customModelData != 11001 })
         assertTrue(configuration.templates.values.none { it.customModelData == 11001 })
+    }
+
+    @Test
+    fun expiredHistoryAddsTheMissingLabelWithoutReplacingCustomMenuText() {
+        val root = Files.createTempDirectory("ecia-expired-history-")
+        try {
+            val bundled = requireNotNull(javaClass.classLoader.getResourceAsStream("menus.yml"))
+                .bufferedReader().use { it.readText() }
+            Files.writeString(root.resolve("menus.yml"), bundled.lineSequence()
+                .filterNot { it.trimStart().startsWith("status-expired:") }.joinToString("\n")
+                .replace("title-history: \"История открытий\"", "title-history: \"Мои награды\""))
+            val configuration = EciaMenuConfiguration.load(root)
+            assertEquals("Мои награды", EciaMenuConfiguration.labels(configuration)["title-history"])
+            val reward = namedReward("expired-reward", 1.0, "Прежняя награда", 1)
+            val opening = OpeningRecord(UUID.randomUUID(), UUID.randomUUID(),
+                PoolSnapshot("case_daily", "current", listOf(reward), 1, 0),
+                1L, 2L, 3L, OpeningRecord.Stage.EXPIRED, listOf(reward), 0,
+                reward.id(), "key-witness", "", "", "network inactivity")
+
+            val entry = EciaMenuScreens(configuration).renderHistory(listOf(opening))
+                .regions.getValue(EciaMenuConfiguration.ENTRIES).single()
+            val lore = entry.item.itemMeta.lore().orEmpty()
+                .joinToString("\n", transform = PlainTextComponentSerializer.plainText()::serialize)
+            assertTrue(lore.contains("Срок истёк"))
+            assertFalse(lore.contains("Доставлено"))
+            assertFalse(entry.enabled)
+        } finally {
+            root.toFile().deleteRecursively()
+        }
     }
 
     @Test

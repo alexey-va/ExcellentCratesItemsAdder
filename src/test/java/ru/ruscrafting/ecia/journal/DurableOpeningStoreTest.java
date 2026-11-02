@@ -6,6 +6,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -53,5 +56,25 @@ class DurableOpeningStoreTest {
         assertTrue(store.find(UUID.randomUUID()).isEmpty());
         Files.copy(firstFile, secondFile, StandardCopyOption.REPLACE_EXISTING);
         assertThrows(IllegalStateException.class, () -> store.find(second.id()));
+    }
+
+    @Test void expiredMailKeepsItsExactDurablePayloadAndSpentIdentityAfterRestart() {
+        OpeningLedger original = new OpeningLedger(new DurableOpeningStore(directory), CLOCK);
+        OpeningRecord record = ready(original);
+        record = original.select(record.id(), PLAYER, record.revision(), RARE.id());
+        OpeningRecord mail = original.prepared(record.id(), PLAYER, record.revision(), "base64-native-prize-bytes");
+        long now = CLOCK.millis() + OpeningLedger.MAIL_INACTIVITY_MILLIS;
+        Clock expiryClock = Clock.fixed(Instant.ofEpochMilli(now), ZoneOffset.UTC);
+        OpeningLedger ledger = new OpeningLedger(new DurableOpeningStore(directory), expiryClock);
+        assertTrue(ledger.expireMail(mail.id(), PLAYER, mail.revision(), CLOCK.millis(), now));
+        OpeningLedger restarted = new OpeningLedger(new DurableOpeningStore(directory), expiryClock);
+        OpeningRecord expired = restarted.get(mail.id(), PLAYER);
+        assertEquals(OpeningRecord.Stage.EXPIRED, expired.stage());
+        assertEquals(mail.preparedReward(), expired.preparedReward());
+        assertEquals(mail.keyWitness(), expired.keyWitness());
+        assertEquals(mail.pool(), expired.pool());
+        assertEquals(mail.offers(), expired.offers());
+        assertFalse(restarted.canSpendPeriodicKey(mail.id()));
+        assertEquals(0, restarted.pendingCount());
     }
 }

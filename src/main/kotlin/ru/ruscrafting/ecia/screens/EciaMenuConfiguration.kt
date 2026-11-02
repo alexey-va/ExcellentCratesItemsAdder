@@ -87,10 +87,12 @@ object EciaMenuConfiguration {
     val requiredLabels: Set<String> = setOf(
         "title-history", "title-pool",
         "status-reserved", "status-choosing", "status-mail", "status-delivering",
-        "status-delivered", "status-review", "status-aborted",
+        "status-delivered", "status-expired", "status-review", "status-aborted",
     )
 
-    fun load(dataRoot: Path): PaperMenuConfiguration = parse(Config(dataRoot, RESOURCE))
+    fun load(dataRoot: Path): PaperMenuConfiguration = parse(Config(dataRoot, RESOURCE).apply {
+        mergeMissingFromBundled(RESOURCE)
+    })
 
     /** Returns the operator-owned case names attached while loading a catalog. */
     fun caseNames(configuration: PaperMenuConfiguration): Map<String, String> =

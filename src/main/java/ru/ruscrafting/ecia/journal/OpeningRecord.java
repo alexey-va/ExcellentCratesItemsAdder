@@ -14,7 +14,7 @@ public record OpeningRecord(
         int rerollsUsed, String selectedRewardId, String keyWitness,
         String preparedReward, String deliveryWitness, String reason
 ) {
-    public enum Stage { RESERVED, CHOOSING, MAIL, DELIVERING, DELIVERED, REVIEW, ABORTED }
+    public enum Stage { RESERVED, CHOOSING, MAIL, DELIVERING, DELIVERED, REVIEW, ABORTED, EXPIRED }
 
     public OpeningRecord {
         Objects.requireNonNull(id);
@@ -40,7 +40,7 @@ public record OpeningRecord(
         if (!selectedRewardId.isEmpty() && offers.stream().noneMatch(r -> r.id().equals(selectedRewardId))) {
             throw new IllegalArgumentException("Selected reward is outside offers");
         }
-        if ((stage == Stage.MAIL || stage == Stage.DELIVERING || stage == Stage.DELIVERED)
+        if ((stage == Stage.MAIL || stage == Stage.DELIVERING || stage == Stage.DELIVERED || stage == Stage.EXPIRED)
                 && selectedRewardId.isEmpty()) throw new IllegalArgumentException("Selected reward required");
         if ((stage == Stage.DELIVERING || stage == Stage.DELIVERED)
                 && (preparedReward.isEmpty() || deliveryWitness.isEmpty())) {
@@ -48,7 +48,7 @@ public record OpeningRecord(
         }
     }
 
-    public boolean pending() { return stage != Stage.DELIVERED && stage != Stage.ABORTED; }
+    public boolean pending() { return stage != Stage.DELIVERED && stage != Stage.ABORTED && stage != Stage.EXPIRED; }
 
     public RewardDefinition selectedReward() {
         return offers.stream().filter(r -> r.id().equals(selectedRewardId)).findFirst()

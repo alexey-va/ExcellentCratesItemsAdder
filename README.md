@@ -211,12 +211,24 @@ Journal I/O failures remain fail-closed across settings reloads; after repairing
 storage, restart the plugin runtime to reload and reconcile the journal. Never
 delete a journal to reset a player's quota or clear an uncertain delivery.
 
-After a `DELIVERED` commit passes exact durable readback, memory retains only
-its identity, timestamps, revision and virtual-period flag. The full JSON stays
+After a `DELIVERED` or `EXPIRED` commit passes exact durable readback, memory retains only
+its identity, timestamps, revision, actual terminal stage and virtual-period flag. The full JSON stays
 unchanged in `openings/`; history loads only its requested page on the storage
 executor. A missing or mismatched archive refuses that read while its compact
 receipt continues to prevent replay. All other stages retain their full frozen
-records, including claimable mail, reviews and aborted debit retries.
+records, including reviews and aborted debit retries.
+
+An owned sweep runs once per minute and expires unclaimed `MAIL` after seven days since both the
+latest network activity and last mail update. It requires a complete online UUID
+roster from Redis origin `proxy` and an activity-hash sample no older than ten
+seconds; missing, invalid, stale or future evidence preserves the reward. Players
+online on any backend are excluded. `DELIVERING` and `REVIEW` never expire.
+`EXPIRED` consumes the original opening without delivery, refund or another roll;
+its spent ID remains durable. This is an offline sweep, not login-time expiry.
+See the [balance assessment](docs/mail-inactivity-expiry-20261103.json) and
+[calculation summary](docs/mail-inactivity-expiry-20261103-result.json).
+After the first `EXPIRED` record, any rollback build must understand that stage;
+older binaries cannot decode the new terminal record.
 
 Removing an anchor uses ExcellentCrates' native position mutators because its
 position getter returns a copy. Idle displays and holograms also stop rendering

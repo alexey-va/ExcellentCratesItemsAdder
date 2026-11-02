@@ -340,6 +340,7 @@ class EciaMenuScreens(
         OpeningRecord.Stage.MAIL -> label("status-mail")
         OpeningRecord.Stage.DELIVERING -> label("status-delivering")
         OpeningRecord.Stage.DELIVERED -> label("status-delivered")
+        OpeningRecord.Stage.EXPIRED -> label("status-expired")
         OpeningRecord.Stage.REVIEW -> label("status-review")
         OpeningRecord.Stage.ABORTED -> label("status-aborted")
     }

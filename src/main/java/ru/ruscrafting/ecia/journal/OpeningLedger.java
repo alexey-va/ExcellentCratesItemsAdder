@@ -20,7 +20,7 @@ import static ru.ruscrafting.ecia.journal.OpeningRecord.Stage;
  * Feature-specific opening transitions. Call from a single owned storage executor
  * or behind a frozen player interaction. Persisted revisions reject repeated or
  * stale GUI clicks; an interrupted side effect remains explicit for reconciliation.
- * Delivered records retain only an in-memory receipt; get/history/snapshot may
+ * Delivered and expired records retain only an in-memory receipt; get/history/snapshot may
  * load their full durable payload and must run on the owned storage executor.
  */
 public final class OpeningLedger {
@@ -35,7 +35,8 @@ public final class OpeningLedger {
     private final OpeningStore store;
     private final Clock clock;
     private final Map<UUID, OpeningRecord> records = new HashMap<>();
-    private final Map<UUID, DeliveredOpening> delivered = new HashMap<>();
+    private final Map<UUID, ArchivedOpening> archived = new HashMap<>();
+    public static final long MAIL_INACTIVITY_MILLIS = java.time.Duration.ofDays(7).toMillis();
     private boolean storageUncertain;
 
     public OpeningLedger(OpeningStore store, Clock clock) {
@@ -68,12 +69,12 @@ public final class OpeningLedger {
 
     /** A physical calendar key uses the old quota identity, so copies cannot buy a second roll. */
     public synchronized boolean canSpendPeriodicKey(UUID id) {
-        if (delivered.containsKey(id)) return false;
+        if (archived.containsKey(id)) return false;
         OpeningRecord old = records.get(id);
         return old == null || old.stage() == Stage.ABORTED && !old.keyWitness().startsWith("virtual:v1:");
     }
 
-    public synchronized boolean contains(UUID id) { return records.containsKey(id) || delivered.containsKey(id); }
+    public synchronized boolean contains(UUID id) { return records.containsKey(id) || archived.containsKey(id); }
 
     public synchronized OpeningRecord reservePeriodicKey(UUID id, UUID player, PoolSnapshot pool,
             Supplier<List<RewardDefinition>> offers, String keyWitness) {
@@ -202,6 +203,24 @@ public final class OpeningLedger {
                 .max(Comparator.comparingLong(OpeningRecord::createdAt).thenComparing(OpeningRecord::id));
     }
 
+    /** Worker snapshot for the offline inactivity sweep; completed archives are never loaded. */
+    public synchronized List<OpeningRecord> mail() {
+        return records.values().stream().filter(record -> record.stage() == Stage.MAIL).toList();
+    }
+
+    /** Caller must freshly exclude the player from the authoritative network-wide online roster. */
+    public synchronized boolean expireMail(UUID id, UUID player, long revision, long lastSeenAt, long now) {
+        OpeningRecord record = records.get(id);
+        if (record == null || record.stage() != Stage.MAIL || record.revision() != revision
+                || !record.playerId().equals(player) || !record.deliveryWitness().isEmpty()
+                || lastSeenAt <= 0 || lastSeenAt > now || record.updatedAt() > now
+                || now < MAIL_INACTIVITY_MILLIS
+                || Math.max(lastSeenAt, record.updatedAt()) > now - MAIL_INACTIVITY_MILLIS) return false;
+        change(record, Stage.EXPIRED, record.offers(), record.rerollsUsed(), record.selectedRewardId(),
+                record.preparedReward(), "", "seven-days-network-inactivity");
+        return true;
+    }
+
     /** Resolve only from a freshly loaded native player-data receipt or an exact preimage. */
     public synchronized OpeningRecord reconciled(UUID id, UUID player, long revision,
             boolean applied, String evidence) {
@@ -232,33 +251,33 @@ public final class OpeningLedger {
             if (!record.playerId().equals(player)) throw new IllegalArgumentException("Unknown opening");
             return record;
         }
-        DeliveredOpening archived = delivered.get(id);
-        if (archived == null || !archived.playerId().equals(player)) {
+        ArchivedOpening receipt = archived.get(id);
+        if (receipt == null || !receipt.playerId().equals(player)) {
             throw new IllegalArgumentException("Unknown opening");
         }
-        return materialize(archived);
+        return materialize(receipt);
     }
 
     /** Exact operator lookup; completed payloads are read only on demand. */
     public synchronized OpeningRecord get(UUID id) {
         OpeningRecord record = records.get(id);
         if (record != null) return record;
-        DeliveredOpening archived = delivered.get(id);
-        if (archived == null) throw new IllegalArgumentException("Unknown opening");
-        return materialize(archived);
+        ArchivedOpening receipt = archived.get(id);
+        if (receipt == null) throw new IllegalArgumentException("Unknown opening");
+        return materialize(receipt);
     }
 
     public synchronized List<OpeningRecord> history(UUID player, int page, int pageSize) {
         if (page < 0 || pageSize < 1 || pageSize > 100) throw new IllegalArgumentException("Invalid history page");
         return Stream.concat(records.values().stream().filter(r -> r.playerId().equals(player)).map(OpeningRecord::id),
-                        delivered.values().stream().filter(r -> r.playerId().equals(player)).map(DeliveredOpening::id))
+                        archived.values().stream().filter(r -> r.playerId().equals(player)).map(ArchivedOpening::id))
                 .sorted(Comparator.<UUID>comparingLong(this::createdAt).reversed().thenComparing(id -> id))
                 .skip((long) page * pageSize).limit(pageSize).map(this::get).toList();
     }
 
     /** Explicit full-history compatibility API; never use for routine counters or recovery. */
     public synchronized List<OpeningRecord> snapshot() {
-        return Stream.concat(records.values().stream(), delivered.values().stream().map(this::materialize)).toList();
+        return Stream.concat(records.values().stream(), archived.values().stream().map(this::materialize)).toList();
     }
 
     public synchronized int pendingCount() {
@@ -269,46 +288,46 @@ public final class OpeningLedger {
     public synchronized java.util.Set<UUID> virtualOpeningIds() {
         return Stream.concat(records.values().stream()
                         .filter(record -> record.keyWitness().startsWith("virtual:v1:")).map(OpeningRecord::id),
-                        delivered.values().stream().filter(DeliveredOpening::virtual).map(DeliveredOpening::id))
+                        archived.values().stream().filter(ArchivedOpening::virtual).map(ArchivedOpening::id))
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     private long latestCreatedAt(UUID player) {
         return Math.max(records.values().stream().filter(r -> r.playerId().equals(player))
                         .mapToLong(OpeningRecord::createdAt).max().orElse(-1),
-                delivered.values().stream().filter(r -> r.playerId().equals(player))
-                        .mapToLong(DeliveredOpening::createdAt).max().orElse(-1));
+                archived.values().stream().filter(r -> r.playerId().equals(player))
+                        .mapToLong(ArchivedOpening::createdAt).max().orElse(-1));
     }
 
     private long createdAt(UUID id) {
         OpeningRecord record = records.get(id);
-        return record != null ? record.createdAt() : delivered.get(id).createdAt();
+        return record != null ? record.createdAt() : archived.get(id).createdAt();
     }
 
-    private OpeningRecord materialize(DeliveredOpening archived) {
-        OpeningRecord record = store.find(archived.id())
-                .orElseThrow(() -> new IllegalStateException("Archived opening is missing: " + archived.id()));
-        if (record.stage() != Stage.DELIVERED || !archived.equals(DeliveredOpening.from(record))) {
-            throw new IllegalStateException("Archived opening metadata mismatch: " + archived.id());
+    private OpeningRecord materialize(ArchivedOpening receipt) {
+        OpeningRecord record = store.find(receipt.id())
+                .orElseThrow(() -> new IllegalStateException("Archived opening is missing: " + receipt.id()));
+        if (!receipt.equals(ArchivedOpening.from(record))) {
+            throw new IllegalStateException("Archived opening metadata mismatch: " + receipt.id());
         }
         return record;
     }
 
     private void cache(OpeningRecord record) {
-        if (record.stage() == Stage.DELIVERED) {
-            delivered.put(record.id(), DeliveredOpening.from(record));
+        if (record.stage() == Stage.DELIVERED || record.stage() == Stage.EXPIRED) {
+            archived.put(record.id(), ArchivedOpening.from(record));
             records.remove(record.id());
         } else {
             records.put(record.id(), record);
-            delivered.remove(record.id());
+            archived.remove(record.id());
         }
     }
 
-    private record DeliveredOpening(UUID id, UUID playerId, String crateId, long createdAt,
-                                    long updatedAt, long revision, boolean virtual) {
-        private static DeliveredOpening from(OpeningRecord record) {
-            return new DeliveredOpening(record.id(), record.playerId(), record.pool().crateId(),
-                    record.createdAt(), record.updatedAt(), record.revision(), record.keyWitness().startsWith("virtual:v1:"));
+    private record ArchivedOpening(UUID id, UUID playerId, String crateId, long createdAt,
+                                    long updatedAt, long revision, Stage stage, boolean virtual) {
+        private static ArchivedOpening from(OpeningRecord record) {
+            return new ArchivedOpening(record.id(), record.playerId(), record.pool().crateId(),
+                    record.createdAt(), record.updatedAt(), record.revision(), record.stage(), record.keyWitness().startsWith("virtual:v1:"));
         }
     }
 

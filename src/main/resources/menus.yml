@@ -18,6 +18,7 @@ menus:
     status-mail: "Готово к получению"
     status-delivering: "Доставка выполняется"
     status-delivered: "Доставлено"
+    status-expired: "Срок истёк"
     status-review: "На проверке"
     status-aborted: "Открытие отменено"
   layouts:

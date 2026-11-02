@@ -68,5 +68,6 @@ managed:
   key-not-consumed: "The opening was cancelled.\nYour key was not used."
   review: "The opening result is still being checked.\nReturn to the crate a little later."
   pending: "You have an unfinished opening.\nRight-click any crate to continue."
+  expired: "This reward has expired.\nYou were away from the network for 7 days."
   operation-refused: "The action could not be completed.\nRight-click the crate to continue."
   inventory-full: "There is not enough room in your inventory.\nFree a few slots.\nRight-click the crate again."

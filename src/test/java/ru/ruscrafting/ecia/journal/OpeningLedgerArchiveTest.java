@@ -134,7 +134,7 @@ class OpeningLedgerArchiveTest {
         assertFalse(ledger.available());
         assertEquals(started, ledger.get(started.id(), PLAYER));
         assertEquals(started, cachedMap(ledger, "records").get(started.id()));
-        assertTrue(cachedMap(ledger, "delivered").isEmpty());
+        assertTrue(cachedMap(ledger, "archived").isEmpty());
         assertEquals(OpeningRecord.Stage.DELIVERED, store.values.get(started.id()).stage());
     }
 
@@ -181,9 +181,9 @@ class OpeningLedgerArchiveTest {
 
     private static void assertCompact(OpeningLedger ledger, OpeningRecord done) throws Exception {
         assertFalse(cachedMap(ledger, "records").containsKey(done.id()));
-        Object receipt = cachedMap(ledger, "delivered").get(done.id());
+        Object receipt = cachedMap(ledger, "archived").get(done.id());
         assertNotNull(receipt);
-        assertEquals(List.of(UUID.class, UUID.class, String.class, long.class, long.class, long.class, boolean.class),
+        assertEquals(List.of(UUID.class, UUID.class, String.class, long.class, long.class, long.class, OpeningRecord.Stage.class, boolean.class),
                 Arrays.stream(receipt.getClass().getRecordComponents()).map(RecordComponent::getType).toList());
     }
 

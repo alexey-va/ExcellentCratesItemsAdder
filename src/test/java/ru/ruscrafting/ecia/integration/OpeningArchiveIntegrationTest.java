@@ -175,7 +175,7 @@ class OpeningArchiveIntegrationTest {
         var full = OpeningLedger.class.getDeclaredField("records");
         full.setAccessible(true);
         assertFalse(((Map<?, ?>) full.get(ledger)).containsKey(done.id()));
-        var archive = OpeningLedger.class.getDeclaredField("delivered");
+        var archive = OpeningLedger.class.getDeclaredField("archived");
         archive.setAccessible(true);
         Object compact = ((Map<?, ?>) archive.get(ledger)).get(done.id());
         assertNotNull(compact);

@@ -18,6 +18,8 @@ import ru.arc.core.LifecycleTaskScope
 import ru.arc.core.whenCompleteSync
 import ru.arc.paper.display.PaperPacketDisplays
 import ru.arc.paper.menu.PaperMenuConfiguration
+import ru.arc.paper.api.ArcRedisService
+import ru.arc.paper.redis.PaperRedisClient
 import ru.ruscrafting.ecia.ARC_CRATE_ADMIN_PERMISSION
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
 import ru.ruscrafting.ecia.KeyGrantRequest
@@ -78,6 +80,7 @@ class ManagedCratesService(
     private var pools = emptyMap<String, PoolSnapshot>()
     private var ledger: OpeningLedger? = null
     private var engine: ManagedOpeningEngine? = null
+    private var mailExpiry: CompletableFuture<OpeningMailExpiry>? = null
     private var screens: EciaMenuScreens? = null
     private var router: NativeCrateInteractionRouter? = null
     private val roulette = WorldRouletteAnimator(plugin, runtime, payload, visualSettings, openingEffects, packetDisplays)
@@ -164,6 +167,7 @@ class ManagedCratesService(
             }
             val value = loaded ?: return@whenCompleteSync
             ledger = value.ledger
+            startMailExpiry(value.ledger)
             val periodicInventory = OpeningInventoryTransactions(payload)
             val periodicIssuer = PeriodicKeyIssuer(value.periodicKeys, value.ledger, payload, periodicInventory,
                 Clock.systemUTC(), storageExecutor, runtime.nativeWork(), this::isCurrentSession)
@@ -475,6 +479,7 @@ class ManagedCratesService(
                 message(player, if (record.preparedReward().isEmpty()) "managed.pending" else "managed.inventory-full")
             }
             OpeningRecord.Stage.DELIVERED -> player.closeInventory()
+            OpeningRecord.Stage.EXPIRED -> { player.closeInventory(); message(player, "managed.expired") }
             OpeningRecord.Stage.ABORTED -> { player.closeInventory(); message(player, "managed.key-not-consumed") }
             else -> { player.closeInventory(); message(player, "managed.review") }
         }
@@ -654,6 +659,44 @@ class ManagedCratesService(
 
     private fun <T> asyncStorage(action: () -> T): CompletableFuture<T> = storageExecutor.submit(action)
 
+    private fun startMailExpiry(opened: OpeningLedger) {
+        if (mailExpiry != null) return
+        val service = plugin.server.servicesManager.load(ArcRedisService::class.java)
+        if (service == null) {
+            runtime.warn("Inactive crate mail expiry is unavailable: ArcRedisService is not registered")
+            return
+        }
+        val owner = plugin.name
+        mailExpiry = asyncStorage {
+            val redis = PaperRedisClient.openPrimary(service, owner)
+            var expiry: OpeningMailExpiry? = null
+            try {
+                expiry = OpeningMailExpiry(redis, opened, storageExecutor, lifecycleTasks,
+                    onExpired = { count ->
+                        runtime.info("Expired {} crate mail record(s) after seven days of network inactivity", count)
+                        lifecycleTasks.runSync(lifecycleToken) { if (!closed) updateHealth() }
+                    },
+                    report = { operation, failure ->
+                        if (failure == null) runtime.info("Crate mail expiry {}", operation)
+                        else {
+                            plugin.logger.log(java.util.logging.Level.WARNING, "Crate mail expiry $operation", failure)
+                            lifecycleTasks.runSync(lifecycleToken) {
+                                if (!closed) { refreshStorageHealth(); updateHealth() }
+                            }
+                        }
+                    })
+                redis.init()
+                expiry
+            } catch (failure: Throwable) {
+                try { if (expiry == null) redis.close() else expiry.close() }
+                catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
+                throw failure
+            }
+        }.whenComplete { _, failure ->
+            if (failure != null) plugin.logger.log(java.util.logging.Level.WARNING, "Could not start inactive crate mail expiry", failure)
+        }
+    }
+
     private fun guarded(sender: CommandSender, action: () -> Unit) {
         runCatching(action).onFailure { failure ->
             runtime.warn("Crate operation refused for {}: {}", sender.name, failure.toString())
@@ -668,6 +711,9 @@ class ManagedCratesService(
     override fun close() {
         if (closed) return
         closed = true
+        mailExpiry?.handle<Void> { expiry, _ -> expiry?.close(); null }?.let { closing ->
+            if (closing.isDone) closing.join() else runtime.trackNativeCleanup(closing)
+        }
         ready = false
         roulette.close()
         plugin.clearManagedPreviewHandler()
