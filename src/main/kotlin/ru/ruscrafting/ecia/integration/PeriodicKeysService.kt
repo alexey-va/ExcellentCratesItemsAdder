@@ -6,10 +6,12 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import ru.arc.core.whenCompleteSync
+import ru.arc.paper.api.ArcAfkProvider
 import ru.ruscrafting.ecia.ArcExcellentCratesPlugin
 import ru.ruscrafting.ecia.journal.PeriodicKeyLedger
 import su.nightexpress.nightcore.util.text.NightMessage
 import java.time.Clock
+import java.time.Duration
 import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
@@ -26,6 +28,7 @@ internal class PeriodicKeysService(
     private val access: PlayerAccess,
     deliveredIds: Set<UUID>,
     private val clock: Clock = Clock.systemUTC(),
+    private val nanoTime: () -> Long = System::nanoTime,
 ) : AutoCloseable {
     interface PlayerAccess {
         fun acquire(player: Player): Long?
@@ -38,10 +41,9 @@ internal class PeriodicKeysService(
     private val token = tasks.token()
     private var settings = ManagedCratesSettings(false, emptyMap())
     private var loadedCases = emptySet<String>()
-    private val players = java.util.concurrent.ConcurrentHashMap<UUID, Player>()
+    private val players = java.util.concurrent.ConcurrentHashMap<UUID, PeriodicKeySession>()
     private var tickQueued = false
     private var candidates = emptyList<ManagedCratesSettings.CaseSettings>()
-    private val nextCheck = mutableMapOf<UUID, Long>()
     private var finished = mutableMapOf<UUID, MutableSet<UUID>>()
     private val delivered = deliveredIds.toMutableSet()
     private val awaitingReconnect = mutableSetOf<UUID>()
@@ -63,20 +65,20 @@ internal class PeriodicKeysService(
     }
 
     fun playerDataLoaded(player: Player) {
+        val id = player.uniqueId
         issuer.playerDataLoaded(player)
-        players[player.uniqueId] = player
-        finished.remove(player.uniqueId)
-        awaitingReconnect.remove(player.uniqueId)
-        nextCheck[player.uniqueId] = clock.millis() + 2_000
+        if (players[id]?.player !== player) players[id] = PeriodicKeySession(player, nanoTime(), isPlaying(player))
+        finished.remove(id)
+        awaitingReconnect.remove(id)
     }
 
     fun playerLeft(player: Player) {
-        if (players[player.uniqueId] !== player) return
-        players.remove(player.uniqueId)
-        nextCheck.remove(player.uniqueId)
-        finished.remove(player.uniqueId)
-        awaitingReconnect.remove(player.uniqueId)
-        issuer.playerLeft(player.uniqueId)
+        val id = player.uniqueId
+        if (players[id]?.player !== player) return
+        players.remove(id)
+        finished.remove(id)
+        awaitingReconnect.remove(id)
+        issuer.playerLeft(id)
     }
 
     fun matches(player: Player, crateId: String, period: PeriodicVirtualOpening.Period): Predicate<ItemStack> = Predicate { item ->
@@ -94,16 +96,16 @@ internal class PeriodicKeysService(
         }.whenCompleteSync(tasks, token) { _, _ -> tickQueued = false }
     }
 
-    private fun checkPlayer(player: Player) {
+    private fun checkPlayer(online: PeriodicKeySession) {
+            val player = online.player
             val id = player.uniqueId
-            if (!player.isOnline || player.isDead || !player.hasPermission("ecia.use") || id in awaitingReconnect) return
-            if (clock.millis() < (nextCheck[id] ?: 0)) return
-            nextCheck[id] = clock.millis() + 5_000
+            if (players[id] !== online || !player.isOnline || id in awaitingReconnect) return
+            if (!online.poll(nanoTime()) { isPlaying(player) } || !player.hasPermission("ecia.use")) return
             val done = finished.getOrPut(id) { mutableSetOf() }
             val windows = candidates.associateWith { PeriodicVirtualOpening.window(it.freeOpenPeriod(), clock.instant(), settings.freeOpeningZone()) }
             val currentIds = windows.map { (case, window) -> PeriodicVirtualOpening.openingId(id, case.crateId(), window.period(), window) }.toSet()
             done.retainAll(currentIds)
-            if (currentIds.all { it in done }) return
+            if (currentIds.all { it in done } || !hasPeriodicKeyRank(player)) return
             val session = access.acquire(player) ?: return
             val received = mutableListOf<Pair<ManagedCratesSettings.CaseSettings, String>>()
             var noticeDay: LocalDate? = null
@@ -113,14 +115,14 @@ internal class PeriodicKeysService(
                 if (grantId in done) continue
                 chain = chain.thenCompose { proceed ->
                     if (!proceed) CompletableFuture.completedFuture(false) else onPaper {
-                        if (!access.current(player, session) || !eligible(player, case, window)) null else {
+                        if (!access.current(player, session) || !eligible(online, case, window)) null else {
                             val crate = su.nightexpress.excellentcrates.CratesAPI.getCrateManager().getCrateById(case.crateId())!!
                             val cost = keys.cost(crate)
                             if (cost.amount() != 1) null else Pair(cost.keyId(), NightMessage.stripAll(crate.name))
                         }
                     }.thenCompose { target ->
                         if (target == null) CompletableFuture.completedFuture(false) else issuer.grant(player, session, case.crateId(), window,
-                            { makeKey(player, case, target.first, window) }, { eligible(player, case, window) })
+                            { makeKey(player, case, target.first, window) }, { eligible(online, case, window) })
                             .thenCompose { result -> onPaper {
                                 if (!access.current(player, session)) false else {
                                     when (result) {
@@ -166,13 +168,18 @@ internal class PeriodicKeysService(
             }
     }
 
-    private fun eligible(player: Player, case: ManagedCratesSettings.CaseSettings, window: PeriodicVirtualOpening.Window): Boolean {
+    private fun eligible(online: PeriodicKeySession, case: ManagedCratesSettings.CaseSettings, window: PeriodicVirtualOpening.Window): Boolean {
+        val player = online.player
         if (closed || !settings.enabled || case != settings.cases[case.crateId()] || case.crateId() !in loadedCases
-            || !player.isOnline || player.isDead || !player.hasPermission("ecia.use")) return false
+            || players[player.uniqueId] !== online || !online.waitComplete || !player.isOnline || !isPlaying(player)
+            || !player.hasPermission("ecia.use") || !hasPeriodicKeyRank(player)) return false
         if (window != PeriodicVirtualOpening.window(case.freeOpenPeriod(), clock.instant(), settings.freeOpeningZone())) return false
         val crate = su.nightexpress.excellentcrates.CratesAPI.getCrateManager().getCrateById(case.crateId()) ?: return false
         return crate.hasPermission(player) && su.nightexpress.excellentcrates.CratesAPI.plugin().dataManager.isDataLoaded
     }
+
+    private fun isPlaying(player: Player): Boolean = !player.isDead && player.idleDuration < MAX_IDLE_DURATION &&
+        plugin.server.servicesManager.load(ArcAfkProvider::class.java)?.isAfk(player.uniqueId) != true
 
     private fun makeKey(player: Player, case: ManagedCratesSettings.CaseSettings, keyId: String, window: PeriodicVirtualOpening.Window): ItemStack {
         val item = PeriodicPhysicalKey.stamp(keys.create(keyId, 1), player.uniqueId, case.crateId(), keyId, window)
@@ -204,9 +211,12 @@ internal class PeriodicKeysService(
         closed = true
         timer?.cancel()
         players.clear()
-        nextCheck.clear()
         finished.clear()
         delivered.clear()
         awaitingReconnect.clear()
+    }
+
+    private companion object {
+        val MAX_IDLE_DURATION: Duration = Duration.ofMinutes(1)
     }
 }

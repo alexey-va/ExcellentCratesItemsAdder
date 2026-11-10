@@ -60,15 +60,19 @@ is in `lang/`; all player and administrator interfaces always use Russian,
 regardless of the Minecraft client language. `EciaLocale` owns message selection;
 `ArcCrateCommand` uses Russian labels for its administrator dialogs. Existing
 protection messages in `config.yml` remain authoritative.
-The sixteen ordinary player chat notices use a white body with gold crate/key
-names, amounts and reset dates. Notices keep `notice.heading` when the wrapped body leaves room within three rows. Longer custom
-values keep every word. The large key remains anchored to the third row.
+Ordinary player chat notices use a white body with gold crate/key names,
+amounts and reset dates. Notices keep `notice.heading` when the wrapped body
+leaves room within three rows. Periodic key receipts always retain that heading,
+followed by a mint result and one white bullet per key: three rows for one key,
+four for two. Longer custom values keep every word. The large key remains
+anchored to the third row. The free-key hint states the Peasant rank and about
+five minutes of active play on Spawn, with a separate neutral reset-time row.
 Self-grants omit the separate request-sent chat confirmation in both commands
 and dialogs; the recipient still receives the actual key-delivery notice.
 `CrateChatNotice` wraps resolved literal values, places the text column
-26 logical pixels from the left edge (23 icon + 3 gap, no outer inset), and sends the
+31 logical pixels from the left edge (6 inset + 15 icon + 10 gap, no outer inset), and sends the
 whole framed notice as one component. The key is `arc:crate_key_large`, U+E531:
-54×54 native pixels, provider height 27 / ascent 26 / advance 23. Install and
+14×27 native pixels, provider height 27 / ascent 26 / advance 15. Install and
 publish that ItemsAdder glyph before activating this version. Compact protection
 actionbars keep their existing presentation. Player chat has no added outer inset;
 console output retains ordinary spaces. Key receipts put the key or crate name
@@ -145,9 +149,13 @@ journal; it never rolls again while moving or when the item is delivered.
 An individual case can set `free-open-period: daily` or `weekly` in
 `features.yml`. Calendar windows use `free-open-time-zone` (default
 `Europe/Moscow`); weeks reset on Monday. One attempt is available per player and
-window. At login and calendar rollover the addon issues one physical key when a
-storage slot is available; a full inventory leaves the entitlement unclaimed and
-retries within five seconds after space appears. Missed periods do not accumulate.
+window. The addon automatically grants one physical key to players from Peasant
+(rank 2) after a random 4½–5½ minutes of active play in the same issuing-server
+connection. The wait starts after inventory recovery and pauses during AFK, death
+or a minute of inactivity. Disconnecting or switching servers starts a fresh wait
+on return. Qualified players can receive new keys at rollover in the same session.
+A full inventory leaves the entitlement unclaimed and retries within five seconds
+after space appears. Missed periods do not accumulate.
 Auto-keys are personal and expire at their period boundary. A new grant replaces
 the owner's expired keys for that same case and cadence in one durable inventory
 transaction, including renewal in an occupied off-hand slot when storage is full.

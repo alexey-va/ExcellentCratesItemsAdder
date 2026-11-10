@@ -58,7 +58,7 @@ class CrateChatNoticeTest : FunSpec({
                     plain.startsWith("\n\n") shouldBe false
                     plain.endsWith("\n") shouldBe true
                     plain.endsWith("\n\n") shouldBe false
-                    visibleRows.size shouldBe 3
+                    visibleRows.size shouldBe if (path == "key.periodic-received-both") 4 else 3
                     visibleRows.all { row -> row.codePoints().anyMatch {
                         it != 0xE531 && it !in 0xF0F01..0xF0F0A && !Character.isWhitespace(it)
                     } } shouldBe true
@@ -120,9 +120,49 @@ class CrateChatNoticeTest : FunSpec({
                         }
                     rows.size shouldBe 3
                     rows.all { it.isNotBlank() } shouldBe true
-                    rows[2] shouldBe "$name."
+                    rows[2] shouldBe if (key == "key.periodic-received-one") "• $name" else "$name."
                 }
             }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("periodic receipts retain the brand and separate mint result from one white bullet per key") {
+        val root = Files.createTempDirectory("ecia-chat-periodic-receipt-")
+        try {
+            val locale = EciaLocale(root, emptyMap())
+            val plain = PlainTextComponentSerializer.plainText()
+            val spacing = PixelSpacing(Key.key("minecraft:default"), 0xF0F01)
+            val column = plain.serialize(spacing.padding(31))
+            listOf("key.periodic-received-one", "key.periodic-received-both").forEach { key ->
+                val output = locale.renderPadded(key, player("ru-RU"), valuesFor(key))
+                val text = plain.serialize(output)
+                val rows = text.trim('\n').split('\n')
+                rows[0] shouldContain "Сундуки RusCrafting"
+                rows[1] shouldContain if (key.endsWith("both")) "Получены ключи:" else "Получен ключ:"
+                rows[2] shouldContain "• Ежедневный тайник"
+                if (key.endsWith("both")) {
+                    rows[3].startsWith("${column}• Недельная реликвия") shouldBe true
+                }
+                text.count { it == '•' } shouldBe if (key.endsWith("both")) 2 else 1
+                val colors = output.coloredText().toList()
+                colors.single { it.first == "Сундуки RusCrafting" }.second shouldBe TextColor.color(0xFFD66A)
+                colors.single { it.first.startsWith("Получен") }.second shouldBe TextColor.color(0xA6EFCF)
+                colors.single { "Ежедневный тайник" in it.first }.second shouldBe TextColor.color(0xFFFFFF)
+                if (key.endsWith("both")) {
+                    colors.single { "Недельная реликвия" in it.first }.second shouldBe TextColor.color(0xFFFFFF)
+                }
+            }
+
+            val longName = "<gold> " + (0..16).joinToString(" ") { "fragment_$it" }
+            val wrapped = plain.serialize(locale.renderPadded("key.periodic-received-both", player("ru-RU"),
+                mapOf("daily" to longName, "weekly" to "Недельная реликвия")))
+            wrapped shouldContain "Сундуки RusCrafting"
+            wrapped shouldContain "<gold>"
+            wrapped.count { it == '•' } shouldBe 2
+            (0..16).forEach { wrapped shouldContain "fragment_$it" }
+            wrapped shouldContain "• Недельная реликвия"
         } finally {
             root.toFile().deleteRecursively()
         }
@@ -268,6 +308,31 @@ class CrateChatNoticeTest : FunSpec({
                 output.coloredText().any {
                     it.first.contains("Сундуки RusCrafting") && it.second == TextColor.color(0xFFD66A)
                 } shouldBe true
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("free key eligibility and both reset cadences fit three meaningful notice rows") {
+        val root = Files.createTempDirectory("ecia-chat-free-key-hint-")
+        try {
+            val locale = EciaLocale(root, emptyMap())
+            val plain = PlainTextComponentSerializer.plainText()
+            mapOf(
+                "ru-RU" to listOf("в полночь", "в понедельник, в полночь"),
+                "en-US" to listOf("at midnight", "on Monday at midnight"),
+            ).forEach { (tag, resets) ->
+                resets.forEach { reset ->
+                    val body = locale.renderWithLocale("managed.no-key-until-reset", tag, mapOf("next_reset" to reset))
+                    val notice = CrateChatNotice.render(locale.renderWithLocale("notice.heading", tag, emptyMap()), body)
+                    val rows = plain.serialize(notice).trim('\n').split('\n')
+                    rows.size shouldBe 3
+                    rows[0] shouldContain if (tag == "ru-RU") "Крестьянин" else "Peasant"
+                    rows[1] shouldContain "5"
+                    rows[2] shouldContain reset
+                    rows[2].contains('\uE531') shouldBe true
+                }
             }
         } finally {
             root.toFile().deleteRecursively()

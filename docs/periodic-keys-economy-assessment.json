@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "title": "Spawn automatic daily and weekly keys — eligibility and delay",
+  "assumptions": [
+    "Baseline checked on Spawn on 2026-11-10 with ArcExcellentCrates 0.14.67 and ExcellentCrates 6.6.1. Automatic keys become available about two seconds after inventory recovery for any ecia.use player with space. After: Peasant (rank 2) or higher, and 270–330 seconds of active play in one Spawn connection. The grant samples the wait once for both keys. AFK, death and a full inventory can delay delivery; leaving resets the wait.",
+    "One free owner-bound daily key per Moscow day and one weekly key per Moscow week. Monday midnight resets the week. Eligible first visits can grant both keys; missed windows do not accumulate. The weekly average below is not a daily allowance. Each automatic key is one exclusive weighted draw. One qualifying login per modeled play day is sufficient; additional joins never raise the limits.",
+    "Illustrative low/base/high participants 5/15/25. Low: 3 min per day, 7 days, all Settler. Base: 30 min on 4 of 7 days, half Peasant or higher. High: 2 h per day, 7 days, all Peasant or higher. Assume an available slot, grant and redemption on each qualifying day or week, and no preexisting claim. These are scenarios, not measured crate players or durations. Rank 2 itself requires 120 active minutes and two paths.",
+    "Issuing an item has zero direct Vault mint/burn and zero premium tokens, XP or EliteMobs crystals. Network maxima remain 7 daily + 1 weekly free opening per qualifying account per calendar week; there is no fixed server-wide quota. Old opening/grant IDs, receipts and owner-bound items are retained. Reconnect, copying an item or switching backend does not add an entitlement.",
+    "Live Spawn native daily/weekly YAML totals 10000 each with 30/55 weighted entries. Daily money vouchers total weight 1901/10000. Their nominal mean weighted contribution is 813.50 Vault per opened key using the item-preset means and assuming redemption. It is not a realized average or a ceiling. Enchant/potion tokens are items. The weekly pool can issue redeemable pouches, EliteMobs rewards and MONEY boosters (700/10000 for the two MONEY variants). Indirect earnings, boosts, paid secondary keys and any substitution via purchases are excluded from direct mint because uptake and subsequent use are unmeasured. All reward contents, weights and pay rates are identical for both states.",
+    "Separate alternatives retain the Spawn merchant's 3 and 9 premium-token prices for ordinary daily and weekly keys and the existing loot/rank/administrative routes. Daily loot can grant an ordinary weekly key at 150/10000. No valuation from EconomyShopGUI SELL is used. Current SELL and the planned replacement by contracts remain separate scenarios.",
+    "Spawn single-replica Economy V2 read for 2026-11-03T07:29:28Z–2026-11-10T07:29:28Z reports 7028 records and 38719 operations across 21 players. Tokens classification is complete in this response; 58 Vault operations (321157 absolute Vault) are unclassified and one player accounts for 99.79% of ARC-attributed Vault burn. Sources/actions were limited to 10 returned rows and provide no owner-bound item counts or session/rank distribution. After activation, verify eligible/blocked accounts and read daily/weekly journal counts or crate telemetry by an exact reset boundary."
+  ],
+  "participants": [5, 15, 25],
+  "currencies": {
+    "vault": {"minor_per_unit": 100, "flows": []},
+    "tokens": {"minor_per_unit": 1, "flows": []},
+    "daily_key": {
+      "minor_per_unit": 1,
+      "flows": [{
+        "id": "daily_key_grant",
+        "kind": "item",
+        "source": "Spawn plugins/ArcExcellentCrates/features.yml case_daily and PeriodicKeysService",
+        "basis": "One deterministic item per Moscow day if eligibility, slot and session checks pass. Base plays 4 days before and averages 2 eligible days after per calendar week.",
+        "before": {"enabled": true, "amount_per_event": {"value": "1", "unit": "major"}, "events_per_player_day": ["1", "0.571428571428571429", "1"]},
+        "after": {"enabled": true, "amount_per_event": {"value": "1", "unit": "major"}, "events_per_player_day": ["0", "0.285714285714285714", "1"]}
+      }]
+    },
+    "weekly_key": {
+      "minor_per_unit": 1,
+      "flows": [{
+        "id": "weekly_key_grant",
+        "kind": "item",
+        "source": "Spawn plugins/ArcExcellentCrates/features.yml case_weekly and PeriodicKeysService",
+        "basis": "One deterministic item per Moscow week if eligibility, slot and session checks pass. Base expects half the cohort to claim after; rates are normalized solely for the calculator's daily input.",
+        "before": {"enabled": true, "amount_per_event": {"value": "1", "unit": "major"}, "events_per_player_day": ["0.142857142857142857", "0.142857142857142857", "0.142857142857142857"]},
+        "after": {"enabled": true, "amount_per_event": {"value": "1", "unit": "major"}, "events_per_player_day": ["0", "0.071428571428571429", "0.142857142857142857"]}
+      }]
+    }
+  }
+}

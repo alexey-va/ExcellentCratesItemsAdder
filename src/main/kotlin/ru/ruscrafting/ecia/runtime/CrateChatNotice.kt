@@ -11,7 +11,7 @@ import ru.arc.text.PixelSpacing
 import ru.arc.text.TextAlignment
 import ru.arc.text.TextLayoutResult
 
-/** Three-row, player-only chat notice composition for managed crate feedback. */
+/** Player-only crate notice with a three-row icon and measured text column. */
 internal object CrateChatNotice {
     private const val WRAP_WIDTH = 253
     private const val OUTER_INSET = 0
@@ -26,7 +26,7 @@ internal object CrateChatNotice {
     private val white = TextColor.color(0xFFFFFF)
     private val spacing = PixelSpacing(Key.key("minecraft:default"), SPACING_CODE_POINT)
 
-    fun render(heading: Component?, body: Component): Component {
+    fun render(heading: Component?, body: Component, keepHeading: Boolean = false): Component {
         val normalizedBody = normalize(body).colorIfAbsent(white)
         val laidOut = DialogTextLayout.layout(normalizedBody, TextAlignment.LEFT, WRAP_WIDTH)
         val bodyComponent = when (laidOut) {
@@ -37,8 +37,8 @@ internal object CrateChatNotice {
             is TextLayoutResult.Aligned -> laidOut.lineCount
             is TextLayoutResult.Unsupported -> bodyComponent.plainLineCount()
         }
-        // The icon spans three rows. Spend them on the message before adding a heading.
-        val showHeading = heading != null && lineCount < 3
+        // Short notices use spare icon rows for the heading; receipts keep it above the list.
+        val showHeading = heading != null && (keepHeading || lineCount < 3)
         var content = if (showHeading) {
             normalize(requireNotNull(heading)).colorIfAbsent(gold)
                 .append(Component.newline()).append(bodyComponent)

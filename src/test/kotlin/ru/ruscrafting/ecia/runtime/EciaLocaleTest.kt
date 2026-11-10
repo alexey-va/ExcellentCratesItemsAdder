@@ -8,6 +8,7 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.TextComponent
 import net.kyori.adventure.text.format.TextColor
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+import org.bukkit.configuration.file.YamlConfiguration
 import java.nio.file.Files
 
 class EciaLocaleTest : FunSpec({
@@ -90,7 +91,7 @@ class EciaLocaleTest : FunSpec({
         }
     }
 
-    test("renders periodic key copy and highlights the case, owner and expiry values") {
+    test("renders periodic key lists with white names and preserves owner and expiry highlights") {
         val root = Files.createTempDirectory("ecia-locale-periodic-key-")
         try {
             val locale = EciaLocale(root, emptyMap())
@@ -107,14 +108,15 @@ class EciaLocaleTest : FunSpec({
             )
             val plain = PlainTextComponentSerializer.plainText()
             val gold = TextColor.color(0xFFD66A)
+            val white = TextColor.color(0xFFFFFF)
 
-            plain.serialize(one) shouldBe "Получен ключ:\nЕжедневный тайник."
-            plain.serialize(both) shouldBe "Получены ключи: Ежедневный тайник\nНедельная реликвия"
+            plain.serialize(one) shouldBe "Получен ключ:\n• Ежедневный тайник"
+            plain.serialize(both) shouldBe "Получены ключи:\n• Ежедневный тайник\n• Недельная реликвия"
             plain.serialize(owner) shouldBe "Владелец: Alex"
             plain.serialize(expiry) shouldBe "Действует до полуночи понедельника"
-            one.textAndColorRuns().single { it.first == "Ежедневный тайник" }.second shouldBe gold
-            both.textAndColorRuns().single { it.first == "Ежедневный тайник" }.second shouldBe gold
-            both.textAndColorRuns().single { it.first == "Недельная реликвия" }.second shouldBe gold
+            one.textAndColorRuns().single { "Ежедневный тайник" in it.first }.second shouldBe white
+            both.textAndColorRuns().single { "Ежедневный тайник" in it.first }.second shouldBe white
+            both.textAndColorRuns().single { "Недельная реликвия" in it.first }.second shouldBe white
             owner.textAndColorRuns().single { it.first == "Alex" }.second shouldBe gold
             expiry.textAndColorRuns().single { it.first == "полуночи понедельника" }.second shouldBe gold
 
@@ -128,7 +130,7 @@ class EciaLocaleTest : FunSpec({
             val english = locale.renderWithLocale(
                 "key.periodic-received-both", "en-US", mapOf("daily" to "Daily Cache", "weekly" to "Weekly Relic"),
             )
-            plain.serialize(english) shouldBe "Keys received: Daily Cache\nWeekly Relic"
+            plain.serialize(english) shouldBe "Keys received:\n• Daily Cache\n• Weekly Relic"
             plain.serialize(locale.renderWithLocale("key.periodic-owner", "en-US", mapOf("owner" to "Alex"))) shouldBe
                 "Owner: Alex"
             plain.serialize(locale.renderWithLocale("key.periodic-expires", "en-US", mapOf("date" to "midnight on Monday"))) shouldBe
@@ -185,14 +187,14 @@ class EciaLocaleTest : FunSpec({
             val english = PlainTextComponentSerializer.plainText().serialize(
                 locale.renderWithLocale("managed.no-key-until-reset", "en-US", mapOf("next_reset" to "at midnight")),
             )
-            english shouldBe "Your next free key is available\nat midnight."
+            english shouldBe "Free keys: Peasant rank or higher.\nPlay actively on Spawn for about 5 minutes.\nReset: at midnight."
             english.contains("<reset>") shouldBe false
             english.contains("<next_reset>") shouldBe false
 
             val russian = PlainTextComponentSerializer.plainText().serialize(
                 locale.renderWithLocale("managed.no-key-until-reset", "ru-RU", mapOf("next_reset" to "в понедельник, в полночь")),
             )
-            russian shouldBe "Новый бесплатный ключ будет доступен\nв понедельник, в полночь."
+            russian shouldBe "Бесплатные ключи — с ранга Крестьянин.\nНужно около 5 минут активной игры на спавне.\nОбновление: в понедельник, в полночь."
             russian.contains("<reset>") shouldBe false
             russian.contains("<next_reset>") shouldBe false
         } finally {
@@ -215,12 +217,12 @@ class EciaLocaleTest : FunSpec({
             val englishFile = root.resolve("lang/en.yml")
             replaceBundledDefault(
                 russianFile,
-                "Новый бесплатный ключ будет доступен<newline><next_reset>.",
+                "Бесплатные ключи — с ранга Крестьянин.<newline>Нужно около 5 минут активной игры на спавне.<newline>Обновление: <next_reset>.",
                 "Бесплатная попытка уже использована.\nСледующая попытка будет доступна:\n<next_reset>",
             )
             replaceBundledDefault(
                 englishFile,
-                "Your next free key is available<newline><next_reset>.",
+                "Free keys: Peasant rank or higher.<newline>Play actively on Spawn for about 5 minutes.<newline>Reset: <next_reset>.",
                 "You have used this free opening.\nThe next one is available at:\n<next_reset>",
             )
             val locale = EciaLocale(root, mapOf(
@@ -231,15 +233,35 @@ class EciaLocaleTest : FunSpec({
 
             PlainTextComponentSerializer.plainText().serialize(
                 locale.renderWithLocale("managed.no-key-until-reset", "ru-RU", mapOf("next_reset" to reset)),
-            ) shouldBe "Новый бесплатный ключ будет доступен\n$reset."
+            ) shouldBe "Бесплатные ключи — с ранга Крестьянин.\nНужно около 5 минут активной игры на спавне.\nОбновление: $reset."
             PlainTextComponentSerializer.plainText().serialize(
                 locale.renderWithLocale("managed.no-key-until-reset", "en-US", mapOf("next_reset" to "at midnight")),
-            ) shouldBe "Your next free key is available\nat midnight."
+            ) shouldBe "Free keys: Peasant rank or higher.\nPlay actively on Spawn for about 5 minutes.\nReset: at midnight."
 
-            Files.readString(russianFile) shouldContain "Новый бесплатный ключ будет доступен"
-            Files.readString(englishFile) shouldContain "Your next free key is available"
+            Files.readString(russianFile) shouldContain "Бесплатные ключи — с ранга Крестьянин."
+            Files.readString(englishFile) shouldContain "Free keys: Peasant rank or higher."
             Files.readString(russianFile).contains("Бесплатная попытка уже использована.") shouldBe false
             Files.readString(englishFile).contains("You have used this free opening.") shouldBe false
+
+            val previousDefaults = mapOf(
+                russianFile to "Новый бесплатный ключ будет доступен<newline><next_reset>.",
+                englishFile to "Your next free key is available<newline><next_reset>.",
+            )
+            previousDefaults.forEach { (file, previous) ->
+                val yaml = YamlConfiguration.loadConfiguration(file.toFile())
+                yaml.set("managed.no-key-until-reset", previous)
+                yaml.save(file.toFile())
+            }
+            locale.reload(mapOf("managed.no-key-until-reset" to previousDefaults.getValue(russianFile)))
+            previousDefaults.forEach { (file, previous) ->
+                Files.readString(file).contains(previous) shouldBe false
+            }
+            PlainTextComponentSerializer.plainText().serialize(
+                locale.renderWithLocale("managed.no-key-until-reset", "ru-RU", mapOf("next_reset" to reset)),
+            ) shouldBe "Бесплатные ключи — с ранга Крестьянин.\nНужно около 5 минут активной игры на спавне.\nОбновление: $reset."
+            PlainTextComponentSerializer.plainText().serialize(
+                locale.renderWithLocale("managed.no-key-until-reset", "en-US", mapOf("next_reset" to "at midnight")),
+            ) shouldBe "Free keys: Peasant rank or higher.\nPlay actively on Spawn for about 5 minutes.\nReset: at midnight."
 
             locale.reload(mapOf(
                 "managed.no-key-until-reset" to "Обратитесь к администратору: <next_reset>",
@@ -253,12 +275,12 @@ class EciaLocaleTest : FunSpec({
                 EciaLocale(customRoot, emptyMap())
                 replaceBundledDefault(
                     customRoot.resolve("lang/ru.yml"),
-                    "Новый бесплатный ключ будет доступен<newline><next_reset>.",
+                    "Бесплатные ключи — с ранга Крестьянин.<newline>Нужно около 5 минут активной игры на спавне.<newline>Обновление: <next_reset>.",
                     "Нужен ключ от сундука:\n<next_reset>",
                 )
                 replaceBundledDefault(
                     customRoot.resolve("lang/en.yml"),
-                    "Your next free key is available<newline><next_reset>.",
+                    "Free keys: Peasant rank or higher.<newline>Play actively on Spawn for about 5 minutes.<newline>Reset: <next_reset>.",
                     "A matching key is needed:\n<next_reset>",
                 )
                 val custom = EciaLocale(customRoot, emptyMap())
@@ -336,8 +358,8 @@ class EciaLocaleTest : FunSpec({
                     plain.serialize(locale.renderWithLocale(key, tag, values)).split('\n').size shouldBe 2
                 }
             }
-            Files.readString(root.resolve("lang/ru.yml")) shouldContain "Получен ключ:<newline><crate>."
-            Files.readString(root.resolve("lang/en.yml")) shouldContain "Key received:<newline><crate>."
+            Files.readString(root.resolve("lang/ru.yml")) shouldContain "Получен ключ:</#a6efcf><newline><white>• <crate>"
+            Files.readString(root.resolve("lang/en.yml")) shouldContain "Key received:</#a6efcf><newline><white>• <crate>"
             locale.reload(mapOf(
                 "key.received" to "Вы получили ключ: <amount> × <key>.",
                 "key.periodic-received-one" to "Получен ключ: <crate>.",
@@ -345,12 +367,78 @@ class EciaLocaleTest : FunSpec({
             plain.serialize(locale.renderWithLocale("key.received", "ru-RU", values)) shouldBe
                 "Вы получили ключ: 1 ×\nKey."
             plain.serialize(locale.renderWithLocale("key.periodic-received-one", "ru-RU", values)) shouldBe
-                "Получен ключ:\nCache."
+                "Получен ключ:\n• Cache"
 
             Files.writeString(root.resolve("lang/ru.yml"), "key:\n  periodic-received-one: 'Ваш ключ: <crate>'\n")
             val custom = EciaLocale(root, emptyMap())
             plain.serialize(custom.renderWithLocale("key.periodic-received-one", "ru-RU", values)) shouldBe
                 "Ваш ключ: Cache"
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    test("migrates installed periodic receipt defaults in both files and legacy overlay without changing custom copy") {
+        val root = Files.createTempDirectory("ecia-locale-periodic-receipt-migration-")
+        try {
+            Files.createDirectories(root.resolve("lang"))
+            val previous = mapOf(
+                "ru" to mapOf(
+                    "key.periodic-received-one" to "Получен ключ:<newline><crate>.",
+                    "key.periodic-received-both" to "Получены ключи: <daily>\n<weekly>",
+                ),
+                "en" to mapOf(
+                    "key.periodic-received-one" to "Key received:<newline><crate>.",
+                    "key.periodic-received-both" to "Keys received: <daily>\n<weekly>",
+                ),
+            )
+            previous.forEach { (tag, messages) ->
+                val yaml = YamlConfiguration()
+                messages.forEach(yaml::set)
+                yaml.save(root.resolve("lang/$tag.yml").toFile())
+            }
+            val locale = EciaLocale(root, emptyMap())
+            val plain = PlainTextComponentSerializer.plainText()
+            val values = mapOf("crate" to "Cache", "daily" to "Cache", "weekly" to "Relic")
+            val expected = mapOf(
+                "ru" to listOf("Получен ключ:\n• Cache", "Получены ключи:\n• Cache\n• Relic"),
+                "en" to listOf("Key received:\n• Cache", "Keys received:\n• Cache\n• Relic"),
+            )
+            val keys = previous.getValue("ru").keys.toList()
+            previous.keys.forEach { tag ->
+                keys.forEachIndexed { index, key ->
+                    plain.serialize(locale.renderWithLocale(key, tag, values)) shouldBe expected.getValue(tag)[index]
+                    YamlConfiguration.loadConfiguration(root.resolve("lang/$tag.yml").toFile())
+                        .getString(key)!!.contains("• ") shouldBe true
+                }
+            }
+
+            locale.reload(previous.getValue("ru"))
+            keys.forEachIndexed { index, key ->
+                plain.serialize(locale.renderWithLocale(key, "ru", values)) shouldBe expected.getValue("ru")[index]
+            }
+
+            val custom = mapOf(
+                "key.periodic-received-one" to "<light_purple>Ваш ключ: <crate>",
+                "key.periodic-received-both" to "<light_purple>Ваши ключи: <daily> и <weekly>",
+            )
+            previous.keys.forEach { tag ->
+                val file = root.resolve("lang/$tag.yml").toFile()
+                val yaml = YamlConfiguration.loadConfiguration(file)
+                custom.forEach(yaml::set)
+                yaml.save(file)
+            }
+            locale.reload(emptyMap())
+            previous.keys.forEach { tag ->
+                val file = root.resolve("lang/$tag.yml").toFile()
+                custom.forEach { (key, message) ->
+                    YamlConfiguration.loadConfiguration(file).getString(key) shouldBe message
+                    locale.renderWithLocale(key, tag, values).textAndColorRuns()
+                        .single { "Cache" in it.first }.second shouldBe TextColor.color(0xFF55FF)
+                }
+            }
+            locale.reload(custom)
+            plain.serialize(locale.renderWithLocale(keys[1], "ru", values)) shouldBe "Ваши ключи: Cache и Relic"
         } finally {
             root.toFile().deleteRecursively()
         }

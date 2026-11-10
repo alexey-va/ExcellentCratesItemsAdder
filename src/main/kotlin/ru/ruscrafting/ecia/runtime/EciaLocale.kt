@@ -43,6 +43,7 @@ class EciaLocale(
             return CrateChatNotice.render(
                 heading = render(NOTICE_HEADING, sender, emptyMap()),
                 body = render(path, sender, values),
+                keepHeading = path in PERIODIC_RECEIPT_KEYS,
             )
         }
         return Component.newline()
@@ -68,7 +69,7 @@ class EciaLocale(
         renderer.render(path, localeTag, renderedValues(path, localeTag, values))
 
     private fun renderedValues(path: String, localeTag: String, values: Map<String, String>): Map<String, Component> {
-        val rendered = literalValues(values).toMutableMap()
+        val rendered = literalValues(values, highlight = path !in PERIODIC_RECEIPT_KEYS).toMutableMap()
         if (path == "key.received") {
             val crateName = values["key"]?.let(::crateNameFromKeyDisplayName)
             if (crateName != null) {
@@ -82,10 +83,10 @@ class EciaLocale(
         return rendered
     }
 
-    private fun literalValues(values: Map<String, String>): Map<String, Component> =
+    private fun literalValues(values: Map<String, String>, highlight: Boolean = true): Map<String, Component> =
         values.mapValues { (key, value) ->
             val literal = renderer.literal(value)
-            if (key in HIGHLIGHTED_VALUES) literal.color(TextColor.color(0xFFD66A)) else literal
+            if (highlight && key in HIGHLIGHTED_VALUES) literal.color(TextColor.color(0xFFD66A)) else literal
         }
 
     fun render(path: String): Component = render(path, null, emptyMap())
@@ -142,6 +143,7 @@ class EciaLocale(
             OLD_NO_KEY_RESET_RU,
             NEW_NO_KEY_RESET_RU,
         )
+        migrateDefaultValue(russian, "managed.no-key-until-reset", PREVIOUS_NO_KEY_RESET_RU, NEW_NO_KEY_RESET_RU)
         migrateDefaultValue(
             russian,
             "key.received",
@@ -150,6 +152,8 @@ class EciaLocale(
         )
         migrateDefaultValue(russian, "key.received", INLINE_KEY_RECEIVED_RU, NEW_KEY_RECEIVED_RU)
         migrateDefaultValue(russian, "key.periodic-received-one", INLINE_PERIODIC_KEY_RU, NEW_PERIODIC_KEY_RU)
+        migrateDefaultValue(russian, "key.periodic-received-one", OLD_PERIODIC_KEY_RU, NEW_PERIODIC_KEY_RU)
+        migrateDefaultValue(russian, "key.periodic-received-both", OLD_PERIODIC_KEYS_RU, NEW_PERIODIC_KEYS_RU)
         migrateRemovedCommand(russian, mapOf(
             "protected" to NEW_PROTECTED_DEFAULT,
             "managed.native-command" to "<#ffd567>Откройте кейс ключом на его пьедестале.\n   <#fff2df>Призы и ключи учитывает аддон.",
@@ -169,6 +173,7 @@ class EciaLocale(
             OLD_NO_KEY_RESET_EN,
             NEW_NO_KEY_RESET_EN,
         )
+        migrateDefaultValue(english, "managed.no-key-until-reset", PREVIOUS_NO_KEY_RESET_EN, NEW_NO_KEY_RESET_EN)
         migrateDefaultValue(
             english,
             "key.received",
@@ -177,6 +182,8 @@ class EciaLocale(
         )
         migrateDefaultValue(english, "key.received", INLINE_KEY_RECEIVED_EN, NEW_KEY_RECEIVED_EN)
         migrateDefaultValue(english, "key.periodic-received-one", INLINE_PERIODIC_KEY_EN, NEW_PERIODIC_KEY_EN)
+        migrateDefaultValue(english, "key.periodic-received-one", OLD_PERIODIC_KEY_EN, NEW_PERIODIC_KEY_EN)
+        migrateDefaultValue(english, "key.periodic-received-both", OLD_PERIODIC_KEYS_EN, NEW_PERIODIC_KEYS_EN)
         migrateRemovedCommand(english, mapOf(
             "protected" to "<red>This crate is protected.",
             "managed.native-command" to "<#ffd567>Use the key on this crate pedestal. The addon tracks keys and rewards.",
@@ -243,6 +250,7 @@ class EciaLocale(
     companion object {
         private const val CHAT_INDENT = "   "
         private const val NOTICE_HEADING = "notice.heading"
+        private val PERIODIC_RECEIPT_KEYS = setOf("key.periodic-received-one", "key.periodic-received-both")
         private val HIGHLIGHTED_VALUES = setOf(
             "crate", "key", "amount", "next_reset", "daily", "weekly", "owner", "date",
         )
@@ -255,12 +263,16 @@ class EciaLocale(
         private const val NEW_NOTICE_HEADING = "Сундуки RusCrafting"
         private const val OLD_NO_KEY_RESET_RU =
             "Бесплатная попытка уже использована.\nСледующая попытка будет доступна:\n<next_reset>"
-        private const val NEW_NO_KEY_RESET_RU =
+        private const val PREVIOUS_NO_KEY_RESET_RU =
             "Новый бесплатный ключ будет доступен<newline><next_reset>."
+        private const val NEW_NO_KEY_RESET_RU =
+            "Бесплатные ключи — с ранга Крестьянин.<newline>Нужно около 5 минут активной игры на спавне.<newline>Обновление: <next_reset>."
         private const val OLD_NO_KEY_RESET_EN =
             "You have used this free opening.\nThe next one is available at:\n<next_reset>"
-        private const val NEW_NO_KEY_RESET_EN =
+        private const val PREVIOUS_NO_KEY_RESET_EN =
             "Your next free key is available<newline><next_reset>."
+        private const val NEW_NO_KEY_RESET_EN =
+            "Free keys: Peasant rank or higher.<newline>Play actively on Spawn for about 5 minutes.<newline>Reset: <next_reset>."
         private const val OLD_KEY_RECEIVED_RU =
             "Вы получили ключ: <amount> × <key>.\nИспользуйте его у подходящего сундука."
         private const val INLINE_KEY_RECEIVED_RU = "Вы получили ключ: <amount> × <key>."
@@ -270,9 +282,17 @@ class EciaLocale(
         private const val INLINE_KEY_RECEIVED_EN = "You received a key: <amount> × <key>."
         private const val NEW_KEY_RECEIVED_EN = "You received a key: <amount> ×<newline><key>."
         private const val INLINE_PERIODIC_KEY_RU = "Получен ключ: <crate>."
-        private const val NEW_PERIODIC_KEY_RU = "Получен ключ:<newline><crate>."
+        private const val OLD_PERIODIC_KEY_RU = "Получен ключ:<newline><crate>."
+        private const val NEW_PERIODIC_KEY_RU = "<#a6efcf>Получен ключ:</#a6efcf><newline><white>• <crate></white>"
+        private const val OLD_PERIODIC_KEYS_RU = "Получены ключи: <daily>\n<weekly>"
+        private const val NEW_PERIODIC_KEYS_RU =
+            "<#a6efcf>Получены ключи:</#a6efcf><newline><white>• <daily><newline>• <weekly></white>"
         private const val INLINE_PERIODIC_KEY_EN = "Key received: <crate>."
-        private const val NEW_PERIODIC_KEY_EN = "Key received:<newline><crate>."
+        private const val OLD_PERIODIC_KEY_EN = "Key received:<newline><crate>."
+        private const val NEW_PERIODIC_KEY_EN = "<#a6efcf>Key received:</#a6efcf><newline><white>• <crate></white>"
+        private const val OLD_PERIODIC_KEYS_EN = "Keys received: <daily>\n<weekly>"
+        private const val NEW_PERIODIC_KEYS_EN =
+            "<#a6efcf>Keys received:</#a6efcf><newline><white>• <daily><newline>• <weekly></white>"
         private val HTML_ENTITY = Regex("&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]+);", RegexOption.IGNORE_CASE)
         private val PLAYER_NOTICE_KEYS = setOf(
             "no-permission",
@@ -338,9 +358,10 @@ class EciaLocale(
                 when {
                     path == "protected" && value == OLD_PROTECTED_DEFAULT -> NEW_PROTECTED_DEFAULT
                     path == NOTICE_HEADING && value == OLD_NOTICE_HEADING -> NEW_NOTICE_HEADING
-                    path == "managed.no-key-until-reset" && value == OLD_NO_KEY_RESET_RU -> NEW_NO_KEY_RESET_RU
+                    path == "managed.no-key-until-reset" && value in setOf(OLD_NO_KEY_RESET_RU, PREVIOUS_NO_KEY_RESET_RU) -> NEW_NO_KEY_RESET_RU
                     path == "key.received" && value in setOf(OLD_KEY_RECEIVED_RU, INLINE_KEY_RECEIVED_RU) -> NEW_KEY_RECEIVED_RU
-                    path == "key.periodic-received-one" && value == INLINE_PERIODIC_KEY_RU -> NEW_PERIODIC_KEY_RU
+                    path == "key.periodic-received-one" && value in setOf(INLINE_PERIODIC_KEY_RU, OLD_PERIODIC_KEY_RU) -> NEW_PERIODIC_KEY_RU
+                    path == "key.periodic-received-both" && value == OLD_PERIODIC_KEYS_RU -> NEW_PERIODIC_KEYS_RU
                     else -> value
                 }
             }
