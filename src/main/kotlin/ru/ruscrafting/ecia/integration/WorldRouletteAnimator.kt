@@ -181,9 +181,9 @@ internal class WorldRouletteAnimator(
             winner.isGlowing = true
             winner.glowColorOverride = Color.fromRGB(255, 213, 103)
             winner.transformation = transformation(session.visual.winnerScale(), session.presentation)
-            if (view.viewer.isOnline) {
-                view.viewer.playSound(session.center, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 0.55f, 1.25f)
-            }
+        }
+        if (session.player.isOnline) {
+            session.player.playSound(session.center, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 0.55f, 1.25f)
         }
         openingEffects.settle(session.anchor)
     }
