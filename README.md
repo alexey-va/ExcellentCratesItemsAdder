@@ -150,7 +150,7 @@ An individual case can set `free-open-period: daily` or `weekly` in
 `features.yml`. Calendar windows use `free-open-time-zone` (default
 `Europe/Moscow`); weeks reset on Monday. One attempt is available per player and
 window. The addon automatically grants one physical key to players from Peasant
-(rank 2) after a random 4½–5½ minutes of active play in the same issuing-server
+(rank 2) after a random 5–5½ minutes of active play in the same issuing-server
 connection. The wait starts after inventory recovery and pauses during AFK, death
 or a minute of inactivity. Disconnecting or switching servers starts a fresh wait
 on return. Qualified players can receive new keys at rollover in the same session.

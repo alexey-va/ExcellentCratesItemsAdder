@@ -9,7 +9,7 @@ internal class PeriodicKeySession(
     val player: Player,
     startedAt: Long,
     private var wasPlaying: Boolean,
-    waitSeconds: Long = Random.nextLong(270L, 331L),
+    waitSeconds: Long = Random.nextLong(300L, 331L),
 ) {
     private var remaining = SECONDS.toNanos(waitSeconds)
     private var lastPoll = startedAt

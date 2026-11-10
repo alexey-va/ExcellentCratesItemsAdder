@@ -2,6 +2,7 @@ package ru.ruscrafting.ecia.integration
 
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkObject
 import io.mockk.verify
 import org.bukkit.entity.Player
 import org.bukkit.permissions.PermissionAttachmentInfo
@@ -20,6 +21,7 @@ import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit.SECONDS
+import kotlin.random.Random
 
 class PeriodicKeysServiceTest {
     @Test
@@ -65,13 +67,14 @@ class PeriodicKeysServiceTest {
     }
 
     @Test
-    fun `a quit and rejoin starts a new wait and stale departure cannot clear it`() {
+    fun `a quit and rejoin starts a new wait and stale departure cannot clear it`() = mockkObject(Random.Default) {
+        every { Random.nextLong(any(), any()) } answers { firstArg() }
         Fixture().use { fixture ->
             val id = UUID.randomUUID()
             val original = player(id)
             setPermissions(original, "group.rank_peasant")
             fixture.service.playerDataLoaded(original)
-            fixture.play(269)
+            fixture.play(299)
             verify(exactly = 0) { fixture.access.acquire(any()) }
 
             fixture.service.playerLeft(original)
@@ -80,15 +83,16 @@ class PeriodicKeysServiceTest {
             setPermissions(returned, "group.rank_peasant")
             fixture.service.playerDataLoaded(returned)
             fixture.service.playerLeft(original)
-            fixture.play(269)
+            fixture.play(299)
             verify(exactly = 0) { fixture.access.acquire(any()) }
 
             fixture.service.playerDataLoaded(returned)
-            fixture.play(70)
+            fixture.play(6)
             verify(exactly = 0) { fixture.access.acquire(original) }
             verify(exactly = 1) { fixture.issuer.playerLeft(id) }
             verify(atLeast = 1) { fixture.access.acquire(returned) }
         }
+        verify(exactly = 2) { Random.nextLong(300L, 331L) }
     }
 
     private fun player(id: UUID = UUID.randomUUID()) = mockk<Player> {
